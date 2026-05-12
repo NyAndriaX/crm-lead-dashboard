@@ -16,6 +16,7 @@ Copier `.env.example` → `.env`. Ne jamais committer `.env`. En production, les
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | — | SMTP par défaut. En dev : Mailpit / Mailtrap. |
 | `WORKER_POLL_INTERVAL_MS` | — | Intervalle de polling de la file `jobs` par le worker. Défaut 3000. |
 | `WORKER_CONCURRENCY` | — | Nombre de jobs traités en parallèle par le worker. Défaut 5. |
+| `SCORING_WEIGHTS` | — | JSON optionnel pour surcharger les poids du lead scoring (CRM-019). Par défaut : voir `apps/web/lib/scoring.ts` (`DEFAULT_WEIGHTS`). |
 
 > Pas de `REDIS_URL` : la file de tâches asynchrones est la collection MongoDB `jobs`, consommée par `apps/worker` en polling (pas de Redis dans l'architecture).
 >

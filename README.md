@@ -77,9 +77,10 @@ Ou tout en conteneurs : `docker compose up --build` (Nginx sur :80). Pas de Redi
 
 ## État d'avancement
 
-Implémenté (lots **L0 + L1**) : monorepo + CI + Docker Compose · schéma Prisma (~25 collections) · `lib/crypto` AES-256-GCM + HMAC · auth JWT + bcrypt + TOTP (`/api/auth/*`) · RBAC (matrice + `middleware.ts` + `requirePermission`) · OpenAPI 3.1 + Swagger UI (`/api/docs`) · CRUD Leads (`/api/leads`, pagination/tri/filtres/recherche, soft delete + restore) · shell dashboard Ant Design + page Leads branchée · worker (file `jobs` MongoDB en polling, sans Redis).
+- **L0 + L1** (socle) : monorepo + CI + Docker Compose · schéma Prisma (~25 collections) · `lib/crypto` AES-256-GCM + HMAC · auth JWT + bcrypt + TOTP (`/api/auth/*`) · RBAC (matrice + `middleware.ts` + `requirePermission`) · OpenAPI 3.1 + Swagger UI (`/api/docs`) · CRUD Leads · shell dashboard Ant Design · worker (file `jobs` MongoDB en polling, sans Redis).
+- **L2** (Leads avancé — en cours) : fiche lead détaillée (Descriptions + Timeline) · filtres avancés multi-critères + recherche · workflow de statuts (transitions validées) · tags + référentiel · assignation + notification in-app · vues sauvegardées · export CSV/XLSX · lead scoring 0–100 (recalcul auto + job batch).
 
-À venir : voir [docs/BACKLOG.md](docs/BACKLOG.md) (lots L2 → L10).
+Détail et reste à faire : [docs/BACKLOG.md](docs/BACKLOG.md) (lots L2 → L10).
 
 ## Workflow Git
 

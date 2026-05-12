@@ -3,7 +3,7 @@
  * garde d'authentification + RBAC, gestion d'erreurs centralisée.
  */
 import { NextResponse } from "next/server";
-import { ZodError, type ZodSchema } from "zod";
+import { ZodError, type ZodTypeAny, type z } from "zod";
 import { getSession, type AccessClaims } from "./auth";
 import { can, type Permission } from "./rbac";
 
@@ -49,7 +49,7 @@ export function handler<Ctx = unknown>(
 }
 
 /** Parse + valide le body JSON. Lève une ZodError si invalide. */
-export async function parseBody<T>(req: Request, schema: ZodSchema<T>): Promise<T> {
+export async function parseBody<S extends ZodTypeAny>(req: Request, schema: S): Promise<z.infer<S>> {
   let raw: unknown;
   try {
     raw = await req.json();
@@ -60,7 +60,7 @@ export async function parseBody<T>(req: Request, schema: ZodSchema<T>): Promise<
 }
 
 /** Valide les query params (URLSearchParams → objet). */
-export function parseQuery<T>(req: Request, schema: ZodSchema<T>): T {
+export function parseQuery<S extends ZodTypeAny>(req: Request, schema: S): z.infer<S> {
   const url = new URL(req.url);
   return schema.parse(Object.fromEntries(url.searchParams.entries()));
 }
