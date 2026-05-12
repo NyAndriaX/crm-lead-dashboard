@@ -81,12 +81,29 @@ Implémenté (lots **L0 + L1**) : monorepo + CI + Docker Compose · schéma Pris
 
 À venir : voir [docs/BACKLOG.md](docs/BACKLOG.md) (lots L2 → L10).
 
-## Conventions
+## Workflow Git
 
-- Branches : `feat/CRM-XXX-courte-description`, `fix/CRM-XXX-...`
-- Commits : [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `chore:`…)
-- 1 ticket Jira/GitLab = 1 Merge Request, CI verte obligatoire avant merge sur `main`
-- UI : **strictement Ant Design 5** (pas de Tailwind / shadcn / autre lib hors charts)
+Modèle de branches (type Git Flow simplifié) :
+
+```
+feat/CRM-XXX-...  ──MR──►  develop  ──MR──►  main
+fix/CRM-XXX-...   ──MR──►  develop          (= production / release)
+```
+
+- **`main`** : branche de production, protégée. On n'y arrive **que** via une MR depuis `develop`.
+- **`develop`** : branche d'intégration, **branche par défaut du projet GitLab** (cible par défaut des MR). Protégée.
+- **`feat/CRM-XXX-courte-description`** / **`fix/CRM-XXX-...`** : une branche par ticket, créée **depuis `develop`**, mergée dans `develop` via MR (CI verte + revue obligatoires).
+
+```bash
+git checkout develop && git pull
+git checkout -b feat/CRM-011-fiche-lead
+# … commits …
+git push -u origin feat/CRM-011-fiche-lead   # puis ouvrir la MR vers develop
+```
+
+- Commits : [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `chore:`, `docs:`…).
+- 1 ticket = 1 MR ; le template de MR du repo référence le ticket et liste la checklist.
+- UI : **strictement Ant Design 5** (pas de Tailwind / shadcn / autre lib hors charts).
 
 ## Documentation
 
