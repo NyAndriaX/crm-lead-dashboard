@@ -1,0 +1,46 @@
+# dependencies
+node_modules/
+.yarn-cache/
+.yarn-integrity
+
+# next.js
+.next/
+out/
+next-env.d.ts
+
+# production
+build/
+dist/
+
+# prisma
+packages/db/generated/
+
+# env
+.env
+.env.local
+.env.*.local
+*.local
+
+# logs
+*.log
+npm-debug.log*
+yarn-error.log
+yarn-debug.log*
+
+# claude code — local-only settings (the shared one is .claude/settings.json)
+.claude/settings.local.json
+
+# os / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# misc
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# docker volumes (if mounted locally)
+.docker-data/

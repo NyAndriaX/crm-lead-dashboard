@@ -1,0 +1,17 @@
+node_modules
+**/node_modules
+.next
+**/.next
+dist
+**/dist
+.git
+.gitlab
+.yarn-cache
+*.log
+.env
+.env.*
+!.env.example
+docs
+.vscode
+.idea
+packages/db/generated
