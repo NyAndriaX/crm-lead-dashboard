@@ -51,6 +51,21 @@ export function getWeights(): ScoringWeights {
   }
 }
 
+/**
+ * Charge les poids depuis la DB (ScoringConfig), avec fallback sur getWeights().
+ * Utilisé par le scoring en ligne (hors worker).
+ */
+export async function getWeightsFromDb(): Promise<ScoringWeights> {
+  try {
+    const { prisma } = await import("@crm/db");
+    const config = await prisma.scoringConfig.findUnique({ where: { id: "default" } });
+    if (config?.weights) {
+      return { ...DEFAULT_WEIGHTS, ...(config.weights as Partial<ScoringWeights>) };
+    }
+  } catch { /* DB indisponible ou modèle absent — utilise les defaults */ }
+  return getWeights();
+}
+
 export interface ScoringSignals {
   opens: number;
   clicks: number;

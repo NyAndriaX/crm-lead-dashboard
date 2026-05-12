@@ -517,6 +517,21 @@ model Job {
 }
 
 // ──────────────────────────────────────────────────────────────
+// Configuration (singleton par type)
+// ──────────────────────────────────────────────────────────────
+
+// Document singleton (id = "default") stockant les poids de scoring configurés via l'UI admin.
+// Si absent, le scoring utilise les DEFAULT_WEIGHTS hardcodés dans lib/scoring.ts.
+model ScoringConfig {
+  id        String   @id @map("_id") // valeur fixe : "default"
+  weights   Json
+  updatedBy String?  @db.ObjectId
+  updatedAt DateTime @updatedAt
+
+  @@map("scoringConfig")
+}
+
+// ──────────────────────────────────────────────────────────────
 // Scraper (hors périmètre courant — défini pour conformité CDC)
 // ──────────────────────────────────────────────────────────────
 

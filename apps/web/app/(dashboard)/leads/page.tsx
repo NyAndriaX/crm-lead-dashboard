@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Table, Tag, Typography, Button, Space, Input, InputNumber, Select, Dropdown, message,
+  Modal, Form, Row, Col,
 } from "antd";
-import { DownloadOutlined, SaveOutlined, ReloadOutlined } from "@ant-design/icons";
+import { DownloadOutlined, SaveOutlined, ReloadOutlined, PlusOutlined } from "@ant-design/icons";
 import type { ColumnsType, TablePaginationConfig } from "antd/es/table";
 import type { SorterResult } from "antd/es/table/interface";
 import { api } from "@/lib/client";
@@ -20,8 +21,16 @@ interface LeadDTO {
 }
 interface ListResponse { data: LeadDTO[]; pagination: { page: number; pageSize: number; total: number; totalPages: number } }
 interface LeadView { id: string; name: string; filters: Record<string, unknown>; columns: string[]; shared: boolean }
+interface UserLite { id: string; name: string; email: string }
 
 type Filters = { q?: string; status?: string; source?: string; scoreMin?: number };
+
+interface CreateLeadForm {
+  email?: string; phone?: string; firstName?: string; lastName?: string;
+  company?: string; website?: string; sector?: string; city?: string;
+  country?: string; source?: string; status?: string; notes?: string;
+  assignedToId?: string;
+}
 
 export default function LeadsPage() {
   const router = useRouter();
@@ -33,6 +42,12 @@ export default function LeadsPage() {
   const [sort, setSort] = useState<string | undefined>();
   const [filters, setFilters] = useState<Filters>({});
   const [views, setViews] = useState<LeadView[]>([]);
+
+  // Create modal
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [form] = Form.useForm<CreateLeadForm>();
+  const [users, setUsers] = useState<UserLite[]>([]);
 
   const queryParams = useMemo(
     () => ({ page, pageSize, sort, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined && v !== "")) }),
@@ -50,6 +65,7 @@ export default function LeadsPage() {
 
   useEffect(() => { void fetchLeads(); }, [fetchLeads]);
   useEffect(() => { api.get<{ data: LeadView[] }>("/lead-views").then((r) => setViews(r.data.data)).catch(() => {}); }, []);
+  useEffect(() => { api.get<{ data: UserLite[] }>("/users").then((r) => setUsers(r.data.data)).catch(() => {}); }, []);
 
   const columns: ColumnsType<LeadDTO> = [
     { title: "Nom", key: "name", render: (_, r) => [r.firstName, r.lastName].filter(Boolean).join(" ") || "—" },
@@ -91,6 +107,29 @@ export default function LeadsPage() {
     setPage(1); setFilters(f); setSort(s);
   }
 
+  async function handleCreateLead() {
+    try {
+      const values = await form.validateFields();
+      setCreateLoading(true);
+      await api.post("/leads", {
+        ...values,
+        email: values.email || null,
+        phone: values.phone || null,
+        assignedToId: values.assignedToId || null,
+        website: values.website || null,
+      });
+      message.success("Lead créé avec succès");
+      form.resetFields();
+      setCreateOpen(false);
+      void fetchLeads();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message;
+      if (msg) message.error(msg);
+    } finally {
+      setCreateLoading(false);
+    }
+  }
+
   return (
     <Space direction="vertical" size="middle" style={{ width: "100%" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
@@ -107,7 +146,9 @@ export default function LeadsPage() {
           ] }}>
             <Button icon={<DownloadOutlined />}>Exporter</Button>
           </Dropdown>
-          <Button type="primary" disabled>Nouveau lead</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+            Nouveau lead
+          </Button>
         </Space>
       </div>
 
@@ -128,6 +169,107 @@ export default function LeadsPage() {
         onRow={(r) => ({ onClick: () => router.push(`/leads/${r.id}`), style: { cursor: "pointer" } })}
         pagination={{ current: page, pageSize, total, showSizeChanger: true, pageSizeOptions: [50, 100, 200], showTotal: (t) => `${t} lead${t > 1 ? "s" : ""}` }}
       />
+
+      {/* ── Modale de création de lead ─────────────────────────────────────── */}
+      <Modal
+        title="Nouveau lead"
+        open={createOpen}
+        onOk={handleCreateLead}
+        onCancel={() => { setCreateOpen(false); form.resetFields(); }}
+        confirmLoading={createLoading}
+        okText="Créer"
+        cancelText="Annuler"
+        width={700}
+        destroyOnClose
+      >
+        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="firstName" label="Prénom">
+                <Input placeholder="Jean" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="lastName" label="Nom">
+                <Input placeholder="Dupont" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="email"
+                label="Email"
+                rules={[{ type: "email", message: "Email invalide" }]}
+              >
+                <Input placeholder="jean.dupont@entreprise.com" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="phone" label="Téléphone">
+                <Input placeholder="+33 6 00 00 00 00" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="company" label="Entreprise">
+                <Input placeholder="Acme SA" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="website"
+                label="Site web"
+                rules={[{ type: "url", message: "URL invalide" }]}
+              >
+                <Input placeholder="https://acme.com" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="sector" label="Secteur">
+                <Input placeholder="Tech, Finance…" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="city" label="Ville">
+                <Input placeholder="Paris" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="country" label="Pays">
+                <Input placeholder="France" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="source" label="Source">
+                <Input placeholder="LinkedIn, salon, formulaire…" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="status" label="Statut" initialValue="NOUVEAU">
+                <Select options={Object.entries(STATUS_LABELS).map(([v, l]) => ({ value: v, label: l }))} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="assignedToId" label="Assigné à">
+            <Select
+              allowClear
+              placeholder="Choisir un commercial…"
+              options={users.map((u) => ({ value: u.id, label: `${u.name} (${u.email})` }))}
+              showSearch
+              filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
+            />
+          </Form.Item>
+          <Form.Item name="notes" label="Notes">
+            <Input.TextArea rows={3} placeholder="Contexte, remarques…" maxLength={10000} showCount />
+          </Form.Item>
+        </Form>
+      </Modal>
     </Space>
   );
 }
