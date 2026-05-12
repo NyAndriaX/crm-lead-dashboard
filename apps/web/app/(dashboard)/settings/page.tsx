@@ -1,39 +1,34 @@
 "use client";
 
 /**
- * Tableau de bord Administrateur — CRM-071.
- * Tabs : Vue d'ensemble · Utilisateurs · Scoring · Imports récents
+ * Page Administration — CRM-071.
+ * Tabs : Vue d'ensemble · Utilisateurs · Scoring · Imports
  */
 import { useCallback, useEffect, useState } from "react";
 import {
   Tabs, Card, Typography, Table, Button, Tag, Space, Form, InputNumber, Row, Col,
-  Statistic, Badge, Modal, Input, Select, message, Spin, Alert, Popconfirm,
-  Descriptions, List, Progress,
+  Statistic, Badge, Modal, Input, Select, message, Spin, Alert, Popconfirm, List,
+  Progress, Divider, Avatar, Switch, Tooltip,
 } from "antd";
 import {
-  UserOutlined, TeamOutlined, TrophyOutlined, UploadOutlined, PlusOutlined,
-  EditOutlined, StopOutlined, CheckOutlined, ReloadOutlined,
+  UserOutlined, TrophyOutlined, UploadOutlined, PlusOutlined, EditOutlined,
+  StopOutlined, CheckOutlined, ReloadOutlined, SafetyOutlined, FireOutlined,
+  TeamOutlined, CalendarOutlined, SettingOutlined, LockOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
 import type { ScoringWeightsInput } from "@/lib/schemas/import";
 
-const { Title, Text } = Typography;
+const { Title, Text, Paragraph } = Typography;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface Stats {
+interface AdminStats {
   leads: { total: number; active: number; newToday: number; newThisWeek: number; newThisMonth: number };
   byStatus: Record<string, number>;
   users: { total: number; active: number };
-  recentImports: ImportJobLite[];
-}
-
-interface ImportJobLite {
-  id: string; fileName: string; status: string;
-  importedRows: number; totalRows: number; createdAt: string;
-  user?: { name: string };
+  recentImports: { id: string; fileName: string; status: string; importedRows: number; totalRows: number; createdAt: string; user?: { name: string } }[];
 }
 
 interface UserRow {
@@ -47,67 +42,84 @@ const ROLE_LABELS: Record<string, string> = {
 const ROLE_COLORS: Record<string, string> = {
   ADMIN: "red", MANAGER: "orange", COMMERCIAL: "blue", LECTEUR: "default",
 };
+const ROLE_BG: Record<string, string> = {
+  ADMIN: "#fff1f0", MANAGER: "#fff7e6", COMMERCIAL: "#e6f4ff", LECTEUR: "#fafafa",
+};
 
 // ── Onglet Vue d'ensemble ────────────────────────────────────────────────────
 
 function OverviewTab() {
-  const [stats, setStats] = useState<Stats | null>(null);
+  const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    setLoading(true);
-    api.get<{ data: Stats }>("/admin/stats")
+    api.get<{ data: AdminStats }>("/admin/stats")
       .then((r) => setStats(r.data.data))
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <Spin />;
-  if (error) return <Alert type="error" message="Impossible de charger les statistiques (rôle Admin/Manager requis)" />;
+  if (loading) return <div style={{ padding: 40, textAlign: "center" }}><Spin size="large" /></div>;
+  if (error) return <Alert type="warning" message="Statistiques réservées aux rôles Admin et Manager." showIcon style={{ marginBottom: 16 }} />;
   if (!stats) return null;
 
   const statusOrder = ["NOUVEAU", "CONTACTE", "QUALIFIE", "EN_DISCUSSION", "CONVERTI", "PERDU"];
+  const STATUS_HEX: Record<string, string> = {
+    NOUVEAU: "#8c8c8c", CONTACTE: "#1677ff", QUALIFIE: "#13c2c2",
+    EN_DISCUSSION: "#faad14", CONVERTI: "#52c41a", PERDU: "#ff4d4f",
+  };
 
   return (
-    <Space direction="vertical" size="large" style={{ width: "100%" }}>
+    <Space direction="vertical" size={24} style={{ width: "100%" }}>
+      {/* ── KPI row ── */}
       <Row gutter={[16, 16]}>
-        <Col xs={12} sm={8} md={4}>
-          <Card><Statistic title="Total leads" value={stats.leads.total} prefix={<TeamOutlined />} /></Card>
-        </Col>
-        <Col xs={12} sm={8} md={4}>
-          <Card><Statistic title="Leads actifs" value={stats.leads.active} valueStyle={{ color: "#1677ff" }} /></Card>
-        </Col>
-        <Col xs={12} sm={8} md={4}>
-          <Card><Statistic title="Aujourd'hui" value={stats.leads.newToday} valueStyle={{ color: "#52c41a" }} /></Card>
-        </Col>
-        <Col xs={12} sm={8} md={4}>
-          <Card><Statistic title="Cette semaine" value={stats.leads.newThisWeek} /></Card>
-        </Col>
-        <Col xs={12} sm={8} md={4}>
-          <Card><Statistic title="Ce mois" value={stats.leads.newThisMonth} /></Card>
-        </Col>
-        <Col xs={12} sm={8} md={4}>
-          <Card>
-            <Statistic title="Utilisateurs actifs" value={stats.users.active} suffix={`/ ${stats.users.total}`} prefix={<UserOutlined />} />
-          </Card>
-        </Col>
+        {[
+          { label: "Total leads", value: stats.leads.total, color: "#1677ff", icon: <TeamOutlined />, sub: `${stats.leads.active} actifs` },
+          { label: "Nouveaux aujourd'hui", value: stats.leads.newToday, color: "#13c2c2", icon: <CalendarOutlined />, sub: `${stats.leads.newThisWeek} cette semaine` },
+          { label: "Ce mois", value: stats.leads.newThisMonth, color: "#722ed1", icon: <FireOutlined />, sub: "leads créés" },
+          { label: "Utilisateurs actifs", value: stats.users.active, color: "#52c41a", icon: <UserOutlined />, sub: `/ ${stats.users.total} comptes` },
+        ].map(({ label, value, color, icon, sub }) => (
+          <Col xs={12} xl={6} key={label}>
+            <Card bodyStyle={{ padding: "20px 24px" }} style={{ borderTop: `3px solid ${color}` }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div>
+                  <Text type="secondary" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>{label}</Text>
+                  <div><span style={{ fontSize: 26, fontWeight: 700, color }}>{value}</span></div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>{sub}</Text>
+                </div>
+                <div style={{ width: 44, height: 44, borderRadius: 10, background: color + "18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, color }}>
+                  {icon}
+                </div>
+              </div>
+            </Card>
+          </Col>
+        ))}
       </Row>
 
+      {/* ── Pipeline + Imports ── */}
       <Row gutter={[16, 16]}>
-        <Col xs={24} md={12}>
-          <Card title="Leads par statut">
-            <Space direction="vertical" style={{ width: "100%" }}>
+        <Col xs={24} md={14}>
+          <Card title={<Space><TeamOutlined style={{ color: "#1677ff" }} /><span>Pipeline par statut</span></Space>}>
+            <Space direction="vertical" style={{ width: "100%" }} size={12}>
               {statusOrder.map((s) => {
                 const count = stats.byStatus[s] ?? 0;
                 const pct = stats.leads.total > 0 ? Math.round((count / stats.leads.total) * 100) : 0;
                 return (
                   <div key={s}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                      <Tag color={STATUS_COLORS[s as keyof typeof STATUS_COLORS]}>{STATUS_LABELS[s as keyof typeof STATUS_LABELS]}</Tag>
-                      <Text>{count} ({pct}%)</Text>
+                      <Space size={6}>
+                        <Badge color={STATUS_HEX[s]} />
+                        <Tag color={STATUS_COLORS[s as keyof typeof STATUS_COLORS]} style={{ margin: 0, fontSize: 12 }}>
+                          {STATUS_LABELS[s as keyof typeof STATUS_LABELS]}
+                        </Tag>
+                      </Space>
+                      <Space size={8}>
+                        <Text strong>{count}</Text>
+                        <Text type="secondary" style={{ fontSize: 11 }}>{pct}%</Text>
+                      </Space>
                     </div>
-                    <Progress percent={pct} showInfo={false} strokeColor={STATUS_COLORS[s as keyof typeof STATUS_COLORS]} size="small" />
+                    <Progress percent={pct} showInfo={false} strokeColor={STATUS_HEX[s]} size="small" trailColor="#f5f5f5" />
                   </div>
                 );
               })}
@@ -115,32 +127,38 @@ function OverviewTab() {
           </Card>
         </Col>
 
-        <Col xs={24} md={12}>
-          <Card title="Imports récents">
-            {stats.recentImports.length === 0 && <Text type="secondary">Aucun import</Text>}
-            <List
-              size="small"
-              dataSource={stats.recentImports}
-              renderItem={(job) => (
-                <List.Item>
-                  <List.Item.Meta
-                    title={<Text ellipsis>{job.fileName}</Text>}
-                    description={
-                      <Space>
-                        <Badge
-                          status={job.status === "done" ? "success" : job.status === "failed" ? "error" : "processing"}
-                          text={job.status}
-                        />
-                        <Text type="secondary" style={{ fontSize: 11 }}>
-                          {job.importedRows}/{job.totalRows} · {new Date(job.createdAt).toLocaleDateString("fr-FR")}
-                        </Text>
-                      </Space>
-                    }
-                  />
-                  {job.user && <Text type="secondary" style={{ fontSize: 11 }}>{job.user.name}</Text>}
-                </List.Item>
-              )}
-            />
+        <Col xs={24} md={10}>
+          <Card
+            title={<Space><UploadOutlined style={{ color: "#1677ff" }} /><span>Imports récents</span></Space>}
+            extra={<Button size="small" type="link" href="/import">Voir tout →</Button>}
+            style={{ height: "100%" }}
+          >
+            {stats.recentImports.length === 0
+              ? <Text type="secondary">Aucun import pour l&apos;instant.</Text>
+              : <List
+                  size="small"
+                  dataSource={stats.recentImports}
+                  renderItem={(job) => (
+                    <List.Item>
+                      <List.Item.Meta
+                        title={<Text ellipsis style={{ maxWidth: 160 }}>{job.fileName}</Text>}
+                        description={
+                          <Space direction="vertical" size={0}>
+                            <Badge
+                              status={job.status === "done" ? "success" : job.status === "failed" ? "error" : "processing"}
+                              text={<Text style={{ fontSize: 11 }}>{job.status}</Text>}
+                            />
+                            <Text type="secondary" style={{ fontSize: 11 }}>
+                              {job.importedRows}/{job.totalRows} · {new Date(job.createdAt).toLocaleDateString("fr-FR")}
+                            </Text>
+                          </Space>
+                        }
+                      />
+                      {job.user && <Text type="secondary" style={{ fontSize: 11 }}>{job.user.name}</Text>}
+                    </List.Item>
+                  )}
+                />
+            }
           </Card>
         </Col>
       </Row>
@@ -175,7 +193,7 @@ function UsersTab() {
     setSaving(true);
     try {
       await api.post("/users", values);
-      message.success("Utilisateur créé");
+      message.success("Utilisateur créé avec succès");
       createForm.resetFields();
       setCreateOpen(false);
       void fetchUsers();
@@ -204,10 +222,10 @@ function UsersTab() {
     try {
       if (user.isActive) {
         await api.delete(`/users/${user.id}`);
-        message.success("Utilisateur désactivé");
+        message.success("Compte désactivé");
       } else {
         await api.put(`/users/${user.id}`, { isActive: true });
-        message.success("Utilisateur réactivé");
+        message.success("Compte réactivé");
       }
       void fetchUsers();
     } catch (e) {
@@ -217,69 +235,171 @@ function UsersTab() {
   }
 
   const columns: ColumnsType<UserRow> = [
-    { title: "Nom", dataIndex: "name", key: "name", render: (v, r) => <Space><UserOutlined />{v}{!r.isActive && <Tag color="default">Inactif</Tag>}</Space> },
-    { title: "Email", dataIndex: "email", key: "email" },
-    { title: "Rôle", dataIndex: "role", key: "role", render: (v: string) => <Tag color={ROLE_COLORS[v]}>{ROLE_LABELS[v]}</Tag> },
-    { title: "Dernière connexion", dataIndex: "lastLoginAt", key: "lastLoginAt", render: (v) => v ? new Date(v).toLocaleString("fr-FR") : "Jamais" },
-    { title: "Créé le", dataIndex: "createdAt", key: "createdAt", render: (v) => new Date(v).toLocaleDateString("fr-FR") },
     {
-      title: "Actions", key: "actions", width: 120,
+      title: "Utilisateur", key: "user",
       render: (_, r) => (
-        <Space size="small">
-          <Button size="small" icon={<EditOutlined />} onClick={() => { setEditUser(r); editForm.setFieldsValue({ name: r.name, role: r.role }); }} />
-          <Popconfirm
-            title={r.isActive ? "Désactiver cet utilisateur ?" : "Réactiver cet utilisateur ?"}
-            onConfirm={() => void toggleActive(r)}
+        <Space>
+          <Avatar
+            size={36}
+            style={{
+              background: ROLE_BG[r.role],
+              color: ROLE_COLORS[r.role] === "default" ? "#595959" : `var(--ant-color-${ROLE_COLORS[r.role]})`,
+              border: `1px solid ${ROLE_COLORS[r.role] === "default" ? "#d9d9d9" : "transparent"}`,
+              fontSize: 12, fontWeight: 600,
+            }}
           >
-            <Button size="small" danger={r.isActive} icon={r.isActive ? <StopOutlined /> : <CheckOutlined />} />
-          </Popconfirm>
+            {r.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)}
+          </Avatar>
+          <div>
+            <Text strong style={{ display: "block" }}>{r.name}</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>{r.email}</Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      title: "Rôle", dataIndex: "role", key: "role", width: 130,
+      render: (v: string) => (
+        <Tag color={ROLE_COLORS[v]} style={{ fontWeight: 500 }}>{ROLE_LABELS[v]}</Tag>
+      ),
+    },
+    {
+      title: "Statut", dataIndex: "isActive", key: "isActive", width: 100,
+      render: (v: boolean) => v
+        ? <Badge status="success" text={<Text style={{ fontSize: 12, color: "#52c41a" }}>Actif</Text>} />
+        : <Badge status="error" text={<Text style={{ fontSize: 12, color: "#ff4d4f" }}>Inactif</Text>} />,
+    },
+    {
+      title: "Dernière connexion", dataIndex: "lastLoginAt", key: "lastLoginAt", width: 170,
+      render: (v) => v
+        ? new Date(v).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+        : <Text type="secondary">Jamais connecté</Text>,
+    },
+    {
+      title: "Membre depuis", dataIndex: "createdAt", key: "createdAt", width: 130,
+      render: (v) => new Date(v).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }),
+    },
+    {
+      title: "", key: "actions", width: 90,
+      render: (_, r) => (
+        <Space size={4}>
+          <Tooltip title="Modifier">
+            <Button
+              size="small" icon={<EditOutlined />}
+              onClick={() => { setEditUser(r); editForm.setFieldsValue({ name: r.name, role: r.role }); }}
+            />
+          </Tooltip>
+          <Tooltip title={r.isActive ? "Désactiver" : "Réactiver"}>
+            <Popconfirm
+              title={r.isActive ? `Désactiver ${r.name} ?` : `Réactiver ${r.name} ?`}
+              onConfirm={() => void toggleActive(r)}
+              okText="Confirmer" cancelText="Annuler"
+            >
+              <Button
+                size="small"
+                danger={r.isActive}
+                icon={r.isActive ? <StopOutlined /> : <CheckOutlined />}
+              />
+            </Popconfirm>
+          </Tooltip>
         </Space>
       ),
     },
   ];
 
-  return (
-    <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <Text strong>{users.length} utilisateur(s)</Text>
-        <Space>
-          <Button icon={<ReloadOutlined />} onClick={() => fetchUsers()}>Actualiser</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>Nouvel utilisateur</Button>
-        </Space>
-      </div>
+  const activeCount = users.filter((u) => u.isActive).length;
 
-      <Table rowKey="id" columns={columns} dataSource={users} loading={loading} size="small"
-        pagination={{ pageSize: 20, showTotal: (t) => `${t} utilisateur(s)` }} />
+  return (
+    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+      {/* Stats rapides */}
+      <Row gutter={12}>
+        {[
+          { label: "Total", value: users.length, color: "#1677ff" },
+          { label: "Actifs", value: activeCount, color: "#52c41a" },
+          { label: "Inactifs", value: users.length - activeCount, color: "#ff4d4f" },
+        ].map(({ label, value, color }) => (
+          <Col key={label}>
+            <Card size="small" bodyStyle={{ padding: "12px 20px" }}>
+              <Statistic title={<Text style={{ fontSize: 12 }}>{label}</Text>} value={value} valueStyle={{ fontSize: 20, color }} />
+            </Card>
+          </Col>
+        ))}
+        <Col flex="auto" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+          <Button icon={<ReloadOutlined />} onClick={() => fetchUsers()}>Actualiser</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+            Nouvel utilisateur
+          </Button>
+        </Col>
+      </Row>
+
+      <Table
+        rowKey="id"
+        columns={columns}
+        dataSource={users}
+        loading={loading}
+        size="middle"
+        pagination={{ pageSize: 15, showTotal: (t) => `${t} utilisateur(s)` }}
+        rowClassName={(r) => (!r.isActive ? "opacity-50" : "")}
+      />
 
       {/* Modale création */}
-      <Modal title="Nouvel utilisateur" open={createOpen} onOk={() => void createUser()}
+      <Modal
+        title={<Space><UserOutlined /><span>Nouvel utilisateur</span></Space>}
+        open={createOpen}
+        onOk={() => void createUser()}
         onCancel={() => { setCreateOpen(false); createForm.resetFields(); }}
-        confirmLoading={saving} okText="Créer" cancelText="Annuler">
+        confirmLoading={saving}
+        okText="Créer le compte"
+        cancelText="Annuler"
+        width={480}
+      >
         <Form form={createForm} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item name="name" label="Nom complet" rules={[{ required: true }]}>
-            <Input placeholder="Jean Dupont" />
+          <Form.Item name="name" label="Nom complet" rules={[{ required: true, message: "Champ requis" }]}>
+            <Input prefix={<UserOutlined />} placeholder="Jean Dupont" />
           </Form.Item>
-          <Form.Item name="email" label="Email" rules={[{ required: true, type: "email" }]}>
-            <Input placeholder="jean@exemple.com" />
+          <Form.Item name="email" label="Adresse email" rules={[{ required: true, type: "email", message: "Email invalide" }]}>
+            <Input prefix="@" placeholder="jean@exemple.com" />
           </Form.Item>
-          <Form.Item name="password" label="Mot de passe" rules={[{ required: true, min: 8, message: "8 caractères minimum" }]}>
-            <Input.Password />
+          <Form.Item
+            name="password"
+            label="Mot de passe"
+            rules={[{ required: true, min: 8, message: "8 caractères minimum" }]}
+          >
+            <Input.Password prefix={<LockOutlined />} placeholder="8 caractères minimum" />
           </Form.Item>
           <Form.Item name="role" label="Rôle" initialValue="COMMERCIAL">
-            <Select options={Object.entries(ROLE_LABELS).map(([v, l]) => ({ value: v, label: l }))} />
+            <Select
+              options={Object.entries(ROLE_LABELS).map(([v, l]) => ({
+                value: v,
+                label: <Space><Tag color={ROLE_COLORS[v]}>{l}</Tag></Space>,
+              }))}
+            />
           </Form.Item>
         </Form>
       </Modal>
 
       {/* Modale édition */}
-      <Modal title="Modifier l'utilisateur" open={!!editUser} onOk={() => void saveEdit()}
-        onCancel={() => setEditUser(null)} confirmLoading={saving} okText="Enregistrer" cancelText="Annuler">
+      <Modal
+        title={<Space><EditOutlined /><span>Modifier {editUser?.name}</span></Space>}
+        open={!!editUser}
+        onOk={() => void saveEdit()}
+        onCancel={() => setEditUser(null)}
+        confirmLoading={saving}
+        okText="Enregistrer"
+        cancelText="Annuler"
+        width={400}
+      >
         <Form form={editForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item name="name" label="Nom complet" rules={[{ required: true }]}>
-            <Input />
+            <Input prefix={<UserOutlined />} />
           </Form.Item>
           <Form.Item name="role" label="Rôle">
-            <Select options={Object.entries(ROLE_LABELS).map(([v, l]) => ({ value: v, label: l }))} />
+            <Select
+              options={Object.entries(ROLE_LABELS).map(([v, l]) => ({
+                value: v,
+                label: <Space><Tag color={ROLE_COLORS[v]}>{l}</Tag></Space>,
+              }))}
+            />
           </Form.Item>
         </Form>
       </Modal>
@@ -289,23 +409,53 @@ function UsersTab() {
 
 // ── Onglet Scoring ───────────────────────────────────────────────────────────
 
-const WEIGHT_LABELS: Record<string, string> = {
-  hasEmail: "Email renseigné", hasPhone: "Téléphone renseigné", hasCompany: "Entreprise renseignée",
-  hasWebsite: "Site web renseigné", hasSector: "Secteur renseigné", hasLocation: "Localisation (ville/pays)",
-  enriched: "Enrichissement présent", perOpen: "Par email ouvert", maxOpens: "Plafond ouvertures",
-  perClick: "Par clic", maxClicks: "Plafond clics", replied: "A répondu",
-};
-
-const BONUS_LABELS: Record<string, string> = {
-  CONTACTE: "Contacté", QUALIFIE: "Qualifié", EN_DISCUSSION: "En discussion",
-  CONVERTI: "Converti", PERDU: "Perdu (malus)",
-};
+const WEIGHT_GROUPS = [
+  {
+    title: "Complétude du profil",
+    icon: <UserOutlined />,
+    color: "#1677ff",
+    fields: [
+      { key: "hasEmail", label: "Email renseigné", max: 30 },
+      { key: "hasPhone", label: "Téléphone renseigné", max: 30 },
+      { key: "hasCompany", label: "Entreprise renseignée", max: 30 },
+      { key: "hasWebsite", label: "Site web renseigné", max: 20 },
+      { key: "hasSector", label: "Secteur renseigné", max: 20 },
+      { key: "hasLocation", label: "Localisation (ville/pays)", max: 20 },
+      { key: "enriched", label: "Enrichissement présent", max: 20 },
+    ],
+  },
+  {
+    title: "Signaux email",
+    icon: <UploadOutlined />,
+    color: "#13c2c2",
+    fields: [
+      { key: "perOpen", label: "Points par email ouvert", max: 20 },
+      { key: "maxOpens", label: "Plafond ouvertures", max: 50 },
+      { key: "perClick", label: "Points par clic", max: 20 },
+      { key: "maxClicks", label: "Plafond clics", max: 50 },
+      { key: "replied", label: "A répondu (points)", max: 50 },
+    ],
+  },
+  {
+    title: "Bonus / malus par statut",
+    icon: <TrophyOutlined />,
+    color: "#52c41a",
+    fields: [
+      { key: ["statusBonus", "CONTACTE"] as [string, string], label: "Contacté", max: 30 },
+      { key: ["statusBonus", "QUALIFIE"] as [string, string], label: "Qualifié", max: 30 },
+      { key: ["statusBonus", "EN_DISCUSSION"] as [string, string], label: "En discussion", max: 30 },
+      { key: ["statusBonus", "CONVERTI"] as [string, string], label: "Converti", max: 50 },
+      { key: ["statusBonus", "PERDU"] as [string, string], label: "Perdu (malus négatif)", max: 30 },
+    ],
+  },
+];
 
 function ScoringTab() {
   const [form] = Form.useForm<ScoringWeightsInput>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     api.get<{ data: ScoringWeightsInput }>("/admin/scoring-weights")
@@ -319,108 +469,177 @@ function ScoringTab() {
     setSaving(true);
     try {
       await api.put("/admin/scoring-weights", values);
-      message.success("Poids de scoring enregistrés");
+      setSaved(true);
+      message.success("Poids de scoring mis à jour ✓");
+      setTimeout(() => setSaved(false), 3000);
     } catch (e) {
       const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
       message.error(msg);
     } finally { setSaving(false); }
   }
 
-  if (loading) return <Spin />;
-  if (error) return <Alert type="error" message="Impossible de charger la configuration (rôle Admin requis)" />;
+  if (loading) return <div style={{ padding: 40, textAlign: "center" }}><Spin size="large" /></div>;
+  if (error) return <Alert type="error" message="Impossible de charger les poids. Rôle Admin requis." showIcon />;
 
   return (
     <Form form={form} layout="vertical">
       <Alert
         type="info"
-        message="Ces poids définissent comment le score 0–100 de chaque lead est calculé."
-        style={{ marginBottom: 24 }}
         showIcon
+        icon={<FireOutlined />}
+        message="Ces poids définissent le calcul du score 0–100 de chaque lead."
+        description="Le score est recalculé automatiquement à chaque modification du lead. Les changements s'appliquent aux recalculs futurs."
+        style={{ marginBottom: 24 }}
       />
 
-      <Card title="Complétude du profil (points par champ)" style={{ marginBottom: 16 }}>
-        <Row gutter={[16, 8]}>
-          {["hasEmail", "hasPhone", "hasCompany", "hasWebsite", "hasSector", "hasLocation", "enriched"].map((k) => (
-            <Col key={k} xs={12} sm={8} md={6}>
-              <Form.Item name={k} label={WEIGHT_LABELS[k]} rules={[{ required: true, type: "number", min: 0, max: 100 }]}>
-                <InputNumber min={0} max={100} style={{ width: "100%" }} addonAfter="pts" />
-              </Form.Item>
-            </Col>
-          ))}
-        </Row>
-      </Card>
+      <Space direction="vertical" size={16} style={{ width: "100%" }}>
+        {WEIGHT_GROUPS.map((group) => (
+          <Card
+            key={group.title}
+            title={
+              <Space>
+                <div
+                  style={{
+                    width: 28, height: 28, borderRadius: 6,
+                    background: group.color + "18",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    color: group.color, fontSize: 14,
+                  }}
+                >
+                  {group.icon}
+                </div>
+                <span style={{ color: group.color }}>{group.title}</span>
+              </Space>
+            }
+          >
+            <Row gutter={[16, 8]}>
+              {group.fields.map(({ key, label, max }) => (
+                <Col key={Array.isArray(key) ? key.join(".") : key} xs={24} sm={12} md={8} lg={6}>
+                  <Form.Item
+                    name={key}
+                    label={
+                      <Text style={{ fontSize: 12 }}>{label}</Text>
+                    }
+                    rules={[{ required: true, type: "number", min: -50, max }]}
+                  >
+                    <InputNumber
+                      min={-50} max={max}
+                      style={{ width: "100%" }}
+                      addonAfter={<span style={{ color: group.color, fontWeight: 600 }}>pts</span>}
+                    />
+                  </Form.Item>
+                </Col>
+              ))}
+            </Row>
+          </Card>
+        ))}
+      </Space>
 
-      <Card title="Signaux email" style={{ marginBottom: 16 }}>
-        <Row gutter={[16, 8]}>
-          {["perOpen", "maxOpens", "perClick", "maxClicks", "replied"].map((k) => (
-            <Col key={k} xs={12} sm={8} md={6}>
-              <Form.Item name={k} label={WEIGHT_LABELS[k]} rules={[{ required: true, type: "number", min: 0, max: 100 }]}>
-                <InputNumber min={0} max={100} style={{ width: "100%" }} addonAfter="pts" />
-              </Form.Item>
-            </Col>
-          ))}
-        </Row>
-      </Card>
+      <Divider />
 
-      <Card title="Bonus / malus par statut commercial" style={{ marginBottom: 24 }}>
-        <Row gutter={[16, 8]}>
-          {Object.entries(BONUS_LABELS).map(([k, label]) => (
-            <Col key={k} xs={12} sm={8} md={4}>
-              <Form.Item name={["statusBonus", k]} label={label} rules={[{ required: true, type: "number", min: -50, max: 50 }]}>
-                <InputNumber min={-50} max={50} style={{ width: "100%" }} addonAfter="pts" />
-              </Form.Item>
-            </Col>
-          ))}
-        </Row>
-      </Card>
-
-      <Button type="primary" onClick={() => void save()} loading={saving} size="large">
-        Enregistrer les poids
-      </Button>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+        <Button onClick={() => form.resetFields()} disabled={saving}>Annuler les modifications</Button>
+        <Button
+          type="primary"
+          onClick={() => void save()}
+          loading={saving}
+          icon={saved ? <CheckOutlined /> : <SafetyOutlined />}
+          style={saved ? { background: "#52c41a", borderColor: "#52c41a" } : {}}
+          size="large"
+        >
+          {saved ? "Enregistré !" : "Enregistrer les poids"}
+        </Button>
+      </div>
     </Form>
   );
 }
 
-// ── Page principale ──────────────────────────────────────────────────────────
+// ── Page principale ───────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
   return (
-    <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-      <Title level={3} style={{ margin: 0 }}>Administration</Title>
+    <Space direction="vertical" size={24} style={{ width: "100%" }}>
+      {/* En-tête */}
+      <div
+        style={{
+          background: "linear-gradient(135deg,#722ed1 0%,#531dab 100%)",
+          borderRadius: 16, padding: "24px 32px",
+          display: "flex", alignItems: "center", gap: 16,
+        }}
+      >
+        <div
+          style={{
+            width: 52, height: 52, borderRadius: 14,
+            background: "rgba(255,255,255,0.15)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 24, color: "#fff",
+          }}
+        >
+          <SettingOutlined />
+        </div>
+        <div>
+          <Title level={3} style={{ color: "#fff", margin: 0 }}>Administration</Title>
+          <Text style={{ color: "rgba(255,255,255,0.75)" }}>
+            Gestion des utilisateurs, configuration du scoring et supervision globale
+          </Text>
+        </div>
+      </div>
 
       <Tabs
         defaultActiveKey="overview"
+        size="large"
         items={[
           {
             key: "overview",
-            label: <Space><TrophyOutlined />Vue d&apos;ensemble</Space>,
+            label: (
+              <Space>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#1677ff" }} />
+                Vue d&apos;ensemble
+              </Space>
+            ),
             children: <OverviewTab />,
           },
           {
             key: "users",
-            label: <Space><UserOutlined />Utilisateurs</Space>,
+            label: (
+              <Space>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#52c41a" }} />
+                Utilisateurs
+              </Space>
+            ),
             children: <UsersTab />,
           },
           {
             key: "scoring",
-            label: <Space><TrophyOutlined />Scoring</Space>,
+            label: (
+              <Space>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#fa8c16" }} />
+                Scoring
+              </Space>
+            ),
             children: <ScoringTab />,
           },
           {
             key: "imports",
-            label: <Space><UploadOutlined />Imports</Space>,
+            label: (
+              <Space>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#722ed1" }} />
+                Imports
+              </Space>
+            ),
             children: (
-              <Alert
-                type="info"
-                showIcon
-                message="Consultez la page Import"
-                description={
-                  <span>
-                    L&apos;historique complet des imports est disponible sur la{" "}
-                    <a href="/import">page Import</a>.
-                  </span>
-                }
-              />
+              <Card>
+                <div style={{ textAlign: "center", padding: "40px 0" }}>
+                  <UploadOutlined style={{ fontSize: 48, color: "#722ed1", marginBottom: 16 }} />
+                  <Title level={4}>Historique des imports</Title>
+                  <Paragraph type="secondary">
+                    L&apos;historique complet et la gestion des imports se trouvent sur la page dédiée.
+                  </Paragraph>
+                  <Button type="primary" href="/import" size="large" icon={<UploadOutlined />}>
+                    Accéder à la page Import
+                  </Button>
+                </div>
+              </Card>
             ),
           },
         ]}
