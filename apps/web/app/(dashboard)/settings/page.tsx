@@ -5,6 +5,7 @@
  * Tabs : Vue d'ensemble · Utilisateurs · Scoring · Imports
  */
 import { useCallback, useEffect, useState } from "react";
+import Editor from "@monaco-editor/react";
 import {
   Tabs, Card, Typography, Table, Button, Tag, Space, Form, InputNumber, Row, Col,
   Statistic, Badge, Modal, Input, Select, message, Spin, Alert, Popconfirm, List,
@@ -14,7 +15,7 @@ import {
   UserOutlined, TrophyOutlined, UploadOutlined, PlusOutlined, EditOutlined,
   StopOutlined, CheckOutlined, ReloadOutlined, SafetyOutlined, FireOutlined,
   TeamOutlined, CalendarOutlined, SettingOutlined, LockOutlined, DeleteOutlined,
-  MailOutlined,
+  MailOutlined, CloudOutlined, CodeOutlined, EyeOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
@@ -117,6 +118,73 @@ interface SmtpDnsCheckResult {
 }
 
 const DEFAULT_SMTP_DAILY_LIMIT = 200;
+
+// ── HTML Code Editor ─────────────────────────────────────────────────────────
+
+function HtmlCodeEditor({
+  value,
+  onChange,
+  height = "360px",
+}: {
+  value?: string;
+  onChange?: (val: string) => void;
+  height?: string;
+}) {
+  return (
+    <div
+      style={{
+        border: "1px solid #d9d9d9",
+        borderRadius: 8,
+        overflow: "hidden",
+        boxShadow: "inset 0 1px 3px rgba(0,0,0,0.08)",
+      }}
+    >
+      <div
+        style={{
+          background: "linear-gradient(90deg, #1a1a2e 0%, #16213e 100%)",
+          padding: "6px 12px",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          borderBottom: "1px solid #0f3460",
+        }}
+      >
+        <Space size={4}>
+          <div style={{ width: 11, height: 11, borderRadius: "50%", background: "#ff5f57", border: "1px solid rgba(0,0,0,.2)" }} />
+          <div style={{ width: 11, height: 11, borderRadius: "50%", background: "#febc2e", border: "1px solid rgba(0,0,0,.2)" }} />
+          <div style={{ width: 11, height: 11, borderRadius: "50%", background: "#28c840", border: "1px solid rgba(0,0,0,.2)" }} />
+        </Space>
+        <Text style={{ color: "#858585", fontSize: 11, fontFamily: "monospace", marginLeft: 6 }}>HTML</Text>
+        <Tag style={{ marginLeft: "auto", fontSize: 10, background: "#0f3460", border: "1px solid #1a4a7a", color: "#7eb3ff" }}>
+          Monaco Editor
+        </Tag>
+      </div>
+      <Editor
+        height={height}
+        language="html"
+        value={value ?? ""}
+        onChange={(val) => onChange?.(val ?? "")}
+        theme="vs-dark"
+        options={{
+          minimap: { enabled: false },
+          fontSize: 13,
+          fontFamily: "'Fira Code', 'Cascadia Code', Consolas, monospace",
+          wordWrap: "on",
+          lineNumbers: "on",
+          scrollBeyondLastLine: false,
+          automaticLayout: true,
+          tabSize: 2,
+          folding: true,
+          bracketPairColorization: { enabled: true },
+          formatOnPaste: true,
+          formatOnType: true,
+          renderWhitespace: "selection",
+          padding: { top: 8, bottom: 8 },
+        }}
+      />
+    </div>
+  );
+}
 
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: "Admin", MANAGER: "Manager", COMMERCIAL: "Commercial", LECTEUR: "Lecteur",
@@ -516,6 +584,9 @@ function EmailingTab() {
   const [form] = Form.useForm<SmtpFormValues>();
   const [templateForm] = Form.useForm<TemplateFormValues>();
   const [templateBlockForm] = Form.useForm<TemplateBlockFormValues>();
+  const templateBodyHtmlWatch = Form.useWatch("bodyHtml", templateForm);
+  const blockHtmlContentWatch = Form.useWatch("htmlContent", templateBlockForm);
+  const isMobile = useIsMobile();
 
   const fetchConfigs = useCallback(async () => {
     setLoading(true);
@@ -883,23 +954,65 @@ function EmailingTab() {
     },
   ];
 
+  const previewEmptyHtml =
+    '<p style="margin:16px;color:#8c8c8c;font-family:system-ui,sans-serif;font-size:13px">Saisissez du HTML dans l’éditeur pour afficher l’aperçu ici.</p>';
+
   return (
-    <Space direction="vertical" size={24} style={{ width: '100%' }}>
-      <Row gutter={[16, 16]} align="middle" justify="space-between">
-        <Col>
-          <Space direction="vertical" size={4}>
-            <Text strong style={{ fontSize: 18 }}>Configuration SMTP</Text>
-            <Text type="secondary">Gérez les comptes SMTP chiffrés utilisés pour l’envoi de campagnes.</Text>
+    <Space direction="vertical" size={28} style={{ width: "100%" }}>
+      <Card
+        bordered={false}
+        style={{
+          borderRadius: 12,
+          background: "linear-gradient(135deg, #f9f0ff 0%, #efdbff 42%, #ffffff 100%)",
+          border: "1px solid #d3adf7",
+          boxShadow: "0 2px 8px rgba(114, 46, 209, 0.08)",
+        }}
+      >
+        <Row align="middle" gutter={[16, 16]}>
+          <Col flex="none">
+            <div
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 14,
+                background: "linear-gradient(145deg, #722ed1 0%, #391085 100%)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "0 4px 14px rgba(114, 46, 209, 0.35)",
+              }}
+            >
+              <MailOutlined style={{ fontSize: 26, color: "#fff" }} />
+            </div>
+          </Col>
+          <Col flex="auto">
+            <Title level={4} style={{ margin: 0 }}>
+              Emailing
+            </Title>
+            <Text type="secondary">
+              Comptes SMTP, vérification DNS (SPF / DKIM / DMARC) et bibliothèque de templates HTML.
+            </Text>
+          </Col>
+        </Row>
+      </Card>
+
+      <Card
+        title={
+          <Space>
+            <CloudOutlined style={{ color: "#1677ff" }} />
+            <span>Configuration SMTP</span>
           </Space>
-        </Col>
-        <Col>
+        }
+        extra={
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
             Ajouter un compte SMTP
           </Button>
-        </Col>
-      </Row>
-
-      <Card>
+        }
+        style={{ borderRadius: 12, boxShadow: "0 1px 2px rgba(15,23,42,0.06)" }}
+      >
+        <Text type="secondary" style={{ display: "block", marginBottom: 16 }}>
+          Les identifiants sont stockés de façon sécurisée et servent à l’envoi des campagnes.
+        </Text>
         <Table
           rowKey="id"
           columns={columns}
@@ -910,7 +1023,15 @@ function EmailingTab() {
         />
       </Card>
 
-      <Card title="Vérification DNS SPF / DKIM / DMARC" style={{ width: '100%' }}>
+      <Card
+        title={
+          <Space>
+            <SafetyOutlined style={{ color: "#52c41a" }} />
+            <span>Vérification DNS SPF / DKIM / DMARC</span>
+          </Space>
+        }
+        style={{ borderRadius: 12, boxShadow: "0 1px 2px rgba(15,23,42,0.06)" }}
+      >
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <Text type="secondary">
             Vérifiez que votre domaine est correctement configuré avant l’envoi d’emails.
@@ -972,25 +1093,25 @@ function EmailingTab() {
         </Space>
       </Card>
 
-      <Card title="Éditeur de templates email" style={{ width: '100%' }}>
-        <Row gutter={[16, 16]} align="middle" justify="space-between">
-          <Col xs={24} sm={16}>
-            <Space direction="vertical" size={4}>
-              <Text type="secondary">
-                Créez et gérez les templates HTML utilisés pour les campagnes d’emailing.
-              </Text>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                Utilisez des variables comme <Text code>{'{firstName}'}</Text> dans le corps du message.
-              </Text>
-            </Space>
-          </Col>
-          <Col xs={24} sm={8} style={{ textAlign: 'right' }}>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => void openTemplateCreate()}>
-              Nouveau template
-            </Button>
-          </Col>
-        </Row>
-
+      <Card
+        title={
+          <Space>
+            <CodeOutlined style={{ color: "#722ed1" }} />
+            <span>Éditeur de templates email</span>
+          </Space>
+        }
+        extra={
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => void openTemplateCreate()}>
+            Nouveau template
+          </Button>
+        }
+        style={{ borderRadius: 12, boxShadow: "0 1px 2px rgba(15,23,42,0.06)" }}
+      >
+        <Space direction="vertical" size={4} style={{ width: "100%", marginBottom: 8 }}>
+          <Text type="secondary">
+            Créez des modèles HTML pour vos campagnes. Variables possibles : <Text code>{"{firstName}"}</Text>, etc.
+          </Text>
+        </Space>
         <Table
           rowKey="id"
           columns={templateColumns}
@@ -998,29 +1119,28 @@ function EmailingTab() {
           loading={templateLoading}
           pagination={{ pageSize: 8, showTotal: (total) => `${total} template(s)` }}
           scroll={{ x: 900 }}
-          style={{ marginTop: 16 }}
         />
       </Card>
 
-      <Card title="Bibliothèque de blocs de contenu" style={{ width: '100%' }}>
-        <Row gutter={[16, 16]} align="middle" justify="space-between">
-          <Col xs={24} sm={16}>
-            <Space direction="vertical" size={4}>
-              <Text type="secondary">
-                Créez et gérez des blocs de contenu HTML réutilisables pour vos templates email.
-              </Text>
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                Utilisez des variables comme <Text code>{'{firstName}'}</Text> dans le contenu HTML.
-              </Text>
-            </Space>
-          </Col>
-          <Col xs={24} sm={8} style={{ textAlign: 'right' }}>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => void openTemplateBlockCreate()}>
-              Nouveau bloc
-            </Button>
-          </Col>
-        </Row>
-
+      <Card
+        title={
+          <Space>
+            <MailOutlined style={{ color: "#eb2f96" }} />
+            <span>Bibliothèque de blocs de contenu</span>
+          </Space>
+        }
+        extra={
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => void openTemplateBlockCreate()}>
+            Nouveau bloc
+          </Button>
+        }
+        style={{ borderRadius: 12, boxShadow: "0 1px 2px rgba(15,23,42,0.06)" }}
+      >
+        <Space direction="vertical" size={4} style={{ width: "100%", marginBottom: 8 }}>
+          <Text type="secondary">
+            Blocs HTML réutilisables dans vos templates. Même syntaxe de variables que pour les templates.
+          </Text>
+        </Space>
         <Table
           rowKey="id"
           columns={templateBlockColumns}
@@ -1028,7 +1148,6 @@ function EmailingTab() {
           loading={templateBlockLoading}
           pagination={{ pageSize: 8, showTotal: (total) => `${total} bloc(s)` }}
           scroll={{ x: 900 }}
-          style={{ marginTop: 16 }}
         />
       </Card>
 
@@ -1110,7 +1229,8 @@ function EmailingTab() {
         onOk={() => void saveTemplate()}
         onCancel={() => { setTemplateModalOpen(false); templateForm.resetFields(); setEditingTemplate(null); }}
         confirmLoading={templateSaving}
-        width={800}
+        width={isMobile ? "min(100%, 520px)" : 1040}
+        styles={{ body: { maxHeight: "calc(100vh - 200px)", overflowY: "auto" } }}
         okText={editingTemplate ? 'Enregistrer' : 'Créer'}
       >
         <Form form={templateForm} layout="vertical" initialValues={{ variables: '' }}>
@@ -1133,10 +1253,57 @@ function EmailingTab() {
               </Form.Item>
             </Col>
           </Row>
-          <Row gutter={16}>
-            <Col xs={24}>
-              <Form.Item name="bodyHtml" label="Corps HTML" rules={[{ required: true, message: 'Corps requis' }]}> 
-                <Input.TextArea rows={10} placeholder="HTML du message, utilisez {{firstName}}..." />
+          <Divider orientation="left" plain>
+            <Space size={6}>
+              <CodeOutlined />
+              <span>Corps HTML</span>
+            </Space>
+          </Divider>
+          <Row gutter={[16, 16]}>
+            <Col xs={24} lg={14}>
+              <Form.Item
+                name="bodyHtml"
+                label="Éditeur HTML (Monaco)"
+                rules={[
+                  {
+                    validator: async (_, v) => {
+                      if (typeof v !== "string" || !v.trim()) {
+                        throw new Error("Corps HTML requis");
+                      }
+                    },
+                  },
+                ]}
+                extra="Coloration syntaxique, pliage et formatage adaptés au HTML email."
+              >
+                <HtmlCodeEditor height={isMobile ? "260px" : "420px"} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} lg={10}>
+              <Form.Item label={<Space><EyeOutlined /><span>Aperçu en direct</span></Space>}>
+                <Card
+                  size="small"
+                  styles={{ body: { padding: 0 } }}
+                  style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #f0f0f0" }}
+                >
+                  <div
+                    style={{
+                      minHeight: isMobile ? 200 : 320,
+                      maxHeight: isMobile ? 280 : 440,
+                      overflow: "auto",
+                      background: "#fff",
+                      padding: 12,
+                    }}
+                  >
+                    <div
+                      dangerouslySetInnerHTML={{
+                        __html:
+                          typeof templateBodyHtmlWatch === "string" && templateBodyHtmlWatch.trim()
+                            ? templateBodyHtmlWatch
+                            : previewEmptyHtml,
+                      }}
+                    />
+                  </div>
+                </Card>
               </Form.Item>
             </Col>
           </Row>
@@ -1147,11 +1314,6 @@ function EmailingTab() {
               </Form.Item>
             </Col>
           </Row>
-          <Card type="inner" title="Aperçu" size="small" style={{ marginTop: 16 }}>
-            <div style={{ minHeight: 120, padding: 12, background: '#fafafa', borderRadius: 6 }}>
-              <div dangerouslySetInnerHTML={{ __html: templateForm.getFieldValue('bodyHtml') ?? '<em>Aperçu du HTML ici</em>' }} />
-            </div>
-          </Card>
         </Form>
       </Modal>
 
@@ -1161,7 +1323,8 @@ function EmailingTab() {
         onOk={() => void saveTemplateBlock()}
         onCancel={() => { setTemplateBlockModalOpen(false); templateBlockForm.resetFields(); setEditingTemplateBlock(null); }}
         confirmLoading={templateBlockSaving}
-        width={800}
+        width={isMobile ? "min(100%, 520px)" : 1040}
+        styles={{ body: { maxHeight: "calc(100vh - 200px)", overflowY: "auto" } }}
         okText={editingTemplateBlock ? 'Enregistrer' : 'Créer'}
       >
         <Form form={templateBlockForm} layout="vertical" initialValues={{ variables: '', isPublic: true }}>
@@ -1193,10 +1356,57 @@ function EmailingTab() {
               </Form.Item>
             </Col>
           </Row>
-          <Row gutter={16}>
-            <Col xs={24}>
-              <Form.Item name="htmlContent" label="Contenu HTML" rules={[{ required: true, message: 'Contenu requis' }]}> 
-                <Input.TextArea rows={8} placeholder="HTML du bloc, utilisez {{firstName}}..." />
+          <Divider orientation="left" plain>
+            <Space size={6}>
+              <CodeOutlined />
+              <span>Contenu HTML</span>
+            </Space>
+          </Divider>
+          <Row gutter={[16, 16]}>
+            <Col xs={24} lg={14}>
+              <Form.Item
+                name="htmlContent"
+                label="Éditeur HTML (Monaco)"
+                rules={[
+                  {
+                    validator: async (_, v) => {
+                      if (typeof v !== "string" || !v.trim()) {
+                        throw new Error("Contenu HTML requis");
+                      }
+                    },
+                  },
+                ]}
+                extra="Même éditeur que pour les templates : pratique pour les fragments (signature, CTA, etc.)."
+              >
+                <HtmlCodeEditor height={isMobile ? "240px" : "380px"} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} lg={10}>
+              <Form.Item label={<Space><EyeOutlined /><span>Aperçu en direct</span></Space>}>
+                <Card
+                  size="small"
+                  styles={{ body: { padding: 0 } }}
+                  style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #f0f0f0" }}
+                >
+                  <div
+                    style={{
+                      minHeight: isMobile ? 180 : 300,
+                      maxHeight: isMobile ? 260 : 400,
+                      overflow: "auto",
+                      background: "#fff",
+                      padding: 12,
+                    }}
+                  >
+                    <div
+                      dangerouslySetInnerHTML={{
+                        __html:
+                          typeof blockHtmlContentWatch === "string" && blockHtmlContentWatch.trim()
+                            ? blockHtmlContentWatch
+                            : previewEmptyHtml,
+                      }}
+                    />
+                  </div>
+                </Card>
               </Form.Item>
             </Col>
           </Row>
@@ -1212,11 +1422,6 @@ function EmailingTab() {
               </Form.Item>
             </Col>
           </Row>
-          <Card type="inner" title="Aperçu" size="small" style={{ marginTop: 16 }}>
-            <div style={{ minHeight: 120, padding: 12, background: '#fafafa', borderRadius: 6 }}>
-              <div dangerouslySetInnerHTML={{ __html: templateBlockForm.getFieldValue('htmlContent') ?? '<em>Aperçu du HTML ici</em>' }} />
-            </div>
-          </Card>
         </Form>
       </Modal>
     </Space>
