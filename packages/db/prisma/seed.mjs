@@ -134,6 +134,11 @@ async function resetDemoData() {
   const leadIds = demoLeads.map((l) => l.id);
 
   if (leadIds.length > 0) {
+    // Purge des relations enfants AVANT le delete des leads
+    // (Prisma refuse sinon : relations requises LeadPipeline/InboxMessage/SequenceLead).
+    await prisma.leadPipeline.deleteMany({ where: { leadId: { in: leadIds } } });
+    await prisma.inboxMessage.deleteMany({ where: { leadId: { in: leadIds } } });
+    await prisma.sequenceLead.deleteMany({ where: { leadId: { in: leadIds } } });
     await prisma.emailEvent.deleteMany({ where: { leadId: { in: leadIds } } });
     await prisma.leadHistory.deleteMany({ where: { leadId: { in: leadIds } } });
     await prisma.lead.deleteMany({ where: { id: { in: leadIds } } });
