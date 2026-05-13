@@ -4,6 +4,7 @@
  */
 import { prisma } from "@crm/db";
 import { handler, json, requireSession } from "@/lib/api";
+import { NOT_DELETED } from "@/lib/notDeleted";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,7 @@ export const GET = handler(async () => {
   const session = await requireSession();
   const isRestricted = session.role === "COMMERCIAL";
   const baseWhere = {
-    deletedAt: null,
+    ...NOT_DELETED,
     ...(isRestricted ? { assignedToId: session.sub } : {}),
   };
 

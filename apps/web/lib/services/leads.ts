@@ -22,6 +22,7 @@ import { ApiError } from "../api";
 import { canTransition, STOPS_SEQUENCES } from "../leadStatus";
 import { computeScore } from "../scoring";
 import { enqueue } from "../jobs";
+import { NOT_DELETED } from "../notDeleted";
 
 const SORTABLE = ["createdAt", "updatedAt", "score", "lastActionAt", "company"];
 
@@ -82,7 +83,7 @@ export function toDTO(l: Lead): LeadDTO {
 
 export function buildWhere(f: Partial<LeadFilters>): Prisma.LeadWhereInput {
   const where: Prisma.LeadWhereInput = {};
-  if (!f.includeDeleted) where.deletedAt = null;
+  if (!f.includeDeleted) Object.assign(where, NOT_DELETED);
   if (f.status) where.status = f.status;
   if (f.source) where.source = f.source;
   if (f.sector) where.sector = f.sector;
@@ -168,7 +169,7 @@ export async function recalcScore(leadId: string): Promise<number> {
 async function assertEmailNotTaken(email: string, exceptId?: string) {
   const hash = emailHash(email);
   const existing = await prisma.lead.findFirst({
-    where: { emailHash: hash, deletedAt: null, ...(exceptId ? { id: { not: exceptId } } : {}) },
+    where: { emailHash: hash, ...NOT_DELETED, ...(exceptId ? { id: { not: exceptId } } : {}) },
     select: { id: true },
   });
   if (existing) throw new ApiError(409, "Un lead avec cet email existe déjà", "duplicate_email");
@@ -194,6 +195,7 @@ export async function createLead(input: CreateLeadInput, actorId?: string): Prom
       notes: input.notes ?? null,
       assignedToId: input.assignedToId ?? null,
       lastActionAt: new Date(),
+      deletedAt: null,
     },
   });
   const score = computeScore(lead);

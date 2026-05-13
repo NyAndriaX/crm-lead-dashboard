@@ -5,6 +5,7 @@
 import { prisma } from "@crm/db";
 import { handler, json, requireSession } from "@/lib/api";
 import { ApiError } from "@/lib/api";
+import { NOT_DELETED } from "@/lib/notDeleted";
 
 export const dynamic = "force-dynamic";
 
@@ -24,15 +25,15 @@ export const GET = handler(async () => {
   const [totalLeads, activeLeads, newToday, newThisWeek, newThisMonth, totalUsers, activeUsers, recentImports,
     ...statusCounts
   ] = await prisma.$transaction([
-    prisma.lead.count({ where: { deletedAt: null } }),
-    prisma.lead.count({ where: { deletedAt: null, status: { notIn: ["CONVERTI", "PERDU"] } } }),
-    prisma.lead.count({ where: { deletedAt: null, createdAt: { gte: today } } }),
-    prisma.lead.count({ where: { deletedAt: null, createdAt: { gte: weekAgo } } }),
-    prisma.lead.count({ where: { deletedAt: null, createdAt: { gte: monthAgo } } }),
+    prisma.lead.count({ where: { ...NOT_DELETED } }),
+    prisma.lead.count({ where: { ...NOT_DELETED, status: { notIn: ["CONVERTI", "PERDU"] } } }),
+    prisma.lead.count({ where: { ...NOT_DELETED, createdAt: { gte: today } } }),
+    prisma.lead.count({ where: { ...NOT_DELETED, createdAt: { gte: weekAgo } } }),
+    prisma.lead.count({ where: { ...NOT_DELETED, createdAt: { gte: monthAgo } } }),
     prisma.user.count(),
     prisma.user.count({ where: { isActive: true } }),
     prisma.importJob.findMany({ orderBy: { createdAt: "desc" }, take: 5, include: { user: { select: { id: true, name: true } } } }),
-    ...STATUSES.map((s) => prisma.lead.count({ where: { deletedAt: null, status: s } })),
+    ...STATUSES.map((s) => prisma.lead.count({ where: { ...NOT_DELETED, status: s } })),
   ]);
 
   const byStatus = Object.fromEntries(STATUSES.map((s, i) => [s, (statusCounts[i] as number) ?? 0]));
