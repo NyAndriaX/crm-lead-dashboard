@@ -73,12 +73,33 @@ interface TemplateRow {
   updatedAt: string;
 }
 
+interface TemplateBlockRow {
+  id: string;
+  name: string;
+  category: string;
+  description?: string | null;
+  htmlContent: string;
+  variables: string[];
+  isPublic: boolean;
+  createdAt: string;
+  createdBy?: { name: string };
+}
+
 interface TemplateFormValues {
   name: string;
   category?: string;
   subject: string;
   bodyHtml: string;
   variables: string;
+}
+
+interface TemplateBlockFormValues {
+  name: string;
+  category: string;
+  description?: string;
+  htmlContent: string;
+  variables: string;
+  isPublic: boolean;
 }
 
 interface DnsRecordCheckResult {
@@ -474,10 +495,13 @@ function UsersTab() {
 function EmailingTab() {
   const [configs, setConfigs] = useState<SmtpConfigRow[]>([]);
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
+  const [templateBlocks, setTemplateBlocks] = useState<TemplateBlockRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [templateLoading, setTemplateLoading] = useState(true);
+  const [templateBlockLoading, setTemplateBlockLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [templateSaving, setTemplateSaving] = useState(false);
+  const [templateBlockSaving, setTemplateBlockSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [dnsChecking, setDnsChecking] = useState(false);
   const [dnsDomain, setDnsDomain] = useState("");
@@ -485,10 +509,13 @@ function EmailingTab() {
   const [dnsResult, setDnsResult] = useState<SmtpDnsCheckResult | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [templateBlockModalOpen, setTemplateBlockModalOpen] = useState(false);
   const [editingConfig, setEditingConfig] = useState<SmtpConfigRow | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<TemplateRow | null>(null);
+  const [editingTemplateBlock, setEditingTemplateBlock] = useState<TemplateBlockRow | null>(null);
   const [form] = Form.useForm<SmtpFormValues>();
   const [templateForm] = Form.useForm<TemplateFormValues>();
+  const [templateBlockForm] = Form.useForm<TemplateBlockFormValues>();
 
   const fetchConfigs = useCallback(async () => {
     setLoading(true);
@@ -516,7 +543,20 @@ function EmailingTab() {
     }
   }, []);
 
-  useEffect(() => { void fetchConfigs(); void fetchTemplates(); }, [fetchConfigs, fetchTemplates]);
+  const fetchTemplateBlocks = useCallback(async () => {
+    setTemplateBlockLoading(true);
+    try {
+      const { data } = await api.get<{ data: TemplateBlockRow[] }>('/template-blocks');
+      setTemplateBlocks(data.data);
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Impossible de charger les blocs de template.';
+      message.error(msg);
+    } finally {
+      setTemplateBlockLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void fetchConfigs(); void fetchTemplates(); void fetchTemplateBlocks(); }, [fetchConfigs, fetchTemplates, fetchTemplateBlocks]);
 
   function openCreate() {
     setEditingConfig(null);
@@ -629,7 +669,7 @@ function EmailingTab() {
       bodyHtml: values.bodyHtml,
       variables: (values.variables ?? '')
         .split(',')
-        .map((item) => item.trim())
+        .map((item: string) => item.trim())
         .filter(Boolean),
     };
 
@@ -652,6 +692,59 @@ function EmailingTab() {
     }
   }
 
+  async function openTemplateBlockCreate() {
+    setEditingTemplateBlock(null);
+    templateBlockForm.resetFields();
+    templateBlockForm.setFieldsValue({ variables: '', isPublic: true });
+    setTemplateBlockModalOpen(true);
+  }
+
+  async function openTemplateBlockEdit(templateBlock: TemplateBlockRow) {
+    setEditingTemplateBlock(templateBlock);
+    templateBlockForm.setFieldsValue({
+      name: templateBlock.name,
+      category: templateBlock.category,
+      description: templateBlock.description ?? undefined,
+      htmlContent: templateBlock.htmlContent,
+      variables: templateBlock.variables.join(', '),
+      isPublic: templateBlock.isPublic,
+    });
+    setTemplateBlockModalOpen(true);
+  }
+
+  async function saveTemplateBlock() {
+    const values = await templateBlockForm.validateFields();
+    const payload = {
+      name: values.name,
+      category: values.category,
+      description: values.description?.trim() || undefined,
+      htmlContent: values.htmlContent,
+      variables: (values.variables ?? '')
+        .split(',')
+        .map((item: string) => item.trim())
+        .filter(Boolean),
+      isPublic: values.isPublic,
+    };
+
+    setTemplateBlockSaving(true);
+    try {
+      if (editingTemplateBlock) {
+        await api.put(`/template-blocks/${editingTemplateBlock.id}`, payload);
+        message.success('Bloc de template mis à jour');
+      } else {
+        await api.post('/template-blocks', payload);
+        message.success('Bloc de template créé');
+      }
+      setTemplateBlockModalOpen(false);
+      void fetchTemplateBlocks();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de l’enregistrement du bloc de template';
+      message.error(msg);
+    } finally {
+      setTemplateBlockSaving(false);
+    }
+  }
+
   async function deleteTemplate(template: TemplateRow) {
     try {
       await api.delete(`/templates/${template.id}`);
@@ -659,6 +752,17 @@ function EmailingTab() {
       void fetchTemplates();
     } catch (e) {
       const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de la suppression du template';
+      message.error(msg);
+    }
+  }
+
+  async function deleteTemplateBlock(templateBlock: TemplateBlockRow) {
+    try {
+      await api.delete(`/template-blocks/${templateBlock.id}`);
+      message.success('Bloc de template supprimé');
+      void fetchTemplateBlocks();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de la suppression du bloc de template';
       message.error(msg);
     }
   }
@@ -733,6 +837,42 @@ function EmailingTab() {
           <Popconfirm
             title={`Supprimer ${row.name} ?`}
             onConfirm={() => void deleteTemplate(row)}
+            okText="Supprimer"
+            cancelText="Annuler"
+          >
+            <Button size="small" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  const templateBlockColumns: ColumnsType<TemplateBlockRow> = [
+    { title: 'Nom', dataIndex: 'name', key: 'name', ellipsis: true },
+    { title: 'Catégorie', dataIndex: 'category', key: 'category', ellipsis: true },
+    { title: 'Description', dataIndex: 'description', key: 'description', ellipsis: true },
+    {
+      title: 'Variables', dataIndex: 'variables', key: 'variables', ellipsis: true,
+      render: (value: string[]) => value.length > 0 ? value.join(', ') : 'Aucune',
+    },
+    {
+      title: 'Public', dataIndex: 'isPublic', key: 'isPublic', width: 100,
+      render: (value: boolean) => value
+        ? <Tag color="success">Oui</Tag>
+        : <Tag color="default">Non</Tag>,
+    },
+    {
+      title: 'Créé par', key: 'createdBy', width: 120,
+      render: (_, row) => row.createdBy?.name ?? 'Système',
+    },
+    {
+      title: '', key: 'actions', width: 150,
+      render: (_, row) => (
+        <Space>
+          <Button size="small" onClick={() => void openTemplateBlockEdit(row)}>Modifier</Button>
+          <Popconfirm
+            title={`Supprimer ${row.name} ?`}
+            onConfirm={() => void deleteTemplateBlock(row)}
             okText="Supprimer"
             cancelText="Annuler"
           >
@@ -862,6 +1002,36 @@ function EmailingTab() {
         />
       </Card>
 
+      <Card title="Bibliothèque de blocs de contenu" style={{ width: '100%' }}>
+        <Row gutter={[16, 16]} align="middle" justify="space-between">
+          <Col xs={24} sm={16}>
+            <Space direction="vertical" size={4}>
+              <Text type="secondary">
+                Créez et gérez des blocs de contenu HTML réutilisables pour vos templates email.
+              </Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Utilisez des variables comme <Text code>{'{firstName}'}</Text> dans le contenu HTML.
+              </Text>
+            </Space>
+          </Col>
+          <Col xs={24} sm={8} style={{ textAlign: 'right' }}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => void openTemplateBlockCreate()}>
+              Nouveau bloc
+            </Button>
+          </Col>
+        </Row>
+
+        <Table
+          rowKey="id"
+          columns={templateBlockColumns}
+          dataSource={templateBlocks}
+          loading={templateBlockLoading}
+          pagination={{ pageSize: 8, showTotal: (total) => `${total} bloc(s)` }}
+          scroll={{ x: 900 }}
+          style={{ marginTop: 16 }}
+        />
+      </Card>
+
       <Modal
         title={<Space><MailOutlined /><span>{editingConfig ? 'Modifier' : 'Nouvelle'} configuration SMTP</span></Space>}
         open={modalOpen}
@@ -980,6 +1150,71 @@ function EmailingTab() {
           <Card type="inner" title="Aperçu" size="small" style={{ marginTop: 16 }}>
             <div style={{ minHeight: 120, padding: 12, background: '#fafafa', borderRadius: 6 }}>
               <div dangerouslySetInnerHTML={{ __html: templateForm.getFieldValue('bodyHtml') ?? '<em>Aperçu du HTML ici</em>' }} />
+            </div>
+          </Card>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={<Space><MailOutlined /><span>{editingTemplateBlock ? 'Modifier' : 'Nouveau'} bloc de contenu</span></Space>}
+        open={templateBlockModalOpen}
+        onOk={() => void saveTemplateBlock()}
+        onCancel={() => { setTemplateBlockModalOpen(false); templateBlockForm.resetFields(); setEditingTemplateBlock(null); }}
+        confirmLoading={templateBlockSaving}
+        width={800}
+        okText={editingTemplateBlock ? 'Enregistrer' : 'Créer'}
+      >
+        <Form form={templateBlockForm} layout="vertical" initialValues={{ variables: '', isPublic: true }}>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="name" label="Nom du bloc" rules={[{ required: true, message: 'Nom requis' }]}> 
+                <Input placeholder="Ex: Signature entreprise" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="category" label="Catégorie" rules={[{ required: true, message: 'Catégorie requise' }]}>
+                <Select placeholder="Sélectionner une catégorie">
+                  <Select.Option value="header">En-tête</Select.Option>
+                  <Select.Option value="content">Contenu</Select.Option>
+                  <Select.Option value="cta">Call-to-action</Select.Option>
+                  <Select.Option value="footer">Pied de page</Select.Option>
+                  <Select.Option value="signature">Signature</Select.Option>
+                  <Select.Option value="divider">Séparateur</Select.Option>
+                  <Select.Option value="image">Image</Select.Option>
+                  <Select.Option value="social">Réseaux sociaux</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24}>
+              <Form.Item name="description" label="Description" rules={[{ max: 500 }]}>
+                <Input placeholder="Description courte du bloc" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24}>
+              <Form.Item name="htmlContent" label="Contenu HTML" rules={[{ required: true, message: 'Contenu requis' }]}> 
+                <Input.TextArea rows={8} placeholder="HTML du bloc, utilisez {{firstName}}..." />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="variables" label="Variables" help="Séparez les variables par des virgules (ex: firstName, company)."> 
+                <Input placeholder="firstName, company" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="isPublic" valuePropName="checked">
+                <Checkbox>Rendre ce bloc public (visible par tous les utilisateurs)</Checkbox>
+              </Form.Item>
+            </Col>
+          </Row>
+          <Card type="inner" title="Aperçu" size="small" style={{ marginTop: 16 }}>
+            <div style={{ minHeight: 120, padding: 12, background: '#fafafa', borderRadius: 6 }}>
+              <div dangerouslySetInnerHTML={{ __html: templateBlockForm.getFieldValue('htmlContent') ?? '<em>Aperçu du HTML ici</em>' }} />
             </div>
           </Card>
         </Form>

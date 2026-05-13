@@ -106,6 +106,7 @@ model User {
   leadViews     LeadView[]
   importJobs    ImportJob[]
   notifications Notification[]
+  templateBlocks TemplateBlock[]
 
   @@map("users")
 }
@@ -310,6 +311,23 @@ model Template {
   campaigns Campaign[]
 
   @@map("templates")
+}
+
+model TemplateBlock {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  category    String   // header, footer, cta, content, signature, etc.
+  description String?
+  htmlContent String
+  variables   String[] @default([])
+  isPublic    Boolean  @default(true) // visible par tous les utilisateurs
+  createdById String?  @db.ObjectId
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User? @relation(fields: [createdById], references: [id])
+
+  @@map("templateBlocks")
 }
 
 model Segment {

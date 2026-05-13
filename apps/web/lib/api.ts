@@ -20,6 +20,7 @@ export class ApiError extends Error {
 
 export const json = <T>(data: T, init?: ResponseInit) => NextResponse.json(data, init);
 export const created = <T>(data: T) => NextResponse.json(data, { status: 201 });
+export const notFound = () => NextResponse.json({ message: "Not found" }, { status: 404 });
 export const noContent = () => new NextResponse(null, { status: 204 });
 
 /** Enveloppe un handler : capture ApiError / ZodError et renvoie une réponse propre. */
