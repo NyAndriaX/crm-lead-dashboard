@@ -1,6 +1,7 @@
 /**
  * Service SMTP : configuration chiffrée et validation.
  */
+import dns from "dns/promises";
 import nodemailer from "nodemailer";
 import { prisma } from "@crm/db";
 import { encryptOrNull } from "@/lib/crypto";
@@ -129,6 +130,55 @@ export async function updateSmtpConfig(id: string, input: SmtpConfigUpdateInput)
 
 export async function deleteSmtpConfig(id: string) {
   await prisma.smtpConfig.delete({ where: { id } });
+}
+
+export async function checkSmtpDnsRecords(input: {
+  domain: string;
+  dkimSelector?: string;
+}) {
+  const normalizeRecords = (records: string[][]): string[] => records.map((chunks) => chunks.join(""));
+
+  const resolveTxt = async (name: string) => {
+    try {
+      const records = await dns.resolveTxt(name);
+      return normalizeRecords(records);
+    } catch (e: unknown) {
+      const error = e as { code?: string; message?: string };
+      if (error.code === "ENOTFOUND" || error.code === "ENODATA" || error.code === "ENOTIMP" || error.code === "ETIMEOUT") {
+        return [];
+      }
+      throw e;
+    }
+  };
+
+  const domain = input.domain.trim();
+  const selector = input.dkimSelector?.trim() || "";
+  const spfRecords = await resolveTxt(domain);
+  const spfRecord = spfRecords.find((record) => /(^|\s)v=spf1/i.test(record));
+  const dmarcRecords = await resolveTxt(`_dmarc.${domain}`);
+  const dmarcRecord = dmarcRecords.find((record) => /(^|\s)v=DMARC1/i.test(record));
+  const dkim = selector ? await resolveTxt(`${selector}._domainkey.${domain}`) : [];
+  const dkimRecord = selector ? dkim.find((record) => /(^|\s)v=DKIM1/i.test(record)) : null;
+
+  return {
+    domain,
+    selector: selector || undefined,
+    spf: {
+      found: Boolean(spfRecord),
+      record: spfRecord ?? undefined,
+      error: spfRecord ? undefined : "Aucun enregistrement SPF trouvé.",
+    },
+    dkim: {
+      found: Boolean(dkimRecord),
+      record: dkimRecord ?? undefined,
+      error: selector ? (dkimRecord ? undefined : "Aucun enregistrement DKIM trouvé.") : "Sélecteur DKIM non renseigné.",
+    },
+    dmarc: {
+      found: Boolean(dmarcRecord),
+      record: dmarcRecord ?? undefined,
+      error: dmarcRecord ? undefined : "Aucun enregistrement DMARC trouvé.",
+    },
+  };
 }
 
 export async function testSmtpConnection(input: {

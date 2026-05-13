@@ -62,6 +62,20 @@ interface SmtpFormValues {
   isActive: boolean;
 }
 
+interface DnsRecordCheckResult {
+  found: boolean;
+  record?: string;
+  error?: string;
+}
+
+interface SmtpDnsCheckResult {
+  domain: string;
+  selector?: string;
+  spf: DnsRecordCheckResult;
+  dkim: DnsRecordCheckResult;
+  dmarc: DnsRecordCheckResult;
+}
+
 const DEFAULT_SMTP_DAILY_LIMIT = 200;
 
 const ROLE_LABELS: Record<string, string> = {
@@ -443,6 +457,10 @@ function EmailingTab() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [dnsChecking, setDnsChecking] = useState(false);
+  const [dnsDomain, setDnsDomain] = useState("");
+  const [dnsSelector, setDnsSelector] = useState("");
+  const [dnsResult, setDnsResult] = useState<SmtpDnsCheckResult | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingConfig, setEditingConfig] = useState<SmtpConfigRow | null>(null);
   const [form] = Form.useForm<SmtpFormValues>();
@@ -545,6 +563,26 @@ function EmailingTab() {
     }
   }
 
+  async function checkDnsRecords() {
+    if (!dnsDomain.trim()) {
+      message.error('Veuillez saisir un domaine pour la vérification DNS.');
+      return;
+    }
+    setDnsChecking(true);
+    try {
+      const { data } = await api.post<{ data: SmtpDnsCheckResult }>('/smtp-configs/dns', {
+        domain: dnsDomain.trim(),
+        dkimSelector: dnsSelector.trim() || undefined,
+      });
+      setDnsResult(data.data);
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de la vérification DNS';
+      message.error(msg);
+    } finally {
+      setDnsChecking(false);
+    }
+  }
+
   const columns: ColumnsType<SmtpConfigRow> = [
     { title: 'Nom', dataIndex: 'label', key: 'label', ellipsis: true },
     { title: 'Serveur', dataIndex: 'host', key: 'host', ellipsis: true },
@@ -600,6 +638,68 @@ function EmailingTab() {
           pagination={{ pageSize: 10, showTotal: (total) => `${total} compte(s)` }}
           scroll={{ x: 900 }}
         />
+      </Card>
+
+      <Card title="Vérification DNS SPF / DKIM / DMARC" style={{ width: '100%' }}>
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Text type="secondary">
+            Vérifiez que votre domaine est correctement configuré avant l’envoi d’emails.
+            SPF et DMARC doivent être présents sur le domaine principal, DKIM sur le sélecteur spécifié.
+          </Text>
+          <Row gutter={[16, 16]} align="middle">
+            <Col xs={24} sm={10}>
+              <Form.Item label="Domaine" style={{ marginBottom: 0 }}>
+                <Input
+                  value={dnsDomain}
+                  onChange={(event) => setDnsDomain(event.target.value)}
+                  placeholder="example.com"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={10}>
+              <Form.Item label="Sélecteur DKIM" style={{ marginBottom: 0 }}>
+                <Input
+                  value={dnsSelector}
+                  onChange={(event) => setDnsSelector(event.target.value)}
+                  placeholder="default"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={4}>
+              <Button type="primary" loading={dnsChecking} onClick={() => void checkDnsRecords()} block>
+                Vérifier
+              </Button>
+            </Col>
+          </Row>
+
+          {!dnsResult ? null : (
+            <Card size="small" style={{ borderRadius: 8 }}>
+              <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                <Text strong>Résultats pour {dnsResult.domain}</Text>
+                <Row gutter={[16, 16]}>
+                  {[
+                    { label: 'SPF', result: dnsResult.spf, help: 'Enregistrement TXT v=spf1 sur @' },
+                    { label: 'DKIM', result: dnsResult.dkim, help: `Enregistrement TXT v=DKIM1 sur ${dnsResult.selector ?? 'selector'}._domainkey` },
+                    { label: 'DMARC', result: dnsResult.dmarc, help: 'Enregistrement TXT v=DMARC1 sur _dmarc' },
+                  ].map(({ label, result, help }) => (
+                    <Col xs={24} sm={8} key={label}>
+                      <Card size="small" type="inner" title={label} style={{ minHeight: 160 }}>
+                        <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                          <Tag color={result.found ? 'success' : 'warning'}>
+                            {result.found ? 'Trouvé' : 'Non trouvé'}
+                          </Tag>
+                          <Text type="secondary" style={{ fontSize: 12 }}>{help}</Text>
+                          {result.error ? <Text type="danger">{result.error}</Text> : null}
+                          {result.record ? <Text code style={{ wordBreak: 'break-word' }}>{result.record}</Text> : null}
+                        </Space>
+                      </Card>
+                    </Col>
+                  ))}
+                </Row>
+              </Space>
+            </Card>
+          )}
+        </Space>
       </Card>
 
       <Modal
