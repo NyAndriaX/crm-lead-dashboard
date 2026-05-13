@@ -23,6 +23,13 @@ import {
   LEAD_VIEW_FIXTURES,
   IMPORT_JOB_FIXTURES,
   LEAD_FIXTURES,
+  ALL_LEAD_FIXTURES,
+  AUDIT_LOG_FIXTURES,
+  SYSTEM_NOTIFICATION_FIXTURES,
+  TEMPLATE_FIXTURES,
+  SEGMENT_FIXTURES,
+  BLACKLIST_FIXTURES,
+  API_CREDIT_FIXTURES,
 } from "./seed/fixtures.mjs";
 import { computeScore, SCORING_WEIGHTS } from "./seed/scoring.mjs";
 
@@ -119,26 +126,41 @@ async function seedScoringConfig(adminId) {
 }
 
 async function resetDemoData() {
-  const demoHashes = LEAD_FIXTURES.map((fixture) => emailHash(fixture.email));
+  const demoHashes = ALL_LEAD_FIXTURES.map((fixture) => emailHash(fixture.email));
   const demoLeads = await prisma.lead.findMany({
     where: { emailHash: { in: demoHashes } },
     select: { id: true },
   });
   const leadIds = demoLeads.map((l) => l.id);
-  if (leadIds.length === 0) return;
 
-  await prisma.emailEvent.deleteMany({ where: { leadId: { in: leadIds } } });
-  await prisma.leadHistory.deleteMany({ where: { leadId: { in: leadIds } } });
+  if (leadIds.length > 0) {
+    await prisma.emailEvent.deleteMany({ where: { leadId: { in: leadIds } } });
+    await prisma.leadHistory.deleteMany({ where: { leadId: { in: leadIds } } });
+    await prisma.lead.deleteMany({ where: { id: { in: leadIds } } });
+  }
+
+  // Notifications (toutes celles liées à la démo)
   await prisma.notification.deleteMany({
-    where: { link: { contains: "/leads/" } },
+    where: {
+      OR: [
+        { link: { contains: "/leads" } },
+        { link: { contains: "/import" } },
+        { link: { contains: "/dashboard" } },
+        { link: { contains: "/settings" } },
+      ],
+    },
   });
-  await prisma.lead.deleteMany({ where: { id: { in: leadIds } } });
+
+  // Audit logs récents (générés par le seed)
+  await prisma.auditLog.deleteMany({
+    where: { action: { in: ["auth.login", "user.create", "scoring.update", "import.start", "lead.assign", "lead.update", "lead.status_change", "lead.note", "view.create"] } },
+  });
 }
 
 async function seedLeads(users) {
   const created = [];
 
-  for (const fixture of LEAD_FIXTURES) {
+  for (const fixture of ALL_LEAD_FIXTURES) {
     const hash = emailHash(fixture.email);
     const assignee = fixture.assigneeEmail ? users.get(fixture.assigneeEmail.toLowerCase()) : null;
     const createdAt = daysAgo(fixture.daysAgo ?? 0);
@@ -318,25 +340,182 @@ async function seedImportJobs(users) {
 }
 
 async function seedNotifications(leadRows) {
-  for (const { lead, assignee, fixture } of leadRows) {
-    if (!assignee) continue;
-    const link = `/leads/${lead.id}`;
+  // Notifications "lead_assigned" — limitées aux 12 plus récentes par utilisateur
+  // pour éviter de saturer la cloche.
+  const recentByAssignee = new Map();
+  for (const row of leadRows) {
+    if (!row.assignee) continue;
+    const list = recentByAssignee.get(row.assignee.id) ?? [];
+    list.push(row);
+    recentByAssignee.set(row.assignee.id, list);
+  }
+
+  for (const [, rows] of recentByAssignee) {
+    rows.sort((a, b) => (a.fixture.daysAgo ?? 0) - (b.fixture.daysAgo ?? 0));
+    for (const { lead, assignee, fixture } of rows.slice(0, 12)) {
+      const link = `/leads/${lead.id}`;
+      const existing = await prisma.notification.findFirst({
+        where: { userId: assignee.id, link, type: "lead_assigned" },
+      });
+      if (existing) continue;
+
+      const name = [fixture.firstName, fixture.lastName].filter(Boolean).join(" ") || fixture.company || "un lead";
+      await prisma.notification.create({
+        data: {
+          userId: assignee.id,
+          type: "lead_assigned",
+          title: "Nouveau lead assigné",
+          body: `${name} vous a été assigné`,
+          link,
+          isRead: (fixture.daysAgo ?? 0) > 5,
+          createdAt: daysAgo(Math.max(0, (fixture.daysAgo ?? 1) - 1)),
+        },
+      });
+    }
+  }
+}
+
+async function seedSystemNotifications(users) {
+  for (const fixture of SYSTEM_NOTIFICATION_FIXTURES) {
+    const owner = users.get(fixture.ownerEmail.toLowerCase());
+    if (!owner) continue;
     const existing = await prisma.notification.findFirst({
-      where: { userId: assignee.id, link, type: "lead_assigned" },
+      where: { userId: owner.id, type: fixture.type, title: fixture.title, link: fixture.link },
     });
     if (existing) continue;
-
-    const name = [fixture.firstName, fixture.lastName].filter(Boolean).join(" ") || fixture.company || "un lead";
     await prisma.notification.create({
       data: {
-        userId: assignee.id,
-        type: "lead_assigned",
-        title: "Nouveau lead assigné",
-        body: `${name} vous a été assigné`,
-        link,
-        createdAt: daysAgo(Math.max(0, (fixture.daysAgo ?? 1) - 1)),
+        userId: owner.id,
+        type: fixture.type,
+        title: fixture.title,
+        body: fixture.body,
+        link: fixture.link,
+        isRead: !!fixture.read,
+        createdAt: daysAgo(fixture.daysAgo ?? 0),
       },
     });
+  }
+}
+
+async function seedAuditLogs(users) {
+  for (const log of AUDIT_LOG_FIXTURES) {
+    const actor = users.get(log.actorEmail.toLowerCase());
+    if (!actor) continue;
+    const createdAt = daysAgo(log.daysAgo ?? 0);
+    const existing = await prisma.auditLog.findFirst({
+      where: { userId: actor.id, action: log.action, createdAt },
+    });
+    if (existing) continue;
+    await prisma.auditLog.create({
+      data: {
+        userId: actor.id,
+        action: log.action,
+        ip: log.ip ?? null,
+        diff: null,
+        createdAt,
+      },
+    });
+  }
+
+  // Met aussi à jour le lastLoginAt à partir du dernier "auth.login"
+  for (const [email, user] of users.entries()) {
+    const lastLogin = AUDIT_LOG_FIXTURES
+      .filter((l) => l.actorEmail.toLowerCase() === email && l.action === "auth.login")
+      .sort((a, b) => (a.daysAgo ?? 0) - (b.daysAgo ?? 0))[0];
+    if (lastLogin) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: daysAgo(lastLogin.daysAgo ?? 0) },
+      });
+    }
+  }
+}
+
+async function seedTemplates() {
+  for (const tpl of TEMPLATE_FIXTURES) {
+    const existing = await prisma.template.findFirst({ where: { name: tpl.name } });
+    const data = {
+      name: tpl.name,
+      category: tpl.category,
+      subject: tpl.subject,
+      bodyHtml: tpl.bodyHtml,
+      variables: tpl.variables,
+      isPreset: tpl.isPreset,
+    };
+    if (existing) {
+      await prisma.template.update({ where: { id: existing.id }, data });
+    } else {
+      await prisma.template.create({ data });
+    }
+  }
+}
+
+async function seedSegments() {
+  for (const seg of SEGMENT_FIXTURES) {
+    const existing = await prisma.segment.findFirst({ where: { name: seg.name } });
+    if (existing) {
+      await prisma.segment.update({ where: { id: existing.id }, data: { filters: seg.filters } });
+    } else {
+      await prisma.segment.create({ data: { name: seg.name, filters: seg.filters } });
+    }
+  }
+}
+
+async function seedBlacklist() {
+  for (const entry of BLACKLIST_FIXTURES) {
+    const hash = emailHash(entry.email);
+    await prisma.blacklist.upsert({
+      where: { emailHash: hash },
+      update: { reason: entry.reason },
+      create: { emailHash: hash, reason: entry.reason },
+    });
+  }
+}
+
+async function seedApiCredits() {
+  for (const credit of API_CREDIT_FIXTURES) {
+    await prisma.apiCredit.upsert({
+      where: { provider: credit.provider },
+      update: { used: credit.used, quota: credit.quota },
+      create: credit,
+    });
+  }
+}
+
+async function seedPipelineAssignment(leadRows) {
+  // Récupère les stages indexés par nom.
+  const stages = await prisma.pipelineStage.findMany({ orderBy: { order: "asc" } });
+  if (stages.length === 0) return;
+  const STATUS_TO_STAGE = {
+    NOUVEAU: "Nouveau",
+    CONTACTE: "Contacté",
+    QUALIFIE: "Qualifié",
+    EN_DISCUSSION: "Négociation",
+    CONVERTI: "Gagné",
+    PERDU: "Perdu",
+  };
+
+  let position = 0;
+  for (const { lead, fixture } of leadRows) {
+    const stageName = STATUS_TO_STAGE[fixture.status] ?? "Nouveau";
+    const stage = stages.find((s) => s.name === stageName);
+    if (!stage) continue;
+    await prisma.lead.update({
+      where: { id: lead.id },
+      data: { pipelineStageId: stage.id },
+    });
+    const existing = await prisma.leadPipeline.findUnique({ where: { leadId: lead.id } });
+    const enteredAt = daysAgo(Math.max(0, (fixture.lastActionDaysAgo ?? fixture.daysAgo ?? 0)));
+    if (existing) {
+      await prisma.leadPipeline.update({
+        where: { leadId: lead.id },
+        data: { stageId: stage.id, position: position++, enteredAt },
+      });
+    } else {
+      await prisma.leadPipeline.create({
+        data: { leadId: lead.id, stageId: stage.id, position: position++, enteredAt },
+      });
+    }
   }
 }
 
@@ -364,18 +543,38 @@ async function main() {
   const leadRows = await seedLeads(users);
   await seedLeadViews(users);
   await seedImportJobs(users);
+  await seedPipelineAssignment(leadRows);
   await seedNotifications(leadRows);
+  await seedSystemNotifications(users);
+  await seedAuditLogs(users);
+  await seedTemplates();
+  await seedSegments();
+  await seedBlacklist();
+  await seedApiCredits();
 
   const byStatus = leadRows.reduce((acc, { fixture }) => {
     acc[fixture.status] = (acc[fixture.status] ?? 0) + 1;
     return acc;
   }, {});
 
-  console.log("✔ Seed CRM terminé");
-  console.log(`  Admin: ${adminEmail}`);
-  console.log(`  Comptes démo: ${USER_FIXTURES.length} (mot de passe: ${process.env.SEED_PASSWORD ? "(via SEED_PASSWORD)" : demoPassword})`);
-  console.log(`  Leads: ${leadRows.length} (${Object.entries(byStatus).map(([s, n]) => `${s}:${n}`).join(", ")})`);
-  console.log(`  Vues sauvegardées: ${LEAD_VIEW_FIXTURES.length} · Imports: ${IMPORT_JOB_FIXTURES.length} · Tags: ${TAG_FIXTURES.length}`);
+  console.log("");
+  console.log("┌──────────────────────────────────────────────────────────────");
+  console.log("│  ✔ Seed CRM terminé");
+  console.log("├──────────────────────────────────────────────────────────────");
+  console.log(`│  Admin       : ${adminEmail}`);
+  console.log(`│  Mot de passe: ${process.env.SEED_PASSWORD ? "(via SEED_PASSWORD)" : demoPassword}`);
+  console.log(`│  Comptes     : ${USER_FIXTURES.length} (Admin/Manager/Sales×2/Lecteur)`);
+  console.log(`│  Leads       : ${leadRows.length} (${Object.entries(byStatus).map(([s, n]) => `${s}:${n}`).join(" · ")})`);
+  console.log(`│  Vues        : ${LEAD_VIEW_FIXTURES.length}`);
+  console.log(`│  Imports     : ${IMPORT_JOB_FIXTURES.length} jobs (done/running/failed)`);
+  console.log(`│  Tags        : ${TAG_FIXTURES.length}`);
+  console.log(`│  Templates   : ${TEMPLATE_FIXTURES.length} · Segments: ${SEGMENT_FIXTURES.length}`);
+  console.log(`│  Audit logs  : ${AUDIT_LOG_FIXTURES.length}`);
+  console.log(`│  Notifs      : ${SYSTEM_NOTIFICATION_FIXTURES.length} système + ${leadRows.filter((r) => r.assignee).length} d'assignation`);
+  console.log(`│  Blacklist   : ${BLACKLIST_FIXTURES.length} · API credits: ${API_CREDIT_FIXTURES.length}`);
+  console.log("└──────────────────────────────────────────────────────────────");
+  console.log("");
+  console.log("→ Connectez-vous sur http://localhost:3000/login");
 }
 
 main()

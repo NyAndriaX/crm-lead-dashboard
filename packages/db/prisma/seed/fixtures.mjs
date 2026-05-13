@@ -89,7 +89,350 @@ export const IMPORT_JOB_FIXTURES = [
       source: "source",
     },
   },
+  {
+    ownerEmail: "lucas.bernard@crm.local",
+    fileName: "linkedin_export_q2.csv",
+    totalRows: 87,
+    importedRows: 82,
+    duplicateRows: 4,
+    errorRows: 1,
+    status: "done",
+    daysAgo: 2,
+    mapping: { email: "email", firstName: "first_name", lastName: "last_name", company: "company" },
+  },
+  {
+    ownerEmail: "emma.dupont@crm.local",
+    fileName: "partenaires_q2_2026.xlsx",
+    totalRows: 42,
+    importedRows: 0,
+    duplicateRows: 0,
+    errorRows: 0,
+    status: "running",
+    daysAgo: 0,
+    mapping: { email: "Email", company: "Société", source: "Source" },
+  },
+  {
+    ownerEmail: "manager@crm.local",
+    fileName: "ancien_export_corrompu.csv",
+    totalRows: 0,
+    importedRows: 0,
+    duplicateRows: 0,
+    errorRows: 0,
+    status: "failed",
+    daysAgo: 6,
+    mapping: { email: "email" },
+  },
+  {
+    ownerEmail: "admin@crm.local",
+    fileName: "evenement_tech_lyon.xlsx",
+    totalRows: 56,
+    importedRows: 53,
+    duplicateRows: 2,
+    errorRows: 1,
+    status: "done",
+    daysAgo: 19,
+    mapping: { email: "Email", firstName: "Prénom", lastName: "Nom", company: "Entreprise" },
+  },
 ];
+
+// ── Audit logs (CRM-073) ──────────────────────────────────────────────────────
+// Génère un journal d'activité réaliste : connexions, actions sur leads, imports.
+export const AUDIT_LOG_FIXTURES = [
+  { actorEmail: "admin@crm.local",          action: "auth.login",          daysAgo: 0,  ip: "192.168.1.10" },
+  { actorEmail: "admin@crm.local",          action: "user.create",         daysAgo: 14, ip: "192.168.1.10" },
+  { actorEmail: "admin@crm.local",          action: "scoring.update",      daysAgo: 8,  ip: "192.168.1.10" },
+  { actorEmail: "admin@crm.local",          action: "import.start",        daysAgo: 4,  ip: "192.168.1.10" },
+  { actorEmail: "manager@crm.local",        action: "auth.login",          daysAgo: 0,  ip: "192.168.1.22" },
+  { actorEmail: "manager@crm.local",        action: "auth.login",          daysAgo: 1,  ip: "192.168.1.22" },
+  { actorEmail: "manager@crm.local",        action: "lead.assign",         daysAgo: 2,  ip: "192.168.1.22" },
+  { actorEmail: "manager@crm.local",        action: "view.create",         daysAgo: 3,  ip: "192.168.1.22" },
+  { actorEmail: "manager@crm.local",        action: "import.start",        daysAgo: 12, ip: "192.168.1.22" },
+  { actorEmail: "lucas.bernard@crm.local",  action: "auth.login",          daysAgo: 0,  ip: "10.0.0.45" },
+  { actorEmail: "lucas.bernard@crm.local",  action: "auth.login",          daysAgo: 1,  ip: "10.0.0.45" },
+  { actorEmail: "lucas.bernard@crm.local",  action: "lead.update",         daysAgo: 1,  ip: "10.0.0.45" },
+  { actorEmail: "lucas.bernard@crm.local",  action: "lead.status_change",  daysAgo: 2,  ip: "10.0.0.45" },
+  { actorEmail: "lucas.bernard@crm.local",  action: "lead.note",           daysAgo: 3,  ip: "10.0.0.45" },
+  { actorEmail: "lucas.bernard@crm.local",  action: "import.start",        daysAgo: 2,  ip: "10.0.0.45" },
+  { actorEmail: "emma.dupont@crm.local",    action: "auth.login",          daysAgo: 0,  ip: "10.0.0.51" },
+  { actorEmail: "emma.dupont@crm.local",    action: "auth.login",          daysAgo: 2,  ip: "10.0.0.51" },
+  { actorEmail: "emma.dupont@crm.local",    action: "lead.update",         daysAgo: 0,  ip: "10.0.0.51" },
+  { actorEmail: "emma.dupont@crm.local",    action: "lead.assign",         daysAgo: 1,  ip: "10.0.0.51" },
+  { actorEmail: "emma.dupont@crm.local",    action: "lead.note",           daysAgo: 4,  ip: "10.0.0.51" },
+  { actorEmail: "lecteur@crm.local",        action: "auth.login",          daysAgo: 5,  ip: "172.16.0.8" },
+];
+
+// ── Notifications système / business (en plus des assignations) ──────────────
+export const SYSTEM_NOTIFICATION_FIXTURES = [
+  {
+    ownerEmail: "admin@crm.local",
+    type: "import_done",
+    title: "Import terminé",
+    body: "salon_paris_2026_prospects.xlsx — 118/128 leads importés",
+    link: "/import",
+    daysAgo: 12,
+    read: true,
+  },
+  {
+    ownerEmail: "admin@crm.local",
+    type: "import_done",
+    title: "Import terminé",
+    body: "webinar_croissance_b2b.csv — 61/64 leads importés",
+    link: "/import",
+    daysAgo: 4,
+    read: true,
+  },
+  {
+    ownerEmail: "admin@crm.local",
+    type: "weekly_digest",
+    title: "Bilan hebdomadaire",
+    body: "12 nouveaux leads cette semaine, +18% vs semaine précédente",
+    link: "/dashboard",
+    daysAgo: 1,
+    read: false,
+  },
+  {
+    ownerEmail: "admin@crm.local",
+    type: "system",
+    title: "Configuration scoring mise à jour",
+    body: "Les nouveaux poids sont appliqués au prochain recalcul",
+    link: "/settings",
+    daysAgo: 8,
+    read: true,
+  },
+  {
+    ownerEmail: "manager@crm.local",
+    type: "weekly_digest",
+    title: "Performance équipe",
+    body: "Lucas : 4 leads qualifiés · Emma : 6 leads qualifiés cette semaine",
+    link: "/dashboard",
+    daysAgo: 1,
+    read: false,
+  },
+  {
+    ownerEmail: "manager@crm.local",
+    type: "import_failed",
+    title: "Import échoué",
+    body: "ancien_export_corrompu.csv — fichier illisible",
+    link: "/import",
+    daysAgo: 6,
+    read: true,
+  },
+  {
+    ownerEmail: "manager@crm.local",
+    type: "lead_replied",
+    title: "Un lead VIP a répondu",
+    body: "Julien Moreau (HelioSaaS) — réponse positive sur le pilote 30 jours",
+    link: "/leads",
+    daysAgo: 1,
+    read: false,
+  },
+  {
+    ownerEmail: "lucas.bernard@crm.local",
+    type: "lead_replied",
+    title: "Marc Leroy a répondu",
+    body: "Optima RH — confirme le rendez-vous d'onboarding",
+    link: "/leads",
+    daysAgo: 3,
+    read: true,
+  },
+  {
+    ownerEmail: "lucas.bernard@crm.local",
+    type: "lead_score_high",
+    title: "Lead à fort potentiel",
+    body: "Camille Rousseau (NovaRetail) atteint un score de 78/100",
+    link: "/leads",
+    daysAgo: 1,
+    read: false,
+  },
+  {
+    ownerEmail: "emma.dupont@crm.local",
+    type: "lead_replied",
+    title: "Nouvelle réponse reçue",
+    body: "Léa Fontaine (Pulse Analytics) souhaite une démo",
+    link: "/leads",
+    daysAgo: 0,
+    read: false,
+  },
+  {
+    ownerEmail: "emma.dupont@crm.local",
+    type: "task_due",
+    title: "Relances à faire aujourd'hui",
+    body: "5 leads en statut Contacté à relancer cette semaine",
+    link: "/leads",
+    daysAgo: 0,
+    read: false,
+  },
+];
+
+// ── Templates email (CRM-051) ─────────────────────────────────────────────────
+export const TEMPLATE_FIXTURES = [
+  {
+    name: "Cold outreach — SaaS B2B",
+    category: "Prospection",
+    subject: "{{firstName}}, un retour rapide sur {{company}} ?",
+    bodyHtml: "<p>Bonjour {{firstName}},</p><p>Je vous contacte au sujet de {{company}}. Avez-vous 15 min cette semaine pour échanger ?</p><p>Bien cordialement,<br/>Lucas</p>",
+    variables: ["firstName", "company"],
+    isPreset: true,
+  },
+  {
+    name: "Suivi webinar croissance B2B",
+    category: "Webinar",
+    subject: "Merci pour votre participation au webinar !",
+    bodyHtml: "<p>Bonjour {{firstName}},</p><p>Merci d'avoir assisté à notre webinar sur la croissance B2B. Voici le replay et les slides en pièce jointe.</p>",
+    variables: ["firstName"],
+    isPreset: true,
+  },
+  {
+    name: "Relance VIP — proposition commerciale",
+    category: "Relance",
+    subject: "{{firstName}}, proposition commerciale {{company}}",
+    bodyHtml: "<p>Bonjour {{firstName}},</p><p>Suite à nos derniers échanges, vous trouverez ci-joint la proposition commerciale pour {{company}}.</p>",
+    variables: ["firstName", "company"],
+    isPreset: false,
+  },
+];
+
+// ── Segments (CRM-053) ────────────────────────────────────────────────────────
+export const SEGMENT_FIXTURES = [
+  { name: "Leads SaaS qualifiés", filters: { sector: "SaaS", status: "QUALIFIE" } },
+  { name: "Participants webinar", filters: { source: "Webinar" } },
+  { name: "Salon Paris 2026", filters: { source: "Salon Paris 2026" } },
+  { name: "Leads VIP", filters: { tags: ["VIP"] } },
+];
+
+// ── Blacklist (CRM-040) ───────────────────────────────────────────────────────
+// Adresses notoirement injoignables / désinscrites — alimente le compteur admin.
+export const BLACKLIST_FIXTURES = [
+  { email: "unsubscribe1@demo.crm.local",  reason: "unsubscribe" },
+  { email: "bounce.hard@demo.crm.local",   reason: "hard_bounce" },
+  { email: "complaint@demo.crm.local",     reason: "complaint" },
+];
+
+// ── Crédits API (CRM-082) ─────────────────────────────────────────────────────
+export const API_CREDIT_FIXTURES = [
+  { provider: "hunter",       used: 142, quota: 1000 },
+  { provider: "apollo",       used: 87,  quota: 500 },
+  { provider: "pappers",      used: 23,  quota: 200 },
+  { provider: "googlePlaces", used: 56,  quota: 300 },
+];
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Générateur de leads supplémentaires : ~40 leads variés étalés sur 90 jours.
+// Permet d'avoir des graphes, KPIs et filtres réellement remplis sur le dashboard.
+// ──────────────────────────────────────────────────────────────────────────────
+
+const FIRST_NAMES = ["Alexandre", "Charlotte", "Damien", "Eva", "Florian", "Gabrielle", "Hadrien", "Isabelle", "Jérôme", "Karine", "Lola", "Mathieu", "Noémie", "Olivier", "Pauline", "Quentin", "Roxane", "Sébastien", "Tania", "Ugo", "Valentine", "William", "Xavier", "Yasmine", "Zoé"];
+const LAST_NAMES  = ["Dubois", "Lefèvre", "Bonnet", "Bertrand", "Robert", "Richard", "Petit", "Durand", "Leroy", "Moreau", "Simon", "Laurent", "Lefebvre", "Michel", "Garcia", "David", "Bertin", "Roux", "Vincent", "Fournier", "Morel", "Girard", "André", "Mercier", "Boyer"];
+const COMPANIES   = ["TechFlux", "BlueOcean", "Velora", "ZenithCorp", "Stellaris", "Nexora", "Linktrade", "Greenwave", "Optimax", "Brightline", "Phoenix Tech", "Valoris Group", "Atomik", "Oxalys", "Vertio", "Kairos Labs", "Numérys", "Solyx", "Métriq", "Sherpa Conseil", "Apogée Digital", "Caelis", "Domino Cloud", "Eclat Studio", "Forevia", "Granité Solutions", "Helia", "Inovéo", "Jukabox", "Kameleon"];
+const SECTORS     = ["SaaS", "Retail", "Industrie", "Santé", "Finance", "Logistique", "Énergie", "EdTech", "Agence", "Cybersécurité", "RH", "Mobilité", "BTP", "E-commerce", "Média"];
+const CITIES      = ["Paris", "Lyon", "Marseille", "Toulouse", "Nantes", "Bordeaux", "Lille", "Strasbourg", "Rennes", "Grenoble", "Montpellier", "Nice", "Reims", "Le Havre", "Dijon"];
+const SOURCES     = ["Inbound", "Salon Paris 2026", "Webinar", "LinkedIn", "Partenaire", "Import CSV", "Référencement Google", "Cold call"];
+const STATUS_DISTRIBUTION = [
+  ...Array(14).fill("NOUVEAU"),
+  ...Array(8).fill("CONTACTE"),
+  ...Array(7).fill("QUALIFIE"),
+  ...Array(5).fill("EN_DISCUSSION"),
+  ...Array(4).fill("CONVERTI"),
+  ...Array(3).fill("PERDU"),
+];
+const ASSIGNEES = [
+  "lucas.bernard@crm.local",
+  "lucas.bernard@crm.local",
+  "emma.dupont@crm.local",
+  "emma.dupont@crm.local",
+  "manager@crm.local",
+  null,
+];
+const TAG_POOL = ["SaaS", "Retail", "Prioritaire", "Salon Paris 2026", "Webinar", "VIP", "Relance chaude"];
+
+// PRNG déterministe (mulberry32) → seed identique entre runs pour idempotence.
+function mulberry32(seed) {
+  let t = seed >>> 0;
+  return function rand() {
+    t |= 0;
+    t = (t + 0x6D2B79F5) | 0;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function pick(rand, arr) { return arr[Math.floor(rand() * arr.length)]; }
+
+function generateLeads() {
+  const rand = mulberry32(20260513);
+  const list = [];
+  const usedEmails = new Set();
+
+  for (let i = 0; i < STATUS_DISTRIBUTION.length; i++) {
+    const status = STATUS_DISTRIBUTION[i];
+    const firstName = pick(rand, FIRST_NAMES);
+    const lastName  = pick(rand, LAST_NAMES);
+    const company   = pick(rand, COMPANIES);
+    const city      = pick(rand, CITIES);
+    const sector    = pick(rand, SECTORS);
+    const source    = pick(rand, SOURCES);
+    const assignee  = pick(rand, ASSIGNEES);
+
+    // Étalement temporel pondéré : récents = NOUVEAU/CONTACTE, anciens = CONVERTI/PERDU
+    let daysAgo;
+    if (status === "NOUVEAU")        daysAgo = Math.floor(rand() * 7);
+    else if (status === "CONTACTE")  daysAgo = 2 + Math.floor(rand() * 14);
+    else if (status === "QUALIFIE")  daysAgo = 4 + Math.floor(rand() * 21);
+    else if (status === "EN_DISCUSSION") daysAgo = 7 + Math.floor(rand() * 28);
+    else if (status === "CONVERTI")  daysAgo = 14 + Math.floor(rand() * 60);
+    else                              daysAgo = 21 + Math.floor(rand() * 70);
+
+    const lastActionDaysAgo = Math.max(0, daysAgo - Math.floor(rand() * Math.min(daysAgo, 14)));
+    const hasReplied = ["EN_DISCUSSION", "CONVERTI"].includes(status) && rand() > 0.3;
+    const opens  = Math.floor(rand() * (status === "NOUVEAU" ? 1 : 5));
+    const clicks = Math.floor(rand() * (opens + 1));
+
+    // Email stable et unique
+    const local = `${firstName.toLowerCase().replace(/[éèêë]/g, "e").replace(/[à]/g, "a")}.${lastName.toLowerCase().replace(/[éèê]/g, "e")}.${i}`.replace(/[^a-z0-9.]/g, "");
+    const email = `${local}@demo.crm.local`;
+    if (usedEmails.has(email)) continue;
+    usedEmails.add(email);
+
+    // Tags : 0 à 2 aléatoires
+    const tagCount = Math.floor(rand() * 3);
+    const tags = [];
+    for (let t = 0; t < tagCount; t++) {
+      const tag = pick(rand, TAG_POOL);
+      if (!tags.includes(tag)) tags.push(tag);
+    }
+
+    const phone = rand() > 0.4
+      ? `+33 6 ${String(Math.floor(rand() * 90 + 10))} ${String(Math.floor(rand() * 90 + 10))} ${String(Math.floor(rand() * 90 + 10))} ${String(Math.floor(rand() * 90 + 10))}`
+      : null;
+
+    list.push({
+      email,
+      phone,
+      firstName,
+      lastName,
+      company,
+      website: rand() > 0.3 ? `https://${company.toLowerCase().replace(/[^a-z]/g, "")}.fr` : null,
+      sector,
+      city,
+      country: "France",
+      source,
+      status,
+      tags,
+      notes: null,
+      assigneeEmail: assignee,
+      daysAgo,
+      lastActionDaysAgo,
+      lastReplyDaysAgo: hasReplied ? Math.max(0, lastActionDaysAgo - 1) : undefined,
+      signals: { opens, clicks, hasReplied },
+      enrichment: rand() > 0.6 ? { employees: 10 + Math.floor(rand() * 500) } : null,
+    });
+  }
+  return list;
+}
+
+// `GENERATED_LEADS` et `ALL_LEAD_FIXTURES` sont définis en bas de fichier,
+// après la déclaration de LEAD_FIXTURES (évite un TDZ ESM).
 
 /**
  * Leads de démo : emails stables @demo.crm.local pour un seed idempotent.
@@ -626,3 +969,12 @@ export const LEAD_FIXTURES = [
     signals: { opens: 1, clicks: 0, hasReplied: false },
   },
 ];
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Exports calculés (en bas pour éviter les TDZ ESM)
+// ──────────────────────────────────────────────────────────────────────────────
+
+export const GENERATED_LEADS = generateLeads();
+
+// Combo : leads soignés + générés. Utilisé par le seed et resetDemoData().
+export const ALL_LEAD_FIXTURES = [...LEAD_FIXTURES, ...GENERATED_LEADS];
