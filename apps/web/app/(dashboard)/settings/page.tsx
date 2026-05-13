@@ -8,12 +8,13 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Tabs, Card, Typography, Table, Button, Tag, Space, Form, InputNumber, Row, Col,
   Statistic, Badge, Modal, Input, Select, message, Spin, Alert, Popconfirm, List,
-  Progress, Divider, Avatar, Tooltip,
+  Progress, Divider, Avatar, Tooltip, Checkbox,
 } from "antd";
 import {
   UserOutlined, TrophyOutlined, UploadOutlined, PlusOutlined, EditOutlined,
   StopOutlined, CheckOutlined, ReloadOutlined, SafetyOutlined, FireOutlined,
-  TeamOutlined, CalendarOutlined, SettingOutlined, LockOutlined,
+  TeamOutlined, CalendarOutlined, SettingOutlined, LockOutlined, DeleteOutlined,
+  MailOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
@@ -36,6 +37,32 @@ interface UserRow {
   id: string; name: string; email: string; role: string;
   isActive: boolean; lastLoginAt: string | null; createdAt: string;
 }
+
+interface SmtpConfigRow {
+  id: string;
+  label: string;
+  host: string;
+  port: number;
+  fromName?: string | null;
+  fromEmail?: string | null;
+  dailyLimit: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+interface SmtpFormValues {
+  label: string;
+  host: string;
+  port: number;
+  login?: string;
+  password?: string;
+  fromName?: string;
+  fromEmail?: string;
+  dailyLimit: number;
+  isActive: boolean;
+}
+
+const DEFAULT_SMTP_DAILY_LIMIT = 200;
 
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: "Admin", MANAGER: "Manager", COMMERCIAL: "Commercial", LECTEUR: "Lecteur",
@@ -411,6 +438,245 @@ function UsersTab() {
   );
 }
 
+function EmailingTab() {
+  const [configs, setConfigs] = useState<SmtpConfigRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingConfig, setEditingConfig] = useState<SmtpConfigRow | null>(null);
+  const [form] = Form.useForm<SmtpFormValues>();
+
+  const fetchConfigs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get<{ data: SmtpConfigRow[] }>('/smtp-configs');
+      setConfigs(data.data);
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Impossible de charger les configs SMTP.';
+      message.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void fetchConfigs(); }, [fetchConfigs]);
+
+  function openCreate() {
+    setEditingConfig(null);
+    form.resetFields();
+    form.setFieldsValue({ dailyLimit: DEFAULT_SMTP_DAILY_LIMIT, isActive: true });
+    setModalOpen(true);
+  }
+
+  function openEdit(config: SmtpConfigRow) {
+    setEditingConfig(config);
+    form.setFieldsValue({
+      label: config.label,
+      host: config.host,
+      port: config.port,
+      login: undefined,
+      password: undefined,
+      fromName: config.fromName ?? undefined,
+      fromEmail: config.fromEmail ?? undefined,
+      dailyLimit: config.dailyLimit,
+      isActive: config.isActive,
+    });
+    setModalOpen(true);
+  }
+
+  async function saveConfig() {
+    const values = await form.validateFields();
+    if (!editingConfig && (!values.login || !values.password)) {
+      message.error('Login et mot de passe sont requis pour créer un compte SMTP.');
+      return;
+    }
+    if (editingConfig) {
+      if (values.login === "") delete values.login;
+      if (values.password === "") delete values.password;
+    }
+
+    setSaving(true);
+    try {
+      if (editingConfig) {
+        await api.put(`/smtp-configs/${editingConfig.id}`, values);
+        message.success('Configuration SMTP mise à jour');
+      } else {
+        await api.post('/smtp-configs', values);
+        message.success('Configuration SMTP créée');
+      }
+      setModalOpen(false);
+      void fetchConfigs();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de l’enregistrement';
+      message.error(msg);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteConfig(config: SmtpConfigRow) {
+    try {
+      await api.delete(`/smtp-configs/${config.id}`);
+      message.success('Configuration SMTP supprimée');
+      void fetchConfigs();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de la suppression';
+      message.error(msg);
+    }
+  }
+
+  async function testConnection() {
+    try {
+      const values = await form.validateFields(['host', 'port', 'login', 'password']);
+      setTesting(true);
+      await api.post('/smtp-configs/test', {
+        host: values.host,
+        port: values.port,
+        login: values.login,
+        password: values.password,
+      });
+      message.success('Connexion SMTP réussie');
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur de connexion SMTP';
+      message.error(msg);
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  const columns: ColumnsType<SmtpConfigRow> = [
+    { title: 'Nom', dataIndex: 'label', key: 'label', ellipsis: true },
+    { title: 'Serveur', dataIndex: 'host', key: 'host', ellipsis: true },
+    { title: 'Port', dataIndex: 'port', key: 'port', width: 90 },
+    { title: 'Expéditeur', key: 'from', render: (_, row) => row.fromEmail ? `${row.fromName ?? ''} <${row.fromEmail}>` : '—' },
+    { title: 'Quota / jour', dataIndex: 'dailyLimit', key: 'dailyLimit', width: 140 },
+    {
+      title: 'Actif', dataIndex: 'isActive', key: 'isActive', width: 100,
+      render: (value: boolean) => value
+        ? <Tag color="success">Oui</Tag>
+        : <Tag color="default">Non</Tag>,
+    },
+    {
+      title: '', key: 'actions', width: 140,
+      render: (_, row) => (
+        <Space>
+          <Button size="small" onClick={() => openEdit(row)}>Modifier</Button>
+          <Popconfirm
+            title={`Supprimer ${row.label} ?`}
+            onConfirm={() => void deleteConfig(row)}
+            okText="Supprimer"
+            cancelText="Annuler"
+          >
+            <Button size="small" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  return (
+    <Space direction="vertical" size={24} style={{ width: '100%' }}>
+      <Row gutter={[16, 16]} align="middle" justify="space-between">
+        <Col>
+          <Space direction="vertical" size={4}>
+            <Text strong style={{ fontSize: 18 }}>Configuration SMTP</Text>
+            <Text type="secondary">Gérez les comptes SMTP chiffrés utilisés pour l’envoi de campagnes.</Text>
+          </Space>
+        </Col>
+        <Col>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            Ajouter un compte SMTP
+          </Button>
+        </Col>
+      </Row>
+
+      <Card>
+        <Table
+          rowKey="id"
+          columns={columns}
+          dataSource={configs}
+          loading={loading}
+          pagination={{ pageSize: 10, showTotal: (total) => `${total} compte(s)` }}
+          scroll={{ x: 900 }}
+        />
+      </Card>
+
+      <Modal
+        title={<Space><MailOutlined /><span>{editingConfig ? 'Modifier' : 'Nouvelle'} configuration SMTP</span></Space>}
+        open={modalOpen}
+        onOk={() => void saveConfig()}
+        onCancel={() => { setModalOpen(false); form.resetFields(); }}
+        confirmLoading={saving}
+        width={600}
+        okText={editingConfig ? 'Enregistrer' : 'Créer'}
+      >
+        <Form form={form} layout="vertical" initialValues={{ dailyLimit: DEFAULT_SMTP_DAILY_LIMIT, isActive: true }}>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="label" label="Nom du compte" rules={[{ required: true, message: 'Nom requis' }]}> 
+                <Input placeholder="Ex: SMTP principal" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="host" label="Hôte SMTP" rules={[{ required: true, message: 'Hôte requis' }]}> 
+                <Input placeholder="smtp.example.com" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="port" label="Port" rules={[{ required: true, message: 'Port requis' }]}> 
+                <InputNumber min={1} max={65535} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="dailyLimit" label="Quota journalier" rules={[{ required: true, type: 'number', message: 'Quota requis' }]}> 
+                <InputNumber min={1} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="login" label="Login SMTP" rules={[{ required: !editingConfig, message: 'Login requis' }]}> 
+                <Input placeholder="login@mail.com" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="password" label="Mot de passe SMTP" rules={[{ required: !editingConfig, message: 'Mot de passe requis' }]}> 
+                <Input.Password placeholder={editingConfig ? 'Laisser vide pour conserver' : 'Mot de passe'} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="fromName" label="Nom expéditeur" rules={[{ max: 100 }]}>
+                <Input placeholder="CRM Lead Dashboard" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="fromEmail" label="Email expéditeur" rules={[{ type: 'email', message: 'Email invalide' }]}>
+                <Input placeholder="no-reply@example.com" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="isActive" valuePropName="checked">
+            <Checkbox>Activer ce compte SMTP</Checkbox>
+          </Form.Item>
+          <Space style={{ marginTop: 10 }}>
+            <Button type="default" onClick={() => void testConnection()} loading={testing}>
+              Tester la connexion
+            </Button>
+            <Button type="primary" onClick={() => void saveConfig()} loading={saving}>
+              {editingConfig ? 'Enregistrer' : 'Créer'}
+            </Button>
+          </Space>
+        </Form>
+      </Modal>
+    </Space>
+  );
+}
+
 // ── Onglet Scoring ───────────────────────────────────────────────────────────
 
 const WEIGHT_GROUPS = [
@@ -625,6 +891,16 @@ export default function SettingsPage() {
               </Space>
             ),
             children: <ScoringTab />,
+          },
+          {
+            key: "emailing",
+            label: (
+              <Space>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#722ed1" }} />
+                Emailing
+              </Space>
+            ),
+            children: <EmailingTab />,
           },
           {
             key: "imports",

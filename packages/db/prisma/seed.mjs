@@ -57,7 +57,7 @@ async function seedUsers(passwordHash) {
   for (const fixture of USER_FIXTURES) {
     const email = fixture.email.toLowerCase();
     const user = await prisma.user.upsert({
-      where: { email },
+    where: { email },
       update: {
         name: fixture.name,
         role: fixture.role,
