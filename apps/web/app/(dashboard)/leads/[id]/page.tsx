@@ -9,6 +9,7 @@ import {
 import { ArrowLeftOutlined, ReloadOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
 import { STATUS_LABELS, STATUS_COLORS, allowedTransitions } from "@/lib/leadStatus";
+import { useBreakpoint, useIsMobile } from "@/lib/responsive";
 import type { LeadStatus } from "@crm/db";
 
 const { Title, Text, Paragraph } = Typography;
@@ -43,6 +44,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const [notFound, setNotFound] = useState(false);
   const [savingTags, setSavingTags] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
+  const isMobile = useIsMobile();
+  const screens = useBreakpoint();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,26 +100,26 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
 
   return (
     <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-      <Space style={{ width: "100%", justifyContent: "space-between" }}>
-        <Space>
+      <div className="page-stack page-stack-between">
+        <Space wrap>
           <Link href="/leads"><Button icon={<ArrowLeftOutlined />}>Leads</Button></Link>
-          <Title level={3} style={{ margin: 0 }}>{fullName(lead)}</Title>
+          <Title level={isMobile ? 4 : 3} style={{ margin: 0 }}>{fullName(lead)}</Title>
           <Tag color={STATUS_COLORS[lead.status]}>{STATUS_LABELS[lead.status]}</Tag>
         </Space>
-        <Space>
+        <Space wrap style={{ width: isMobile ? "100%" : undefined }}>
           <Select<LeadStatus>
-            placeholder="Changer le statut" style={{ width: 200 }} value={undefined}
+            placeholder="Changer le statut" style={{ width: isMobile ? "100%" : 200 }} value={undefined}
             onChange={changeStatus}
             options={allowedTransitions(lead.status).map((s) => ({ value: s, label: STATUS_LABELS[s] }))}
           />
-          <Button danger onClick={confirmDelete}>Archiver</Button>
+          <Button danger onClick={confirmDelete} block={isMobile}>Archiver</Button>
         </Space>
-      </Space>
+      </div>
 
       <Row gutter={16}>
         <Col xs={24} lg={16}>
           <Card title="Coordonnées" size="small" style={{ marginBottom: 16 }}>
-            <Descriptions column={2} size="small">
+            <Descriptions column={screens.md ? 2 : 1} size="small">
               <Descriptions.Item label="Prénom">{lead.firstName ?? "—"}</Descriptions.Item>
               <Descriptions.Item label="Nom">{lead.lastName ?? "—"}</Descriptions.Item>
               <Descriptions.Item label="Email">{lead.email ?? "—"}</Descriptions.Item>

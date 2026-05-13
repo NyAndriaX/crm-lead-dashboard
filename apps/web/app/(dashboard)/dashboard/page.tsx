@@ -15,6 +15,7 @@ import { Pie, Column } from "@ant-design/charts";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
+import { useIsMobile } from "@/lib/responsive";
 
 const { Title, Text } = Typography;
 
@@ -111,6 +112,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [userName, setUserName] = useState("");
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     api.get<{ user: { name: string } }>("/auth/me")
@@ -211,6 +213,7 @@ export default function DashboardPage() {
     {
       title: "Assigné à",
       key: "assignee",
+      responsive: ["md"],
       render: (_, r) => r.assignedTo
         ? <Tag icon={<UserOutlined />}>{r.assignedTo.name}</Tag>
         : <Text type="secondary">—</Text>,
@@ -219,6 +222,7 @@ export default function DashboardPage() {
       title: "Créé le",
       dataIndex: "createdAt",
       key: "createdAt",
+      responsive: ["lg"],
       render: (v: string) => new Date(v).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }),
     },
   ];
@@ -227,23 +231,16 @@ export default function DashboardPage() {
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
 
       {/* ── Bannière de bienvenue ──────────────────────────────────────────── */}
-      <div
-        style={{
-          background: "linear-gradient(135deg, #1677ff 0%, #0950b3 100%)",
-          borderRadius: 16, padding: "28px 32px",
-          display: "flex", justifyContent: "space-between", alignItems: "center",
-          flexWrap: "wrap", gap: 16,
-        }}
-      >
+      <div className="page-hero" style={{ background: "linear-gradient(135deg, #1677ff 0%, #0950b3 100%)" }}>
         <div>
-          <Title level={3} style={{ color: "#fff", margin: 0 }}>
+          <Title level={isMobile ? 4 : 3} style={{ color: "#fff", margin: 0 }}>
             {greeting()}{userName ? `, ${userName}` : ""} 👋
           </Title>
           <Text style={{ color: "rgba(255,255,255,0.8)", marginTop: 4, display: "block" }}>
             {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
           </Text>
         </div>
-        <Space wrap>
+        <div className="page-hero-actions">
           <Link href="/leads">
             <Button icon={<PlusOutlined />} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff" }}>
               Nouveau lead
@@ -254,7 +251,7 @@ export default function DashboardPage() {
               Importer
             </Button>
           </Link>
-        </Space>
+        </div>
       </div>
 
       {/* ── KPI cards ─────────────────────────────────────────────────────── */}
@@ -311,10 +308,10 @@ export default function DashboardPage() {
                 <span>Répartition par statut</span>
               </Space>
             }
-            style={{ height: 380 }}
+            style={{ minHeight: isMobile ? 320 : 380 }}
           >
             {pieData.length > 0
-              ? <Pie {...pieConfig} height={280} />
+              ? <Pie {...pieConfig} height={isMobile ? 220 : 280} />
               : <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 280 }}>
                   <Text type="secondary">Aucune donnée</Text>
                 </div>
@@ -330,9 +327,9 @@ export default function DashboardPage() {
                 <span>Nouveaux leads — 7 derniers jours</span>
               </Space>
             }
-            style={{ height: 380 }}
+            style={{ minHeight: isMobile ? 320 : 380 }}
           >
-            <Column {...colConfig} height={280} />
+            <Column {...colConfig} height={isMobile ? 220 : 280} />
           </Card>
         </Col>
       </Row>
@@ -349,14 +346,17 @@ export default function DashboardPage() {
             }
             extra={<Link href="/leads"><Button type="link" size="small">Voir tous →</Button></Link>}
           >
-            <Table
-              size="small"
-              rowKey="id"
-              columns={cols}
-              dataSource={recentLeads}
-              pagination={false}
-              onRow={(r) => ({ style: { cursor: "pointer" } })}
-            />
+            <div className="page-table-wrap">
+              <Table
+                size="small"
+                rowKey="id"
+                columns={cols}
+                dataSource={recentLeads}
+                pagination={false}
+                scroll={{ x: 720 }}
+                onRow={(r) => ({ onClick: () => window.location.assign(`/leads/${r.id}`), style: { cursor: "pointer" } })}
+              />
+            </div>
           </Card>
         </Col>
 

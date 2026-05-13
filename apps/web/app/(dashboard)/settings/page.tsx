@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Tabs, Card, Typography, Table, Button, Tag, Space, Form, InputNumber, Row, Col,
   Statistic, Badge, Modal, Input, Select, message, Spin, Alert, Popconfirm, List,
-  Progress, Divider, Avatar, Switch, Tooltip,
+  Progress, Divider, Avatar, Tooltip,
 } from "antd";
 import {
   UserOutlined, TrophyOutlined, UploadOutlined, PlusOutlined, EditOutlined,
@@ -19,6 +19,7 @@ import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
 import type { ScoringWeightsInput } from "@/lib/schemas/import";
+import { useIsMobile } from "@/lib/responsive";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -80,8 +81,8 @@ function OverviewTab() {
           { label: "Ce mois", value: stats.leads.newThisMonth, color: "#722ed1", icon: <FireOutlined />, sub: "leads créés" },
           { label: "Utilisateurs actifs", value: stats.users.active, color: "#52c41a", icon: <UserOutlined />, sub: `/ ${stats.users.total} comptes` },
         ].map(({ label, value, color, icon, sub }) => (
-          <Col xs={12} xl={6} key={label}>
-            <Card bodyStyle={{ padding: "20px 24px" }} style={{ borderTop: `3px solid ${color}` }}>
+          <Col xs={24} sm={12} xl={6} key={label}>
+            <Card bodyStyle={{ padding: "16px 18px" }} style={{ borderTop: `3px solid ${color}` }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div>
                   <Text type="secondary" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>{label}</Text>
@@ -258,25 +259,25 @@ function UsersTab() {
       ),
     },
     {
-      title: "Rôle", dataIndex: "role", key: "role", width: 130,
+      title: "Rôle", dataIndex: "role", key: "role", width: 130, responsive: ["sm"],
       render: (v: string) => (
         <Tag color={ROLE_COLORS[v]} style={{ fontWeight: 500 }}>{ROLE_LABELS[v]}</Tag>
       ),
     },
     {
-      title: "Statut", dataIndex: "isActive", key: "isActive", width: 100,
+      title: "Statut", dataIndex: "isActive", key: "isActive", width: 100, responsive: ["md"],
       render: (v: boolean) => v
         ? <Badge status="success" text={<Text style={{ fontSize: 12, color: "#52c41a" }}>Actif</Text>} />
         : <Badge status="error" text={<Text style={{ fontSize: 12, color: "#ff4d4f" }}>Inactif</Text>} />,
     },
     {
-      title: "Dernière connexion", dataIndex: "lastLoginAt", key: "lastLoginAt", width: 170,
+      title: "Dernière connexion", dataIndex: "lastLoginAt", key: "lastLoginAt", width: 170, responsive: ["lg"],
       render: (v) => v
         ? new Date(v).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
         : <Text type="secondary">Jamais connecté</Text>,
     },
     {
-      title: "Membre depuis", dataIndex: "createdAt", key: "createdAt", width: 130,
+      title: "Membre depuis", dataIndex: "createdAt", key: "createdAt", width: 130, responsive: ["xl"],
       render: (v) => new Date(v).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }),
     },
     {
@@ -332,15 +333,18 @@ function UsersTab() {
         </Col>
       </Row>
 
-      <Table
-        rowKey="id"
-        columns={columns}
-        dataSource={users}
-        loading={loading}
-        size="middle"
-        pagination={{ pageSize: 15, showTotal: (t) => `${t} utilisateur(s)` }}
-        rowClassName={(r) => (!r.isActive ? "opacity-50" : "")}
-      />
+      <div className="page-table-wrap">
+        <Table
+          rowKey="id"
+          columns={columns}
+          dataSource={users}
+          loading={loading}
+          size="middle"
+          scroll={{ x: 960 }}
+          pagination={{ pageSize: 15, showTotal: (t) => `${t} utilisateur(s)` }}
+          rowClassName={(r) => (!r.isActive ? "opacity-50" : "")}
+        />
+      </div>
 
       {/* Modale création */}
       <Modal
@@ -557,14 +561,15 @@ function ScoringTab() {
 // ── Page principale ───────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
+  const isMobile = useIsMobile();
+
   return (
     <Space direction="vertical" size={24} style={{ width: "100%" }}>
-      {/* En-tête */}
       <div
+        className="page-hero"
         style={{
           background: "linear-gradient(135deg,#722ed1 0%,#531dab 100%)",
-          borderRadius: 16, padding: "24px 32px",
-          display: "flex", alignItems: "center", gap: 16,
+          alignItems: "center",
         }}
       >
         <div
@@ -578,7 +583,7 @@ export default function SettingsPage() {
           <SettingOutlined />
         </div>
         <div>
-          <Title level={3} style={{ color: "#fff", margin: 0 }}>Administration</Title>
+          <Title level={isMobile ? 4 : 3} style={{ color: "#fff", margin: 0 }}>Administration</Title>
           <Text style={{ color: "rgba(255,255,255,0.75)" }}>
             Gestion des utilisateurs, configuration du scoring et supervision globale
           </Text>
@@ -587,7 +592,9 @@ export default function SettingsPage() {
 
       <Tabs
         defaultActiveKey="overview"
-        size="large"
+        size={isMobile ? "small" : "large"}
+        tabBarGutter={isMobile ? 12 : 24}
+        tabBarStyle={{ marginBottom: 0 }}
         items={[
           {
             key: "overview",

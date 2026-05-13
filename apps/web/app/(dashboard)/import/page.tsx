@@ -21,6 +21,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
 import { IMPORTABLE_FIELD_LABELS, type ImportableField } from "@/lib/schemas/import";
+import { useIsMobile } from "@/lib/responsive";
 
 const { Title, Text, Paragraph } = Typography;
 const { Dragger } = Upload;
@@ -62,6 +63,7 @@ export default function ImportPage() {
   const [history, setHistory] = useState<ImportJob[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMobile = useIsMobile();
 
   const fetchHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -230,9 +232,9 @@ export default function ImportPage() {
           </Space>
         </Card>
 
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => setStep(0)}>Retour</Button>
-          <Button type="primary" icon={<ArrowRightOutlined />} onClick={() => setStep(2)}>
+        <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => setStep(0)} block={isMobile}>Retour</Button>
+          <Button type="primary" icon={<ArrowRightOutlined />} onClick={() => setStep(2)} block={isMobile}>
             Aperçu ({Object.values(mapping).filter(Boolean).length} colonne(s) mappée(s))
           </Button>
         </div>
@@ -276,9 +278,9 @@ export default function ImportPage() {
           />
         </Card>
 
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => setStep(1)}>Modifier le mapping</Button>
-          <Button type="primary" loading={starting} onClick={handleStart}>
+        <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => setStep(1)} block={isMobile}>Modifier le mapping</Button>
+          <Button type="primary" loading={starting} onClick={handleStart} block={isMobile}>
             Lancer l&apos;import ({uploadResult.totalRows} ligne(s))
           </Button>
         </div>
@@ -370,18 +372,22 @@ export default function ImportPage() {
 
   return (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <Title level={3} style={{ margin: 0 }}>Import de leads</Title>
-        <Tooltip title="Actualiser l&apos;historique">
-          <Button icon={<ReloadOutlined />} onClick={() => fetchHistory()} loading={historyLoading} />
-        </Tooltip>
+      <div className="page-toolbar">
+        <Title level={isMobile ? 4 : 3} style={{ margin: 0 }}>Import de leads</Title>
+        <div className="page-toolbar-actions">
+          <Tooltip title="Actualiser l&apos;historique">
+            <Button icon={<ReloadOutlined />} onClick={() => fetchHistory()} loading={historyLoading} />
+          </Tooltip>
+        </div>
       </div>
 
-      <Row gutter={24}>
+      <Row gutter={[16, 24]}>
         <Col xs={24} lg={16}>
           <Steps
             current={step}
-            style={{ marginBottom: 32 }}
+            direction={isMobile ? "vertical" : "horizontal"}
+            size={isMobile ? "small" : "default"}
+            style={{ marginBottom: isMobile ? 20 : 32 }}
             items={[
               { title: "Fichier" },
               { title: "Mapping" },

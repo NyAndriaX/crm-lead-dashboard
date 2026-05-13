@@ -11,6 +11,7 @@ import type { ColumnsType, TablePaginationConfig } from "antd/es/table";
 import type { SorterResult } from "antd/es/table/interface";
 import { api } from "@/lib/client";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
+import { useBreakpoint, useIsMobile } from "@/lib/responsive";
 
 const { Title } = Typography;
 
@@ -48,6 +49,8 @@ export default function LeadsPage() {
   const [createLoading, setCreateLoading] = useState(false);
   const [form] = Form.useForm<CreateLeadForm>();
   const [users, setUsers] = useState<UserLite[]>([]);
+  const isMobile = useIsMobile();
+  const screens = useBreakpoint();
 
   const queryParams = useMemo(
     () => ({ page, pageSize, sort, ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== undefined && v !== "")) }),
@@ -70,11 +73,11 @@ export default function LeadsPage() {
   const columns: ColumnsType<LeadDTO> = [
     { title: "Nom", key: "name", render: (_, r) => [r.firstName, r.lastName].filter(Boolean).join(" ") || "—" },
     { title: "Entreprise", dataIndex: "company", key: "company", sorter: true, render: (v) => v || "—" },
-    { title: "Email", dataIndex: "email", key: "email", render: (v) => v || "—" },
-    { title: "Source", dataIndex: "source", key: "source", render: (v) => v || "—" },
+    { title: "Email", dataIndex: "email", key: "email", responsive: ["md"], render: (v) => v || "—" },
+    { title: "Source", dataIndex: "source", key: "source", responsive: ["lg"], render: (v) => v || "—" },
     { title: "Statut", dataIndex: "status", key: "status", render: (s: keyof typeof STATUS_LABELS) => <Tag color={STATUS_COLORS[s]}>{STATUS_LABELS[s]}</Tag> },
     { title: "Score", dataIndex: "score", key: "score", sorter: true, width: 90 },
-    { title: "Dernière action", dataIndex: "lastActionAt", key: "lastActionAt", sorter: true, render: (v: string | null) => (v ? new Date(v).toLocaleString("fr-FR") : "—") },
+    { title: "Dernière action", dataIndex: "lastActionAt", key: "lastActionAt", sorter: true, responsive: ["sm"], render: (v: string | null) => (v ? new Date(v).toLocaleString("fr-FR") : "—") },
   ];
 
   function onTableChange(pag: TablePaginationConfig, _f: unknown, sorter: SorterResult<LeadDTO> | SorterResult<LeadDTO>[]) {
@@ -132,11 +135,11 @@ export default function LeadsPage() {
 
   return (
     <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <Title level={3} style={{ margin: 0 }}>Leads</Title>
-        <Space wrap>
+      <div className="page-toolbar">
+        <Title level={isMobile ? 4 : 3} style={{ margin: 0 }}>Leads</Title>
+        <div className="page-toolbar-actions">
           <Select
-            allowClear placeholder="Vue sauvegardée" style={{ width: 180 }}
+            allowClear placeholder="Vue sauvegardée" style={{ minWidth: isMobile ? undefined : 180, width: isMobile ? "100%" : 180 }}
             options={views.map((v) => ({ value: v.id, label: v.name }))} onChange={(v) => v && applyView(v)}
           />
           <Button icon={<SaveOutlined />} onClick={saveCurrentView}>Sauvegarder la vue</Button>
@@ -149,26 +152,29 @@ export default function LeadsPage() {
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
             Nouveau lead
           </Button>
-        </Space>
+        </div>
       </div>
 
-      <Space wrap>
-        <Input.Search placeholder="Rechercher (nom, entreprise, notes)…" allowClear style={{ width: 300 }} onSearch={(v) => setFilter("q", v.trim() || undefined)} />
+      <div className="page-filters">
+        <Input.Search placeholder="Rechercher (nom, entreprise, notes)…" allowClear onSearch={(v) => setFilter("q", v.trim() || undefined)} />
         <Select
-          allowClear placeholder="Statut" style={{ width: 160 }}
+          allowClear placeholder="Statut"
           options={Object.entries(STATUS_LABELS).map(([v, l]) => ({ value: v, label: l }))}
           onChange={(v) => setFilter("status", v)}
         />
-        <Input placeholder="Source" allowClear style={{ width: 140 }} onChange={(e) => setFilter("source", e.target.value || undefined)} />
-        <InputNumber placeholder="Score min" min={0} max={100} style={{ width: 110 }} onChange={(v) => setFilter("scoreMin", v ?? undefined)} />
+        <Input placeholder="Source" allowClear onChange={(e) => setFilter("source", e.target.value || undefined)} />
+        <InputNumber placeholder="Score min" min={0} max={100} onChange={(v) => setFilter("scoreMin", v ?? undefined)} />
         <Button icon={<ReloadOutlined />} onClick={() => fetchLeads()}>Rafraîchir</Button>
-      </Space>
+      </div>
 
-      <Table<LeadDTO>
-        rowKey="id" columns={columns} dataSource={rows} loading={loading} onChange={onTableChange}
-        onRow={(r) => ({ onClick: () => router.push(`/leads/${r.id}`), style: { cursor: "pointer" } })}
-        pagination={{ current: page, pageSize, total, showSizeChanger: true, pageSizeOptions: [50, 100, 200], showTotal: (t) => `${t} lead${t > 1 ? "s" : ""}` }}
-      />
+      <div className="page-table-wrap">
+        <Table<LeadDTO>
+          rowKey="id" columns={columns} dataSource={rows} loading={loading} onChange={onTableChange}
+          scroll={{ x: 960 }}
+          onRow={(r) => ({ onClick: () => router.push(`/leads/${r.id}`), style: { cursor: "pointer" } })}
+          pagination={{ current: page, pageSize, total, showSizeChanger: true, pageSizeOptions: [50, 100, 200], showTotal: (t) => `${t} lead${t > 1 ? "s" : ""}` }}
+        />
+      </div>
 
       {/* ── Modale de création de lead ─────────────────────────────────────── */}
       <Modal
@@ -179,24 +185,25 @@ export default function LeadsPage() {
         confirmLoading={createLoading}
         okText="Créer"
         cancelText="Annuler"
-        width={700}
+        width={screens.md ? 700 : "100%"}
+        style={{ top: screens.md ? 100 : 16, maxWidth: "calc(100vw - 32px)" }}
         destroyOnClose
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Row gutter={16}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="firstName" label="Prénom">
                 <Input placeholder="Jean" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="lastName" label="Nom">
                 <Input placeholder="Dupont" />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={16}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item
                 name="email"
                 label="Email"
@@ -205,19 +212,19 @@ export default function LeadsPage() {
                 <Input placeholder="jean.dupont@entreprise.com" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="phone" label="Téléphone">
                 <Input placeholder="+33 6 00 00 00 00" />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={16}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="company" label="Entreprise">
                 <Input placeholder="Acme SA" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item
                 name="website"
                 label="Site web"
@@ -228,29 +235,29 @@ export default function LeadsPage() {
             </Col>
           </Row>
           <Row gutter={16}>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="sector" label="Secteur">
                 <Input placeholder="Tech, Finance…" />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="city" label="Ville">
                 <Input placeholder="Paris" />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} sm={8}>
               <Form.Item name="country" label="Pays">
                 <Input placeholder="France" />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={16}>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="source" label="Source">
                 <Input placeholder="LinkedIn, salon, formulaire…" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} sm={12}>
               <Form.Item name="status" label="Statut" initialValue="NOUVEAU">
                 <Select options={Object.entries(STATUS_LABELS).map(([v, l]) => ({ value: v, label: l }))} />
               </Form.Item>

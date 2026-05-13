@@ -22,7 +22,7 @@ export default function LoginPage() {
     setError(null);
     try {
       await api.post("/auth/login", values);
-      router.replace(params.get("next") || "/leads");
+      router.replace(params.get("next") || "/dashboard");
       router.refresh();
     } catch (e) {
       const code = (e as AxiosError<{ error?: string; message?: string }>).response?.data?.error;
@@ -39,8 +39,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f0f2f5" }}>
-      <Card style={{ width: 380 }}>
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f0f2f5", padding: "16px" }}>
+      <Card style={{ width: "100%", maxWidth: 420 }}>
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <Title level={3} style={{ marginBottom: 0 }}>CRM Lead Dashboard</Title>
           <Text type="secondary">Connexion</Text>

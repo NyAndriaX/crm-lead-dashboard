@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Layout, Menu, Dropdown, Avatar, Space, Typography, theme as antdTheme, Badge, Divider, Tooltip,
+  Layout, Menu, Dropdown, Avatar, Space, Typography, theme as antdTheme, Badge, Divider, Tooltip, Drawer,
 } from "antd";
 import {
   DashboardOutlined, TeamOutlined, ImportOutlined, MailOutlined, MessageOutlined,
@@ -13,6 +13,7 @@ import {
   BellOutlined, HomeOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
+import { useBreakpoint, useIsMobile } from "@/lib/responsive";
 import type { MenuProps } from "antd";
 
 const { Header, Sider, Content } = Layout;
@@ -32,99 +33,69 @@ const ROLE_LABELS: Record<string, string> = {
   ADMIN: "Administrateur", MANAGER: "Manager", COMMERCIAL: "Commercial", LECTEUR: "Lecteur",
 };
 
-// ── Navigation groupée ────────────────────────────────────────────────────────
-
 function buildNav(role: ShellUser["role"], collapsed: boolean): MenuProps["items"] {
-  const isAdmin = role === "ADMIN";
   const isManager = role === "ADMIN" || role === "MANAGER";
 
-  const groups: MenuProps["items"] = [
-    // ── Accueil ──────────────────────────────────────────────────────────
+  return [
     {
       key: "/dashboard",
       icon: <HomeOutlined />,
       label: <Link href="/dashboard">Tableau de bord</Link>,
     },
-
-    // ── Séparateur ───────────────────────────────────────────────────────
     { type: "divider" },
-
-    // ── Prospection ──────────────────────────────────────────────────────
     ...(collapsed ? [] : [{ type: "group" as const, label: <span style={{ fontSize: 10, letterSpacing: 1, textTransform: "uppercase", opacity: 0.5 }}>Prospection</span>, children: [] }]),
-
-    {
-      key: "/leads",
-      icon: <TeamOutlined />,
-      label: <Link href="/leads">Leads</Link>,
-    },
-    {
-      key: "/import",
-      icon: <ImportOutlined />,
-      label: <Link href="/import">Import</Link>,
-    },
-
-    // ── Séparateur ───────────────────────────────────────────────────────
+    { key: "/leads", icon: <TeamOutlined />, label: <Link href="/leads">Leads</Link> },
+    { key: "/import", icon: <ImportOutlined />, label: <Link href="/import">Import</Link> },
     { type: "divider" },
-
-    // ── Communication ────────────────────────────────────────────────────
     ...(collapsed ? [] : [{ type: "group" as const, label: <span style={{ fontSize: 10, letterSpacing: 1, textTransform: "uppercase", opacity: 0.5 }}>Communication</span>, children: [] }]),
-
-    {
-      key: "/campaigns",
-      icon: <MailOutlined />,
-      label: <Link href="/campaigns">Emailing</Link>,
-    },
-    {
-      key: "/inbox",
-      icon: <MessageOutlined />,
-      label: <Link href="/inbox">Réponses</Link>,
-    },
-    {
-      key: "/sequences",
-      icon: <RetweetOutlined />,
-      label: <Link href="/sequences">Relances</Link>,
-    },
-
-    // ── Séparateur ───────────────────────────────────────────────────────
+    { key: "/campaigns", icon: <MailOutlined />, label: <Link href="/campaigns">Emailing</Link> },
+    { key: "/inbox", icon: <MessageOutlined />, label: <Link href="/inbox">Réponses</Link> },
+    { key: "/sequences", icon: <RetweetOutlined />, label: <Link href="/sequences">Relances</Link> },
     { type: "divider" },
-
-    // ── Gestion ──────────────────────────────────────────────────────────
     ...(collapsed ? [] : [{ type: "group" as const, label: <span style={{ fontSize: 10, letterSpacing: 1, textTransform: "uppercase", opacity: 0.5 }}>Gestion</span>, children: [] }]),
-
-    {
-      key: "/pipeline",
-      icon: <ProjectOutlined />,
-      label: <Link href="/pipeline">Pipeline</Link>,
-    },
-    {
-      key: "/analytics",
-      icon: <BarChartOutlined />,
-      label: <Link href="/analytics">Analytics</Link>,
-    },
-
-    // ── Administration (Admin/Manager uniquement) ─────────────────────────
+    { key: "/pipeline", icon: <ProjectOutlined />, label: <Link href="/pipeline">Pipeline</Link> },
+    { key: "/analytics", icon: <BarChartOutlined />, label: <Link href="/analytics">Analytics</Link> },
     ...(isManager ? [
       { type: "divider" as const },
       ...(collapsed ? [] : [{ type: "group" as const, label: <span style={{ fontSize: 10, letterSpacing: 1, textTransform: "uppercase", opacity: 0.5 }}>Administration</span>, children: [] }]),
-      {
-        key: "/settings",
-        icon: <SettingOutlined />,
-        label: <Link href="/settings">Configuration</Link>,
-        style: isAdmin ? {} : {},
-      },
+      { key: "/settings", icon: <SettingOutlined />, label: <Link href="/settings">Configuration</Link> },
     ] : []),
   ];
-
-  return groups;
 }
 
-// ── Shell principal ───────────────────────────────────────────────────────────
+function ShellUserCard({ user, initials }: { user: ShellUser; initials: string }) {
+  return (
+    <Space size={8} style={{ width: "100%" }}>
+      <Avatar size={32} style={{ background: ROLE_COLORS[user.role], flexShrink: 0, fontSize: 12, fontWeight: 600 }}>
+        {initials}
+      </Avatar>
+      <div style={{ overflow: "hidden" }}>
+        <Text style={{ color: "#fff", fontSize: 12, fontWeight: 600, display: "block" }} ellipsis>
+          {user.name}
+        </Text>
+        <span
+          style={{
+            fontSize: 10, fontWeight: 500, padding: "1px 6px", borderRadius: 4,
+            background: ROLE_COLORS[user.role] + "33",
+            color: ROLE_COLORS[user.role],
+            letterSpacing: 0.3,
+          }}
+        >
+          {ROLE_LABELS[user.role]}
+        </span>
+      </div>
+    </Space>
+  );
+}
 
 export default function DashboardShell({ user, children }: { user: ShellUser; children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const { token } = antdTheme.useToken();
+  const screens = useBreakpoint();
+  const isMobile = useIsMobile();
 
   const selectedKey = (
     pathname.startsWith("/settings") ? "/settings" :
@@ -138,6 +109,14 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
     "/dashboard"
   );
 
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!isMobile) setDrawerOpen(false);
+  }, [isMobile]);
+
   async function logout() {
     try { await api.post("/auth/logout"); } finally {
       router.replace("/login");
@@ -146,112 +125,121 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
   }
 
   const initials = user.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+  const navItems = buildNav(user.role, isMobile ? false : collapsed);
+  const contentMargin = isMobile ? 12 : 24;
+  const headerPadding = isMobile ? "0 12px" : "0 24px";
+
+  const menu = (
+    <Menu
+      theme="dark"
+      mode="inline"
+      selectedKeys={[selectedKey]}
+      items={navItems}
+      style={{ border: "none", paddingTop: 8 }}
+      onClick={() => { if (isMobile) setDrawerOpen(false); }}
+    />
+  );
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
-
-      {/* ── Sidebar ─────────────────────────────────────────────────────── */}
-      <Sider
-        collapsible
-        collapsed={collapsed}
-        onCollapse={setCollapsed}
-        trigger={null}
-        width={220}
-        style={{
-          boxShadow: "2px 0 8px rgba(0,0,0,0.06)",
-          overflow: "auto",
-          position: "sticky",
-          top: 0,
-          height: "100vh",
-        }}
-      >
-        {/* Logo */}
-        <div
+      {!isMobile && (
+        <Sider
+          collapsible
+          collapsed={collapsed}
+          onCollapse={setCollapsed}
+          trigger={null}
+          width={220}
+          collapsedWidth={72}
           style={{
-            height: 56,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: collapsed ? "center" : "flex-start",
-            padding: collapsed ? "0" : "0 20px",
-            borderBottom: "1px solid rgba(255,255,255,0.08)",
-            overflow: "hidden",
-            whiteSpace: "nowrap",
+            boxShadow: "2px 0 8px rgba(0,0,0,0.06)",
+            overflow: "auto",
+            position: "sticky",
+            top: 0,
+            height: "100vh",
           }}
         >
           <div
             style={{
-              width: 28, height: 28, borderRadius: 8,
-              background: "linear-gradient(135deg,#1677ff,#0950b3)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              flexShrink: 0,
+              height: 56,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: collapsed ? "center" : "flex-start",
+              padding: collapsed ? "0" : "0 20px",
+              borderBottom: "1px solid rgba(255,255,255,0.08)",
+              overflow: "hidden",
+              whiteSpace: "nowrap",
             }}
           >
-            <DashboardOutlined style={{ color: "#fff", fontSize: 14 }} />
-          </div>
-          {!collapsed && (
-            <Text
-              strong
+            <div
               style={{
-                color: "#fff", marginLeft: 10, fontSize: 14,
-                letterSpacing: 0.3,
+                width: 28, height: 28, borderRadius: 8,
+                background: "linear-gradient(135deg,#1677ff,#0950b3)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexShrink: 0,
               }}
             >
-              CRM Dashboard
-            </Text>
+              <DashboardOutlined style={{ color: "#fff", fontSize: 14 }} />
+            </div>
+            {!collapsed && (
+              <Text strong style={{ color: "#fff", marginLeft: 10, fontSize: 14, letterSpacing: 0.3 }}>
+                CRM Dashboard
+              </Text>
+            )}
+          </div>
+          {menu}
+          {!collapsed && (
+            <div
+              style={{
+                position: "absolute", bottom: 48, left: 0, right: 0,
+                padding: "12px 16px",
+                borderTop: "1px solid rgba(255,255,255,0.08)",
+                background: "rgba(0,0,0,0.15)",
+              }}
+            >
+              <ShellUserCard user={user} initials={initials} />
+            </div>
           )}
-        </div>
+        </Sider>
+      )}
 
-        {/* Menu */}
-        <Menu
-          theme="dark"
-          mode="inline"
-          selectedKeys={[selectedKey]}
-          items={buildNav(user.role, collapsed)}
-          style={{ border: "none", paddingTop: 8 }}
-        />
-
-        {/* User info en bas */}
-        {!collapsed && (
+      {isMobile && (
+        <Drawer
+          placement="left"
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          width={280}
+          styles={{ body: { padding: 0, background: "#001529" } }}
+          title={null}
+          closeIcon={null}
+        >
           <div
             style={{
-              position: "absolute", bottom: 48, left: 0, right: 0,
+              height: 56,
+              display: "flex",
+              alignItems: "center",
+              padding: "0 20px",
+              borderBottom: "1px solid rgba(255,255,255,0.08)",
+            }}
+          >
+            <Text strong style={{ color: "#fff", fontSize: 14 }}>CRM Dashboard</Text>
+          </div>
+          {menu}
+          <div
+            style={{
               padding: "12px 16px",
               borderTop: "1px solid rgba(255,255,255,0.08)",
               background: "rgba(0,0,0,0.15)",
             }}
           >
-            <Space size={8} style={{ width: "100%" }}>
-              <Avatar
-                size={32}
-                style={{ background: ROLE_COLORS[user.role], flexShrink: 0, fontSize: 12, fontWeight: 600 }}
-              >
-                {initials}
-              </Avatar>
-              <div style={{ overflow: "hidden" }}>
-                <Text style={{ color: "#fff", fontSize: 12, fontWeight: 600, display: "block" }} ellipsis>
-                  {user.name}
-                </Text>
-                <span
-                  style={{
-                    fontSize: 10, fontWeight: 500, padding: "1px 6px", borderRadius: 4,
-                    background: ROLE_COLORS[user.role] + "33",
-                    color: ROLE_COLORS[user.role],
-                    letterSpacing: 0.3,
-                  }}
-                >
-                  {ROLE_LABELS[user.role]}
-                </span>
-              </div>
-            </Space>
+            <ShellUserCard user={user} initials={initials} />
           </div>
-        )}
-      </Sider>
+        </Drawer>
+      )}
 
       <Layout>
-        {/* ── Header ────────────────────────────────────────────────────── */}
         <Header
           style={{
-            padding: "0 24px",
+            padding: headerPadding,
             background: token.colorBgContainer,
             borderBottom: `1px solid ${token.colorBorderSecondary}`,
             display: "flex",
@@ -263,15 +251,13 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
             boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
           }}
         >
-          {/* Bouton fold/unfold */}
           <div
-            onClick={() => setCollapsed(!collapsed)}
+            onClick={() => (isMobile ? setDrawerOpen(true) : setCollapsed(!collapsed))}
             style={{ cursor: "pointer", fontSize: 16, color: token.colorTextSecondary, padding: "4px 8px", borderRadius: 6 }}
           >
-            {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            {isMobile || collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
           </div>
 
-          {/* Actions droite */}
           <Space size={8}>
             <Tooltip title="Notifications (à venir)">
               <Badge count={0} dot>
@@ -325,26 +311,26 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
               placement="bottomRight"
             >
               <Space style={{ cursor: "pointer" }} size={8}>
-                <Avatar
-                  size={34}
-                  style={{ background: ROLE_COLORS[user.role], fontSize: 12, fontWeight: 600 }}
-                >
+                <Avatar size={34} style={{ background: ROLE_COLORS[user.role], fontSize: 12, fontWeight: 600 }}>
                   {initials}
                 </Avatar>
-                <div style={{ lineHeight: 1.3 }}>
-                  <Text strong style={{ fontSize: 13, display: "block" }}>{user.name.split(" ")[0]}</Text>
-                  <Text type="secondary" style={{ fontSize: 11 }}>{ROLE_LABELS[user.role]}</Text>
-                </div>
+                {!screens.xs && (
+                  <div style={{ lineHeight: 1.3 }}>
+                    <Text strong style={{ fontSize: 13, display: "block" }}>{user.name.split(" ")[0]}</Text>
+                    <Text type="secondary" style={{ fontSize: 11 }}>{ROLE_LABELS[user.role]}</Text>
+                  </div>
+                )}
               </Space>
             </Dropdown>
           </Space>
         </Header>
 
-        {/* ── Contenu ───────────────────────────────────────────────────── */}
         <Content
           style={{
-            margin: 24,
+            margin: contentMargin,
             minHeight: "calc(100vh - 56px - 48px)",
+            maxWidth: "100%",
+            overflowX: "hidden",
           }}
         >
           {children}
