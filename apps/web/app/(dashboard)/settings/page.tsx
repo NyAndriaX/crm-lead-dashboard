@@ -62,6 +62,25 @@ interface SmtpFormValues {
   isActive: boolean;
 }
 
+interface TemplateRow {
+  id: string;
+  name: string;
+  category?: string | null;
+  subject: string;
+  bodyHtml: string;
+  variables: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface TemplateFormValues {
+  name: string;
+  category?: string;
+  subject: string;
+  bodyHtml: string;
+  variables: string;
+}
+
 interface DnsRecordCheckResult {
   found: boolean;
   record?: string;
@@ -454,16 +473,22 @@ function UsersTab() {
 
 function EmailingTab() {
   const [configs, setConfigs] = useState<SmtpConfigRow[]>([]);
+  const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [templateLoading, setTemplateLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [templateSaving, setTemplateSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [dnsChecking, setDnsChecking] = useState(false);
   const [dnsDomain, setDnsDomain] = useState("");
   const [dnsSelector, setDnsSelector] = useState("");
   const [dnsResult, setDnsResult] = useState<SmtpDnsCheckResult | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [editingConfig, setEditingConfig] = useState<SmtpConfigRow | null>(null);
+  const [editingTemplate, setEditingTemplate] = useState<TemplateRow | null>(null);
   const [form] = Form.useForm<SmtpFormValues>();
+  const [templateForm] = Form.useForm<TemplateFormValues>();
 
   const fetchConfigs = useCallback(async () => {
     setLoading(true);
@@ -478,7 +503,20 @@ function EmailingTab() {
     }
   }, []);
 
-  useEffect(() => { void fetchConfigs(); }, [fetchConfigs]);
+  const fetchTemplates = useCallback(async () => {
+    setTemplateLoading(true);
+    try {
+      const { data } = await api.get<{ data: TemplateRow[] }>('/templates');
+      setTemplates(data.data);
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Impossible de charger les templates email.';
+      message.error(msg);
+    } finally {
+      setTemplateLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void fetchConfigs(); void fetchTemplates(); }, [fetchConfigs, fetchTemplates]);
 
   function openCreate() {
     setEditingConfig(null);
@@ -563,6 +601,68 @@ function EmailingTab() {
     }
   }
 
+  async function openTemplateCreate() {
+    setEditingTemplate(null);
+    templateForm.resetFields();
+    templateForm.setFieldsValue({ variables: '' });
+    setTemplateModalOpen(true);
+  }
+
+  async function openTemplateEdit(template: TemplateRow) {
+    setEditingTemplate(template);
+    templateForm.setFieldsValue({
+      name: template.name,
+      category: template.category ?? undefined,
+      subject: template.subject,
+      bodyHtml: template.bodyHtml,
+      variables: template.variables.join(', '),
+    });
+    setTemplateModalOpen(true);
+  }
+
+  async function saveTemplate() {
+    const values = await templateForm.validateFields();
+    const payload = {
+      name: values.name,
+      category: values.category?.trim() || undefined,
+      subject: values.subject,
+      bodyHtml: values.bodyHtml,
+      variables: (values.variables ?? '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+    };
+
+    setTemplateSaving(true);
+    try {
+      if (editingTemplate) {
+        await api.put(`/templates/${editingTemplate.id}`, payload);
+        message.success('Template mis à jour');
+      } else {
+        await api.post('/templates', payload);
+        message.success('Template créé');
+      }
+      setTemplateModalOpen(false);
+      void fetchTemplates();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de l’enregistrement du template';
+      message.error(msg);
+    } finally {
+      setTemplateSaving(false);
+    }
+  }
+
+  async function deleteTemplate(template: TemplateRow) {
+    try {
+      await api.delete(`/templates/${template.id}`);
+      message.success('Template supprimé');
+      void fetchTemplates();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de la suppression du template';
+      message.error(msg);
+    }
+  }
+
   async function checkDnsRecords() {
     if (!dnsDomain.trim()) {
       message.error('Veuillez saisir un domaine pour la vérification DNS.');
@@ -603,6 +703,36 @@ function EmailingTab() {
           <Popconfirm
             title={`Supprimer ${row.label} ?`}
             onConfirm={() => void deleteConfig(row)}
+            okText="Supprimer"
+            cancelText="Annuler"
+          >
+            <Button size="small" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  const templateColumns: ColumnsType<TemplateRow> = [
+    { title: 'Nom', dataIndex: 'name', key: 'name', ellipsis: true },
+    { title: 'Catégorie', dataIndex: 'category', key: 'category', ellipsis: true },
+    { title: 'Sujet', dataIndex: 'subject', key: 'subject', ellipsis: true },
+    {
+      title: 'Variables', dataIndex: 'variables', key: 'variables', ellipsis: true,
+      render: (value: string[]) => value.length > 0 ? value.join(', ') : 'Aucune',
+    },
+    {
+      title: 'Mis à jour', dataIndex: 'updatedAt', key: 'updatedAt', width: 150,
+      render: (value: string) => new Date(value).toLocaleDateString('fr-FR'),
+    },
+    {
+      title: '', key: 'actions', width: 150,
+      render: (_, row) => (
+        <Space>
+          <Button size="small" onClick={() => void openTemplateEdit(row)}>Modifier</Button>
+          <Popconfirm
+            title={`Supprimer ${row.name} ?`}
+            onConfirm={() => void deleteTemplate(row)}
             okText="Supprimer"
             cancelText="Annuler"
           >
@@ -702,6 +832,36 @@ function EmailingTab() {
         </Space>
       </Card>
 
+      <Card title="Éditeur de templates email" style={{ width: '100%' }}>
+        <Row gutter={[16, 16]} align="middle" justify="space-between">
+          <Col xs={24} sm={16}>
+            <Space direction="vertical" size={4}>
+              <Text type="secondary">
+                Créez et gérez les templates HTML utilisés pour les campagnes d’emailing.
+              </Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Utilisez des variables comme <Text code>{'{firstName}'}</Text> dans le corps du message.
+              </Text>
+            </Space>
+          </Col>
+          <Col xs={24} sm={8} style={{ textAlign: 'right' }}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => void openTemplateCreate()}>
+              Nouveau template
+            </Button>
+          </Col>
+        </Row>
+
+        <Table
+          rowKey="id"
+          columns={templateColumns}
+          dataSource={templates}
+          loading={templateLoading}
+          pagination={{ pageSize: 8, showTotal: (total) => `${total} template(s)` }}
+          scroll={{ x: 900 }}
+          style={{ marginTop: 16 }}
+        />
+      </Card>
+
       <Modal
         title={<Space><MailOutlined /><span>{editingConfig ? 'Modifier' : 'Nouvelle'} configuration SMTP</span></Space>}
         open={modalOpen}
@@ -771,6 +931,57 @@ function EmailingTab() {
               {editingConfig ? 'Enregistrer' : 'Créer'}
             </Button>
           </Space>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={<Space><MailOutlined /><span>{editingTemplate ? 'Modifier' : 'Nouveau'} template email</span></Space>}
+        open={templateModalOpen}
+        onOk={() => void saveTemplate()}
+        onCancel={() => { setTemplateModalOpen(false); templateForm.resetFields(); setEditingTemplate(null); }}
+        confirmLoading={templateSaving}
+        width={800}
+        okText={editingTemplate ? 'Enregistrer' : 'Créer'}
+      >
+        <Form form={templateForm} layout="vertical" initialValues={{ variables: '' }}>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="name" label="Nom du template" rules={[{ required: true, message: 'Nom requis' }]}> 
+                <Input placeholder="Ex: Relance 1" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="category" label="Catégorie" rules={[{ max: 100 }]}> 
+                <Input placeholder="Ex: Prospect" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24}>
+              <Form.Item name="subject" label="Sujet" rules={[{ required: true, message: 'Sujet requis' }]}> 
+                <Input placeholder="Objet de l'email" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24}>
+              <Form.Item name="bodyHtml" label="Corps HTML" rules={[{ required: true, message: 'Corps requis' }]}> 
+                <Input.TextArea rows={10} placeholder="HTML du message, utilisez {{firstName}}..." />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24}>
+              <Form.Item name="variables" label="Variables" help="Séparez les variables par des virgules (ex: firstName, company)."> 
+                <Input placeholder="firstName, company" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Card type="inner" title="Aperçu" size="small" style={{ marginTop: 16 }}>
+            <div style={{ minHeight: 120, padding: 12, background: '#fafafa', borderRadius: 6 }}>
+              <div dangerouslySetInnerHTML={{ __html: templateForm.getFieldValue('bodyHtml') ?? '<em>Aperçu du HTML ici</em>' }} />
+            </div>
+          </Card>
         </Form>
       </Modal>
     </Space>
