@@ -30,6 +30,11 @@ import {
   SEGMENT_FIXTURES,
   BLACKLIST_FIXTURES,
   API_CREDIT_FIXTURES,
+  SMTP_CONFIG_FIXTURES,
+  IMAP_CONFIG_FIXTURES,
+  INBOX_MESSAGE_FIXTURES,
+  SEQUENCE_FIXTURES,
+  SEQUENCE_LEAD_FIXTURES,
 } from "./seed/fixtures.mjs";
 import { computeScore, SCORING_WEIGHTS } from "./seed/scoring.mjs";
 
@@ -169,6 +174,35 @@ async function resetDemoData() {
   await prisma.auditLog.deleteMany({
     where: { action: { in: ["auth.login", "user.create", "scoring.update", "import.start", "lead.assign", "lead.update", "lead.status_change", "lead.note", "view.create"] } },
   });
+
+  // Réponses / Relances (R-01 / RL-01) — purge des entités de démo.
+  // InboxMessage orphans (déjà supprimés via leadIds plus haut pour ceux liés à un lead)
+  const demoMessageIds = INBOX_MESSAGE_FIXTURES.map((m) => m.messageId);
+  if (demoMessageIds.length > 0) {
+    await prisma.inboxMessage.deleteMany({ where: { messageId: { in: demoMessageIds } } });
+  }
+  // Séquences de démo (par nom)
+  const demoSequenceNames = SEQUENCE_FIXTURES.map((s) => s.name);
+  if (demoSequenceNames.length > 0) {
+    const demoSeqs = await prisma.sequence.findMany({
+      where: { name: { in: demoSequenceNames } },
+      select: { id: true },
+    });
+    const seqIds = demoSeqs.map((s) => s.id);
+    if (seqIds.length > 0) {
+      await prisma.sequenceLead.deleteMany({ where: { sequenceId: { in: seqIds } } });
+      await prisma.sequence.deleteMany({ where: { id: { in: seqIds } } });
+    }
+  }
+  // Comptes SMTP / IMAP de démo (par label)
+  const demoSmtpLabels = SMTP_CONFIG_FIXTURES.map((c) => c.label);
+  if (demoSmtpLabels.length > 0) {
+    await prisma.smtpConfig.deleteMany({ where: { label: { in: demoSmtpLabels } } });
+  }
+  const demoImapLabels = IMAP_CONFIG_FIXTURES.map((c) => c.label);
+  if (demoImapLabels.length > 0) {
+    await prisma.imapConfig.deleteMany({ where: { label: { in: demoImapLabels } } });
+  }
 }
 
 async function seedLeads(users) {
@@ -501,6 +535,152 @@ async function seedApiCredits() {
   }
 }
 
+// ── SMTP / IMAP (M-01 + R-01) ────────────────────────────────────────────────
+async function seedSmtpConfigs() {
+  for (const cfg of SMTP_CONFIG_FIXTURES) {
+    const existing = await prisma.smtpConfig.findFirst({ where: { label: cfg.label } });
+    const data = {
+      label: cfg.label,
+      host: cfg.host,
+      port: cfg.port,
+      loginEnc: encryptOrNull(cfg.login),
+      passwordEnc: encryptOrNull(cfg.password),
+      fromName: cfg.fromName ?? null,
+      fromEmail: cfg.fromEmail ?? null,
+      dailyLimit: cfg.dailyLimit ?? 200,
+      isActive: cfg.isActive ?? true,
+    };
+    if (existing) {
+      await prisma.smtpConfig.update({ where: { id: existing.id }, data });
+    } else {
+      await prisma.smtpConfig.create({ data });
+    }
+  }
+}
+
+async function seedImapConfigs() {
+  for (const cfg of IMAP_CONFIG_FIXTURES) {
+    const existing = await prisma.imapConfig.findFirst({ where: { label: cfg.label } });
+    const data = {
+      label: cfg.label,
+      host: cfg.host,
+      port: cfg.port,
+      loginEnc: encryptOrNull(cfg.login),
+      passwordEnc: encryptOrNull(cfg.password),
+      isActive: cfg.isActive ?? true,
+      lastSyncAt: cfg.lastSyncDaysAgo != null ? daysAgo(cfg.lastSyncDaysAgo) : null,
+    };
+    if (existing) {
+      await prisma.imapConfig.update({ where: { id: existing.id }, data });
+    } else {
+      await prisma.imapConfig.create({ data });
+    }
+  }
+}
+
+// ── Inbox (R-01, R-02, R-07) ────────────────────────────────────────────────
+async function seedInboxMessages() {
+  // Pré-résolution leadEmail → leadId via emailHash (évite N requêtes).
+  const leadEmails = [...new Set(INBOX_MESSAGE_FIXTURES.map((m) => m.leadEmail).filter(Boolean))];
+  const hashes = leadEmails.map((e) => emailHash(e));
+  const leads = await prisma.lead.findMany({
+    where: { emailHash: { in: hashes } },
+    select: { id: true, emailHash: true },
+  });
+  const leadIdByHash = new Map(leads.map((l) => [l.emailHash, l.id]));
+
+  for (const msg of INBOX_MESSAGE_FIXTURES) {
+    const leadId = msg.leadEmail ? leadIdByHash.get(emailHash(msg.leadEmail)) ?? null : null;
+    const existing = await prisma.inboxMessage.findFirst({ where: { messageId: msg.messageId } });
+    const receivedAt = daysAgo(msg.daysAgo ?? 0);
+    const data = {
+      leadId,
+      messageId: msg.messageId,
+      inReplyTo: msg.inReplyTo ?? null,
+      direction: msg.direction,
+      fromEnc: encryptOrNull(msg.from),
+      toEnc: encryptOrNull(msg.to),
+      subject: msg.subject ?? null,
+      bodyText: msg.bodyText ?? null,
+      bodyHtml: msg.bodyHtml ?? null,
+      isAutoReply: msg.isAutoReply ?? false,
+      isRead: msg.isRead ?? false,
+      receivedAt,
+    };
+    if (existing) {
+      await prisma.inboxMessage.update({ where: { id: existing.id }, data });
+    } else {
+      await prisma.inboxMessage.create({ data });
+    }
+  }
+}
+
+// ── Sequences (RL-01, RL-02) ────────────────────────────────────────────────
+async function seedSequences() {
+  // Map templateName → templateId
+  const templates = await prisma.template.findMany({ select: { id: true, name: true } });
+  const tplIdByName = new Map(templates.map((t) => [t.name, t.id]));
+
+  for (const seq of SEQUENCE_FIXTURES) {
+    const steps = seq.steps.map((s) => ({
+      delayDays: s.delayDays,
+      templateId: s.templateRef ? tplIdByName.get(s.templateRef) ?? null : null,
+      subject: s.subject ?? null,
+      bodyHtml: s.bodyHtml ?? null,
+      stopOnReply: s.stopOnReply !== false,
+    }));
+    const data = {
+      name: seq.name,
+      steps,
+      maxSteps: seq.maxSteps ?? null,
+      isPaused: seq.isPaused ?? false,
+    };
+    const existing = await prisma.sequence.findFirst({ where: { name: seq.name } });
+    if (existing) {
+      await prisma.sequence.update({ where: { id: existing.id }, data });
+    } else {
+      await prisma.sequence.create({ data });
+    }
+  }
+}
+
+async function seedSequenceLeads() {
+  const sequences = await prisma.sequence.findMany({ select: { id: true, name: true } });
+  const seqIdByName = new Map(sequences.map((s) => [s.name, s.id]));
+  const leadEmails = [...new Set(SEQUENCE_LEAD_FIXTURES.map((sl) => sl.leadEmail))];
+  const hashes = leadEmails.map((e) => emailHash(e));
+  const leads = await prisma.lead.findMany({
+    where: { emailHash: { in: hashes } },
+    select: { id: true, emailHash: true },
+  });
+  const leadIdByHash = new Map(leads.map((l) => [l.emailHash, l.id]));
+
+  for (const sl of SEQUENCE_LEAD_FIXTURES) {
+    const sequenceId = seqIdByName.get(sl.sequenceName);
+    const leadId = leadIdByHash.get(emailHash(sl.leadEmail));
+    if (!sequenceId || !leadId) continue;
+
+    const nextSendAt = sl.nextSendDaysAhead == null ? null
+      : new Date(Date.now() + sl.nextSendDaysAhead * 24 * 3600 * 1000);
+
+    const existing = await prisma.sequenceLead.findFirst({ where: { sequenceId, leadId } });
+    const data = {
+      sequenceId,
+      leadId,
+      currentStep: sl.currentStep ?? 0,
+      sentCount: sl.sentCount ?? 0,
+      status: sl.status ?? "active",
+      stoppedReason: sl.stoppedReason ?? null,
+      nextSendAt,
+    };
+    if (existing) {
+      await prisma.sequenceLead.update({ where: { id: existing.id }, data });
+    } else {
+      await prisma.sequenceLead.create({ data });
+    }
+  }
+}
+
 async function seedPipelineAssignment(leadRows) {
   // Récupère les stages indexés par nom.
   const stages = await prisma.pipelineStage.findMany({ orderBy: { order: "asc" } });
@@ -571,6 +751,11 @@ async function main() {
   await seedSegments();
   await seedBlacklist();
   await seedApiCredits();
+  await seedSmtpConfigs();
+  await seedImapConfigs();
+  await seedInboxMessages();
+  await seedSequences();
+  await seedSequenceLeads();
 
   const byStatus = leadRows.reduce((acc, { fixture }) => {
     acc[fixture.status] = (acc[fixture.status] ?? 0) + 1;
@@ -592,6 +777,9 @@ async function main() {
   console.log(`│  Audit logs  : ${AUDIT_LOG_FIXTURES.length}`);
   console.log(`│  Notifs      : ${SYSTEM_NOTIFICATION_FIXTURES.length} système + ${leadRows.filter((r) => r.assignee).length} d'assignation`);
   console.log(`│  Blacklist   : ${BLACKLIST_FIXTURES.length} · API credits: ${API_CREDIT_FIXTURES.length}`);
+  console.log(`│  SMTP / IMAP : ${SMTP_CONFIG_FIXTURES.length} SMTP + ${IMAP_CONFIG_FIXTURES.length} IMAP`);
+  console.log(`│  Inbox       : ${INBOX_MESSAGE_FIXTURES.length} messages (threads inbound/outbound + auto-reply + orphan)`);
+  console.log(`│  Séquences   : ${SEQUENCE_FIXTURES.length} (${SEQUENCE_LEAD_FIXTURES.length} leads inscrits)`);
   console.log("└──────────────────────────────────────────────────────────────");
   console.log("");
   console.log("→ Connectez-vous sur http://localhost:3000/login");
