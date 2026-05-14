@@ -17,12 +17,13 @@ import {
 import {
   InboxOutlined, ArrowLeftOutlined, ArrowRightOutlined, CheckCircleOutlined,
   CloseCircleOutlined, ReloadOutlined, DeleteOutlined, HistoryOutlined,
-  DownloadOutlined,
+  ThunderboltOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
 import { IMPORTABLE_FIELD_LABELS, type ImportableField } from "@/lib/schemas/import";
 import { useIsMobile } from "@/lib/responsive";
+import { ImportTemplateGallery } from "@/components/import/ImportTemplateGallery";
 
 const { Title, Text, Paragraph } = Typography;
 const { Dragger } = Upload;
@@ -166,30 +167,7 @@ export default function ImportPage() {
   function renderUpload() {
     return (
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
-        <Alert
-          message="Pas de fichier sous la main ?"
-          type="info"
-          showIcon
-          description="Téléchargez un modèle pré-rempli avec les colonnes attendues et 3 exemples de leads."
-          action={
-            <Space>
-              <Button
-                size="small"
-                icon={<DownloadOutlined />}
-                href="/api/import/template?format=xlsx"
-              >
-                Modèle Excel
-              </Button>
-              <Button
-                size="small"
-                icon={<DownloadOutlined />}
-                href="/api/import/template?format=csv"
-              >
-                Modèle CSV
-              </Button>
-            </Space>
-          }
-        />
+        <ImportTemplateGallery />
         <Card>
           <Dragger
             accept=".csv,.xlsx,.xls"
@@ -210,6 +188,30 @@ export default function ImportPage() {
   }
 
   // ── Step 2 : Mapping ──────────────────────────────────────────────────────
+  async function autoDetectMapping() {
+    if (!uploadResult) return;
+    try {
+      const { data } = await api.post<{ data: Record<string, string> }>(
+        "/import/suggest-mapping",
+        { headers: uploadResult.headers },
+      );
+      // data: { headerFromFile: fieldCRM } → on veut { fieldCRM: headerFromFile }
+      const reversed: Partial<Record<ImportableField, string>> = {};
+      for (const [header, field] of Object.entries(data.data)) {
+        reversed[field as ImportableField] = header;
+      }
+      const detected = Object.keys(reversed).length;
+      if (detected === 0) {
+        message.info("Aucune colonne automatiquement reconnue. Mappage manuel.");
+        return;
+      }
+      setMapping((m) => ({ ...m, ...reversed }));
+      message.success(`${detected} colonne${detected > 1 ? "s" : ""} détectée${detected > 1 ? "s" : ""} automatiquement`);
+    } catch {
+      message.error("Auto-détection indisponible.");
+    }
+  }
+
   function renderMapping() {
     if (!uploadResult) return null;
     const cols = uploadResult.headers;
@@ -221,7 +223,20 @@ export default function ImportPage() {
           type="info" showIcon
         />
 
-        <Card title="Correspondance colonnes ↔ champs CRM">
+        <Card
+          title="Correspondance colonnes ↔ champs CRM"
+          extra={
+            <Button
+              icon={<ThunderboltOutlined />}
+              size="small"
+              type="primary"
+              ghost
+              onClick={() => void autoDetectMapping()}
+            >
+              Auto-détecter
+            </Button>
+          }
+        >
           <Row gutter={[16, 12]}>
             {LEAD_FIELDS.map(({ value, label }) => (
               <Col key={value} xs={24} sm={12} md={8}>
