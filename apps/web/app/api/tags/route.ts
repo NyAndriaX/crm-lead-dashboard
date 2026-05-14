@@ -1,15 +1,17 @@
 import { prisma } from "@crm/db";
-import { created, handler, json, parseBody, requirePermission } from "@/lib/api";
+import { created, handler, json, jsonCached, parseBody, requirePermission } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
 import { createTagSchema } from "@/lib/schemas/tag";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/tags — référentiel des tags (CRM-015).
+// GET /api/tags — référentiel des tags (CRM-015). Cache court : le référentiel
+// change peu, cette route est appelée sur plusieurs pages (leads liste, fiche,
+// bulk actions) — cache 60s + SWR 5min réduit la charge sans risque de stale.
 export const GET = handler(async () => {
   await requirePermission("leads:read");
   const tags = await prisma.tag.findMany({ orderBy: { name: "asc" } });
-  return json({ data: tags });
+  return jsonCached({ data: tags }, { maxAge: 60, swr: 300 });
 });
 
 // POST /api/tags — crée un tag prédéfini.

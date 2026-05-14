@@ -14,6 +14,8 @@ import { PermissionsSection } from "@/components/admin/PermissionsSection";
 import { AuditLogsSection } from "@/components/admin/AuditLogsSection";
 import { SecuritySection } from "@/components/admin/SecuritySection";
 import { PipelineStagesSection } from "@/components/admin/PipelineStagesSection";
+import { WebhooksSection } from "@/components/admin/WebhooksSection";
+import { RgpdSection } from "@/components/admin/RgpdSection";
 import {
   Tabs, Card, Typography, Table, Button, Tag, Space, Form, InputNumber, Row, Col,
   Statistic, Badge, Modal, Input, Select, message, Spin, Alert, Popconfirm, List,
@@ -2148,6 +2150,26 @@ export default function SettingsPage() {
               </Space>
             ),
             children: <AuditLogsSection />,
+          },
+          {
+            key: "webhooks",
+            label: (
+              <Space>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#fa541c" }} />
+                Intégrations
+              </Space>
+            ),
+            children: <WebhooksSection />,
+          },
+          {
+            key: "rgpd",
+            label: (
+              <Space>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#389e0d" }} />
+                RGPD
+              </Space>
+            ),
+            children: <RgpdSection />,
           },
           {
             key: "scoring",
