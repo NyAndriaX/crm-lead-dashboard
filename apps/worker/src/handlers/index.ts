@@ -20,6 +20,8 @@ import * as XLSX from "xlsx";
 import { prisma } from "@crm/db";
 import type { WorkerJobContext, WorkerJobHandler } from "@crm/queue";
 import { runCampaignSend } from "../campaignSend";
+import { runImapSync } from "../imapSync";
+import { runSequenceTick } from "../sequenceTick";
 
 export type JobHandler = WorkerJobHandler;
 
@@ -244,4 +246,8 @@ export const handlers: Record<string, JobHandler> = {
   },
 
   "campaign-send": runCampaignSend,
+
+  "imap-sync": runImapSync,
+
+  "sequence-tick": runSequenceTick,
 };

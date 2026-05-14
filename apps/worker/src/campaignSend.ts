@@ -38,6 +38,12 @@ function decryptOrNull(v: Buffer | Uint8Array | null | undefined): string | null
   if (v == null) return null;
   return decrypt(Buffer.from(v));
 }
+function encryptValue(plaintext: string): Buffer {
+  const iv = crypto.randomBytes(IV_LEN);
+  const cipher = crypto.createCipheriv(ALGO, getEncKey(), iv);
+  const enc = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), enc]);
+}
 
 type CampaignCfg = {
   throttleMinDelayMs?: number;
@@ -215,12 +221,19 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
     body = rewriteLinks(body, baseUrl, campaignId, lead.id, variant);
     body = injectTracking(body, openUrl);
 
+    // Message-ID stable basé sur (campaign, lead). Permet à imap-sync de relier
+    // toute réponse au lead via In-Reply-To/References (threading R-02 / R-07).
+    const senderDomain = (fromAddr.split("@")[1] ?? new URL(baseUrl).hostname).replace(/[^a-zA-Z0-9.\-]/g, "");
+    const messageId = `<crm-${campaignId}-${lead.id}-${variant}@${senderDomain}>`;
+    const messageIdKey = messageId.replace(/^<|>$/g, "");
+
     try {
       await transporter.sendMail({
         from: `"${fromName}" <${fromAddr}>`,
         to: email,
         subject,
         html: body,
+        messageId,
         headers: {
           "List-Unsubscribe": listUnsub,
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
@@ -232,9 +245,27 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
           leadId: lead.id,
           eventType: "SENT",
           token: openTok.slice(0, 120),
-          meta: { variant } as object,
+          meta: { variant, messageId } as object,
         },
       });
+      // Trace outbound dans l'inbox pour le thread sur la fiche lead (R-07)
+      // et pour le matching threading (R-02).
+      try {
+        await prisma.inboxMessage.create({
+          data: {
+            leadId: lead.id,
+            messageId: messageIdKey,
+            direction: "outbound",
+            fromEnc: encryptValue(`"${fromName}" <${fromAddr}>`),
+            toEnc: encryptValue(email),
+            subject,
+            bodyHtml: body,
+            receivedAt: new Date(),
+          },
+        });
+      } catch {
+        // Idempotence : un doublon en cas de re-tentative est sans impact.
+      }
       await prisma.smtpConfig.update({
         where: { id: smtpRow.id },
         data: { sentToday: { increment: 1 } },

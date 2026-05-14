@@ -4,10 +4,11 @@ import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Card, Descriptions, Timeline, Tag, Select, Button, Space, Typography, Progress,
-  message, Skeleton, Result, Row, Col, Modal,
+  message, Skeleton, Result, Row, Col, Modal, Empty,
 } from "antd";
-import { ArrowLeftOutlined, ReloadOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, ReloadOutlined, MailOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
+import SafeHtml from "@/components/SafeHtml";
 import { STATUS_LABELS, STATUS_COLORS, allowedTransitions } from "@/lib/leadStatus";
 import { useBreakpoint, useIsMobile } from "@/lib/responsive";
 import type { LeadStatus } from "@crm/db";
@@ -24,6 +25,17 @@ interface LeadDTO {
 }
 interface HistoryEntry { id: string; type: string; userId: string | null; payload: unknown; createdAt: string }
 interface UserLite { id: string; name: string; email: string; role: string }
+interface ThreadMessage {
+  id: string;
+  direction: "inbound" | "outbound";
+  from: string;
+  to: string;
+  subject: string | null;
+  bodyText: string | null;
+  bodyHtml: string | null;
+  isAutoReply: boolean;
+  receivedAt: string;
+}
 
 const HISTORY_LABELS: Record<string, string> = {
   created: "Lead créé", updated: "Modifié", status_change: "Changement de statut",
@@ -39,6 +51,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const { id } = use(params);
   const [lead, setLead] = useState<LeadDTO | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [thread, setThread] = useState<ThreadMessage[]>([]);
   const [users, setUsers] = useState<UserLite[]>([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -50,11 +63,12 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: l }, { data: h }] = await Promise.all([
+      const [{ data: l }, { data: h }, { data: t }] = await Promise.all([
         api.get<LeadDTO>(`/leads/${id}`),
         api.get<{ data: HistoryEntry[] }>(`/leads/${id}/history`),
+        api.get<{ data: ThreadMessage[] }>(`/leads/${id}/thread`),
       ]);
-      setLead(l); setTags(l.tags); setHistory(h.data);
+      setLead(l); setTags(l.tags); setHistory(h.data); setThread(t.data);
     } catch (e) {
       if ((e as { response?: { status?: number } }).response?.status === 404) setNotFound(true);
       else message.error("Impossible de charger le lead.");
@@ -136,7 +150,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
             {lead.notes && <Paragraph style={{ marginTop: 12 }}><Text type="secondary">Notes :</Text><br />{lead.notes}</Paragraph>}
           </Card>
 
-          <Card title="Historique" size="small">
+          <Card title="Historique" size="small" style={{ marginBottom: 16 }}>
             {history.length === 0 ? <Text type="secondary">Aucun événement.</Text> : (
               <Timeline
                 items={history.map((h) => ({
@@ -151,6 +165,61 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                   ),
                 }))}
               />
+            )}
+          </Card>
+
+          <Card
+            title={<Space><MailOutlined /> Historique des échanges</Space>}
+            size="small"
+            extra={
+              <Link href={`/inbox?leadId=${lead.id}`}>
+                <Button size="small">Ouvrir la boîte</Button>
+              </Link>
+            }
+          >
+            {thread.length === 0 ? (
+              <Empty
+                description="Aucun email envoyé ou reçu pour ce lead."
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+              />
+            ) : (
+              <Space direction="vertical" size="small" style={{ width: "100%" }}>
+                {thread.map((m) => (
+                  <Card
+                    key={m.id}
+                    size="small"
+                    style={{
+                      background: m.direction === "outbound" ? "#fafafa" : "#fff",
+                      borderLeft: m.direction === "outbound" ? "3px solid #1677ff" : "3px solid #52c41a",
+                    }}
+                    title={
+                      <Space size={6} wrap>
+                        <Tag color={m.direction === "outbound" ? "blue" : "green"}>
+                          {m.direction === "outbound" ? "envoyé" : "reçu"}
+                        </Tag>
+                        {m.isAutoReply && <Tag color="default">auto-reply</Tag>}
+                        <Text style={{ fontWeight: 500 }}>{m.subject ?? "(sans sujet)"}</Text>
+                      </Space>
+                    }
+                    extra={
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {new Date(m.receivedAt).toLocaleString("fr-FR")}
+                      </Text>
+                    }
+                  >
+                    <div style={{ fontSize: 12, color: "#888", marginBottom: 6 }}>
+                      {m.direction === "outbound" ? `→ ${m.to}` : `← ${m.from}`}
+                    </div>
+                    {m.bodyHtml ? (
+                      <SafeHtml html={m.bodyHtml} style={{ maxHeight: 320, overflow: "auto" }} />
+                    ) : (
+                      <Paragraph style={{ whiteSpace: "pre-wrap", margin: 0 }}>
+                        {m.bodyText ?? <Text type="secondary">(corps vide)</Text>}
+                      </Paragraph>
+                    )}
+                  </Card>
+                ))}
+              </Space>
             )}
           </Card>
         </Col>

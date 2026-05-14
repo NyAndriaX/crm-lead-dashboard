@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { EmailHtmlDualEditor } from "@/components/emailing/EmailHtmlDualEditor";
 import { EmailHtmlLivePreview } from "@/components/emailing/EmailHtmlLivePreview";
 import { EmailTemplateAiVariants } from "@/components/emailing/EmailTemplateAiVariants";
+import { ImapSection } from "@/components/emailing/ImapSection";
 import {
   Tabs, Card, Typography, Table, Button, Tag, Space, Form, InputNumber, Row, Col,
   Statistic, Badge, Modal, Input, Select, message, Spin, Alert, Popconfirm, List,
@@ -1942,6 +1943,16 @@ export default function SettingsPage() {
               </Space>
             ),
             children: <EmailingTab />,
+          },
+          {
+            key: "imap",
+            label: (
+              <Space>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#13c2c2" }} />
+                IMAP / Réponses
+              </Space>
+            ),
+            children: <ImapSection />,
           },
           {
             key: "imports",
