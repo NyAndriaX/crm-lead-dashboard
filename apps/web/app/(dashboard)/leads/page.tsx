@@ -4,27 +4,33 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Table, Tag, Typography, Button, Space, Input, InputNumber, Select, Dropdown, message,
-  Modal, Form, Row, Col,
+  Modal, Form, Row, Col, Popconfirm, Tooltip,
 } from "antd";
-import { DownloadOutlined, SaveOutlined, ReloadOutlined, PlusOutlined } from "@ant-design/icons";
+import {
+  DownloadOutlined, SaveOutlined, ReloadOutlined, PlusOutlined,
+  DeleteOutlined, UserSwitchOutlined, TagsOutlined, ThunderboltOutlined,
+  RetweetOutlined, MoreOutlined, EditOutlined,
+} from "@ant-design/icons";
 import type { ColumnsType, TablePaginationConfig } from "antd/es/table";
 import type { SorterResult } from "antd/es/table/interface";
 import { api } from "@/lib/client";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
 import { useBreakpoint, useIsMobile } from "@/lib/responsive";
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 interface LeadDTO {
   id: string; email: string | null; firstName: string | null; lastName: string | null;
   company: string | null; source: string | null; status: keyof typeof STATUS_LABELS;
-  score: number; lastActionAt: string | null;
+  score: number; tags: string[]; lastActionAt: string | null;
 }
 interface ListResponse { data: LeadDTO[]; pagination: { page: number; pageSize: number; total: number; totalPages: number } }
 interface LeadView { id: string; name: string; filters: Record<string, unknown>; columns: string[]; shared: boolean }
 interface UserLite { id: string; name: string; email: string }
+interface TagDTO { id: string; name: string; color: string | null }
+interface SequenceLite { id: string; name: string }
 
-type Filters = { q?: string; status?: string; source?: string; scoreMin?: number };
+type Filters = { q?: string; status?: string; source?: string; scoreMin?: number; tag?: string };
 
 interface CreateLeadForm {
   email?: string; phone?: string; firstName?: string; lastName?: string;
@@ -32,6 +38,8 @@ interface CreateLeadForm {
   country?: string; source?: string; status?: string; notes?: string;
   assignedToId?: string;
 }
+
+type BulkAction = "delete" | "assign" | "status" | "tags-add" | "tags-remove" | "enroll-sequence";
 
 export default function LeadsPage() {
   const router = useRouter();
@@ -43,6 +51,12 @@ export default function LeadsPage() {
   const [sort, setSort] = useState<string | undefined>();
   const [filters, setFilters] = useState<Filters>({});
   const [views, setViews] = useState<LeadView[]>([]);
+  const [tagsRef, setTagsRef] = useState<TagDTO[]>([]);
+  const [sequences, setSequences] = useState<SequenceLite[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkOpen, setBulkOpen] = useState<BulkAction | null>(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkForm] = Form.useForm();
 
   // Create modal
   const [createOpen, setCreateOpen] = useState(false);
@@ -69,12 +83,79 @@ export default function LeadsPage() {
   useEffect(() => { void fetchLeads(); }, [fetchLeads]);
   useEffect(() => { api.get<{ data: LeadView[] }>("/lead-views").then((r) => setViews(r.data.data)).catch(() => {}); }, []);
   useEffect(() => { api.get<{ data: UserLite[] }>("/users").then((r) => setUsers(r.data.data)).catch(() => {}); }, []);
+  useEffect(() => { api.get<{ data: TagDTO[] }>("/tags").then((r) => setTagsRef(r.data.data ?? [])).catch(() => {}); }, []);
+  useEffect(() => {
+    api.get<{ data: SequenceLite[] }>("/sequences").then((r) => setSequences(r.data.data ?? [])).catch(() => {});
+  }, []);
+
+  // ── Bulk actions ──────────────────────────────────────────────────────────
+
+  async function runBulk(action: BulkAction, payload: Record<string, unknown> = {}) {
+    if (selectedIds.length === 0) return;
+    setBulkLoading(true);
+    try {
+      const { data } = await api.post<{ data: { requested: number; succeeded: number; failed: number } }>(
+        "/leads/bulk",
+        { action, ids: selectedIds, ...payload },
+      );
+      const r = data.data;
+      message.success(
+        `${r.succeeded}/${r.requested} lead${r.requested > 1 ? "s" : ""} traité${r.requested > 1 ? "s" : ""}${r.failed ? ` (${r.failed} échec${r.failed > 1 ? "s" : ""})` : ""}`,
+      );
+      setBulkOpen(null);
+      bulkForm.resetFields();
+      setSelectedIds([]);
+      void fetchLeads();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
+      message.error(msg);
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
+  function openBulk(action: BulkAction) {
+    bulkForm.resetFields();
+    setBulkOpen(action);
+  }
+
+  async function submitBulkForm() {
+    if (!bulkOpen) return;
+    const values = await bulkForm.validateFields();
+    await runBulk(bulkOpen, values);
+  }
+
+  // ── Colonnes ──────────────────────────────────────────────────────────────
 
   const columns: ColumnsType<LeadDTO> = [
     { title: "Nom", key: "name", render: (_, r) => [r.firstName, r.lastName].filter(Boolean).join(" ") || "—" },
     { title: "Entreprise", dataIndex: "company", key: "company", sorter: true, render: (v) => v || "—" },
     { title: "Email", dataIndex: "email", key: "email", responsive: ["md"], render: (v) => v || "—" },
     { title: "Source", dataIndex: "source", key: "source", responsive: ["lg"], render: (v) => v || "—" },
+    {
+      title: "Tags", dataIndex: "tags", key: "tags", responsive: ["md"], width: 220,
+      render: (tags: string[] | null) => {
+        const list = tags ?? [];
+        if (list.length === 0) return <Text type="secondary">—</Text>;
+        const display = list.slice(0, 3);
+        const more = list.length - display.length;
+        return (
+          <Space size={4} wrap>
+            {display.map((t) => {
+              const ref = tagsRef.find((x) => x.name === t);
+              return (
+                <Tag key={t} color={ref?.color ?? "default"} style={{ margin: 0 }}>{t}</Tag>
+              );
+            })}
+            {more > 0 && (
+              <Tooltip title={list.slice(3).join(", ")}>
+                <Tag style={{ margin: 0 }}>+{more}</Tag>
+              </Tooltip>
+            )}
+          </Space>
+        );
+      },
+    },
     { title: "Statut", dataIndex: "status", key: "status", render: (s: keyof typeof STATUS_LABELS) => <Tag color={STATUS_COLORS[s]}>{STATUS_LABELS[s]}</Tag> },
     { title: "Score", dataIndex: "score", key: "score", sorter: true, width: 90 },
     { title: "Dernière action", dataIndex: "lastActionAt", key: "lastActionAt", sorter: true, responsive: ["sm"], render: (v: string | null) => (v ? new Date(v).toLocaleString("fr-FR") : "—") },
@@ -133,6 +214,22 @@ export default function LeadsPage() {
     }
   }
 
+  // ── Bulk actions toolbar ─────────────────────────────────────────────────
+
+  const hasSelection = selectedIds.length > 0;
+
+  function bulkLabel() {
+    switch (bulkOpen) {
+      case "delete": return "Supprimer les leads sélectionnés";
+      case "assign": return "Assigner les leads sélectionnés";
+      case "status": return "Changer le statut";
+      case "tags-add": return "Ajouter des tags";
+      case "tags-remove": return "Retirer des tags";
+      case "enroll-sequence": return "Inscrire dans une séquence";
+      default: return "";
+    }
+  }
+
   return (
     <Space direction="vertical" size="middle" style={{ width: "100%" }}>
       <div className="page-toolbar">
@@ -162,19 +259,169 @@ export default function LeadsPage() {
           options={Object.entries(STATUS_LABELS).map(([v, l]) => ({ value: v, label: l }))}
           onChange={(v) => setFilter("status", v)}
         />
+        <Select
+          allowClear placeholder="Tag"
+          options={tagsRef.map((t) => ({ value: t.name, label: <Tag color={t.color ?? "default"} style={{ margin: 0 }}>{t.name}</Tag> }))}
+          onChange={(v) => setFilter("tag", v)}
+          style={{ minWidth: 160 }}
+          showSearch
+          filterOption={(input, opt) => String(opt?.value ?? "").toLowerCase().includes(input.toLowerCase())}
+        />
         <Input placeholder="Source" allowClear onChange={(e) => setFilter("source", e.target.value || undefined)} />
         <InputNumber placeholder="Score min" min={0} max={100} onChange={(v) => setFilter("scoreMin", v ?? undefined)} />
         <Button icon={<ReloadOutlined />} onClick={() => fetchLeads()}>Rafraîchir</Button>
       </div>
 
+      {/* Toolbar bulk actions (apparaît quand sélection non vide) */}
+      {hasSelection && (
+        <div
+          style={{
+            background: "#e6f4ff",
+            border: "1px solid #91caff",
+            borderRadius: 8,
+            padding: "10px 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <Text strong style={{ color: "#1677ff" }}>
+            {selectedIds.length} lead{selectedIds.length > 1 ? "s" : ""} sélectionné{selectedIds.length > 1 ? "s" : ""}
+          </Text>
+          <Space wrap>
+            <Tooltip title="Assigner à un commercial">
+              <Button icon={<UserSwitchOutlined />} onClick={() => openBulk("assign")}>Assigner</Button>
+            </Tooltip>
+            <Tooltip title="Changer le statut">
+              <Button icon={<EditOutlined />} onClick={() => openBulk("status")}>Changer statut</Button>
+            </Tooltip>
+            <Tooltip title="Ajouter des tags">
+              <Button icon={<TagsOutlined />} onClick={() => openBulk("tags-add")}>Ajouter tags</Button>
+            </Tooltip>
+            <Dropdown
+              menu={{
+                items: [
+                  { key: "tags-remove", label: <Space><TagsOutlined /> Retirer des tags</Space>, onClick: () => openBulk("tags-remove") },
+                  { key: "enroll-sequence", label: <Space><RetweetOutlined /> Inscrire dans une séquence</Space>, onClick: () => openBulk("enroll-sequence") },
+                ],
+              }}
+            >
+              <Button icon={<MoreOutlined />}>Plus</Button>
+            </Dropdown>
+            <Popconfirm
+              title={`Supprimer ${selectedIds.length} lead${selectedIds.length > 1 ? "s" : ""} ?`}
+              description="Suppression douce — les leads pourront être restaurés."
+              okText="Supprimer"
+              okButtonProps={{ danger: true }}
+              cancelText="Annuler"
+              onConfirm={() => void runBulk("delete")}
+            >
+              <Button danger icon={<DeleteOutlined />}>Supprimer</Button>
+            </Popconfirm>
+            <Button size="small" type="link" onClick={() => setSelectedIds([])}>
+              Annuler la sélection
+            </Button>
+          </Space>
+        </div>
+      )}
+
       <div className="page-table-wrap">
         <Table<LeadDTO>
           rowKey="id" columns={columns} dataSource={rows} loading={loading} onChange={onTableChange}
-          scroll={{ x: 960 }}
-          onRow={(r) => ({ onClick: () => router.push(`/leads/${r.id}`), style: { cursor: "pointer" } })}
+          scroll={{ x: 1100 }}
+          rowSelection={{
+            selectedRowKeys: selectedIds,
+            onChange: (keys) => setSelectedIds(keys.map((k) => String(k))),
+            preserveSelectedRowKeys: true,
+          }}
+          onRow={(r) => ({
+            onClick: (e) => {
+              // Ne pas naviguer si on clique sur la case à cocher
+              const target = e.target as HTMLElement;
+              if (target.closest(".ant-checkbox-wrapper") || target.closest(".ant-table-selection-column")) return;
+              router.push(`/leads/${r.id}`);
+            },
+            style: { cursor: "pointer" },
+          })}
           pagination={{ current: page, pageSize, total, showSizeChanger: true, pageSizeOptions: [50, 100, 200], showTotal: (t) => `${t} lead${t > 1 ? "s" : ""}` }}
         />
       </div>
+
+      {/* ── Bulk actions modals ──────────────────────────────────────────── */}
+      <Modal
+        open={!!bulkOpen}
+        title={<Space><ThunderboltOutlined /> {bulkLabel()} <Tag color="blue">{selectedIds.length}</Tag></Space>}
+        onCancel={() => { setBulkOpen(null); bulkForm.resetFields(); }}
+        onOk={() => void submitBulkForm()}
+        confirmLoading={bulkLoading}
+        okText="Appliquer"
+        cancelText="Annuler"
+        destroyOnClose
+      >
+        <Form form={bulkForm} layout="vertical" style={{ marginTop: 16 }}>
+          {bulkOpen === "assign" && (
+            <Form.Item
+              name="assignedToId"
+              label="Commercial"
+              rules={[{ required: true, message: "Sélectionnez un commercial (ou null pour désassigner)" }]}
+            >
+              <Select
+                allowClear
+                placeholder="Choisir (vide = désassigner)"
+                options={[{ value: null, label: "(Désassigner)" }, ...users.map((u) => ({ value: u.id, label: `${u.name} — ${u.email}` }))]}
+                showSearch
+                filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
+              />
+            </Form.Item>
+          )}
+          {bulkOpen === "status" && (
+            <Form.Item
+              name="status"
+              label="Nouveau statut"
+              rules={[{ required: true, message: "Sélectionnez un statut" }]}
+            >
+              <Select
+                options={Object.entries(STATUS_LABELS).map(([v, l]) => ({
+                  value: v,
+                  label: <Tag color={STATUS_COLORS[v as keyof typeof STATUS_COLORS]}>{l}</Tag>,
+                }))}
+              />
+            </Form.Item>
+          )}
+          {(bulkOpen === "tags-add" || bulkOpen === "tags-remove") && (
+            <Form.Item
+              name="tags"
+              label={bulkOpen === "tags-add" ? "Tags à ajouter" : "Tags à retirer"}
+              rules={[{ required: true, message: "Au moins un tag" }]}
+            >
+              <Select
+                mode="tags"
+                placeholder="Saisir ou choisir des tags…"
+                tokenSeparators={[","]}
+                options={tagsRef.map((t) => ({
+                  value: t.name,
+                  label: <Tag color={t.color ?? "default"} style={{ margin: 0 }}>{t.name}</Tag>,
+                }))}
+              />
+            </Form.Item>
+          )}
+          {bulkOpen === "enroll-sequence" && (
+            <Form.Item
+              name="sequenceId"
+              label="Séquence"
+              rules={[{ required: true, message: "Sélectionnez une séquence" }]}
+            >
+              <Select
+                placeholder="Choisir une séquence…"
+                options={sequences.map((s) => ({ value: s.id, label: s.name }))}
+                showSearch
+                filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
+              />
+            </Form.Item>
+          )}
+        </Form>
+      </Modal>
 
       {/* ── Modale de création de lead ─────────────────────────────────────── */}
       <Modal
