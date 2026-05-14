@@ -2,18 +2,28 @@ import { z } from "zod";
 import * as bcrypt from "bcryptjs";
 import { prisma } from "@crm/db";
 import { handler, json, created, parseBody, parseQuery, requirePermission, requireRole, ApiError } from "@/lib/api";
+import { audit, clientIp } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
-const querySchema = z.object({ all: z.enum(["true", "false"]).optional() });
+const querySchema = z.object({
+  all: z.enum(["true", "false"]).optional(),
+  teamId: z.string().optional(),
+});
 
 // GET /api/users — liste pour sélecteur (actifs) ou liste complète pour admin (?all=true).
 export const GET = handler(async (req) => {
   await requirePermission("leads:assign");
-  const { all } = parseQuery(req, querySchema);
+  const { all, teamId } = parseQuery(req, querySchema);
+  const where: Record<string, unknown> = all === "true" ? {} : { isActive: true };
+  if (teamId) where.teamId = teamId;
   const users = await prisma.user.findMany({
-    where: all === "true" ? {} : { isActive: true },
-    select: { id: true, name: true, email: true, role: true, isActive: true, lastLoginAt: true, createdAt: true },
+    where,
+    select: {
+      id: true, name: true, email: true, role: true, isActive: true,
+      lastLoginAt: true, createdAt: true, teamId: true, twoFactorOn: true,
+      invitedAt: true,
+    },
     orderBy: { name: "asc" },
   });
   return json({ data: users });
@@ -24,20 +34,36 @@ const createUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8).max(128),
   role: z.enum(["ADMIN", "MANAGER", "COMMERCIAL", "LECTEUR"]).default("COMMERCIAL"),
+  teamId: z.string().nullable().optional(),
 });
 
 // POST /api/users — créer un utilisateur. ADMIN uniquement.
 export const POST = handler(async (req) => {
-  await requireRole("ADMIN");
+  const session = await requireRole("ADMIN");
   const input = await parseBody(req, createUserSchema);
 
-  const existing = await prisma.user.findUnique({ where: { email: input.email } });
+  const email = input.email.trim().toLowerCase();
+  const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) throw new ApiError(409, "Un utilisateur avec cet email existe déjà", "duplicate_email");
 
   const passwordHash = await bcrypt.hash(input.password, 12);
   const user = await prisma.user.create({
-    data: { name: input.name, email: input.email, passwordHash, role: input.role },
-    select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
+    data: {
+      name: input.name,
+      email,
+      passwordHash,
+      role: input.role,
+      teamId: input.teamId ?? null,
+    },
+    select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true, teamId: true },
+  });
+  await audit({
+    userId: session.sub,
+    action: "user.create",
+    entityType: "User",
+    entityId: user.id,
+    ip: clientIp(req),
+    diff: { name: input.name, email, role: input.role, teamId: input.teamId ?? null },
   });
   return created({ data: user });
 });
