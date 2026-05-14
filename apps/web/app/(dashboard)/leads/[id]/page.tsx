@@ -25,6 +25,7 @@ interface LeadDTO {
 }
 interface HistoryEntry { id: string; type: string; userId: string | null; payload: unknown; createdAt: string }
 interface UserLite { id: string; name: string; email: string; role: string }
+interface TagRef { id: string; name: string; color: string | null }
 interface ThreadMessage {
   id: string;
   direction: "inbound" | "outbound";
@@ -57,6 +58,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const [notFound, setNotFound] = useState(false);
   const [savingTags, setSavingTags] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
+  const [tagsRef, setTagsRef] = useState<TagRef[]>([]);
   const isMobile = useIsMobile();
   const screens = useBreakpoint();
 
@@ -77,6 +79,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { api.get<{ data: UserLite[] }>("/users").then((r) => setUsers(r.data.data)).catch(() => {}); }, []);
+  useEffect(() => { api.get<{ data: TagRef[] }>("/tags").then((r) => setTagsRef(r.data.data ?? [])).catch(() => {}); }, []);
 
   async function changeStatus(to: LeadStatus) {
     try {
@@ -237,12 +240,76 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
             />
           </Card>
           <Card title="Tags" size="small">
-            <Space direction="vertical" style={{ width: "100%" }}>
+            <Space direction="vertical" style={{ width: "100%" }} size={10}>
+              {/* Tags actuels visualisés (couleurs du référentiel) */}
+              {tags.length > 0 ? (
+                <Space size={4} wrap>
+                  {tags.map((t) => {
+                    const ref = tagsRef.find((x) => x.name === t);
+                    return (
+                      <Tag
+                        key={t}
+                        color={ref?.color ?? "default"}
+                        closable
+                        onClose={(e) => { e.preventDefault(); setTags((cur) => cur.filter((x) => x !== t)); }}
+                        style={{ margin: 0 }}
+                      >
+                        {t}
+                      </Tag>
+                    );
+                  })}
+                </Space>
+              ) : (
+                <Text type="secondary" style={{ fontSize: 12 }}>Aucun tag</Text>
+              )}
+
+              {/* Select avec mode tags (autocomplete sur le référentiel + saisie libre) */}
               <Select<string[]>
-                mode="tags" placeholder="Ajouter des tags…" style={{ width: "100%" }}
-                value={tags} onChange={setTags} tokenSeparators={[","]}
+                mode="tags"
+                placeholder="Ajouter un tag…"
+                style={{ width: "100%" }}
+                value={tags}
+                onChange={setTags}
+                tokenSeparators={[","]}
+                options={tagsRef.map((t) => ({
+                  value: t.name,
+                  label: <Tag color={t.color ?? "default"} style={{ margin: 0 }}>{t.name}</Tag>,
+                }))}
+                filterOption={(input, opt) =>
+                  String(opt?.value ?? "").toLowerCase().includes(input.toLowerCase())
+                }
               />
-              <Button size="small" type="primary" loading={savingTags} onClick={saveTags} disabled={JSON.stringify(tags) === JSON.stringify(lead.tags)}>
+
+              {/* Suggestions rapides : tags du référentiel non encore appliqués */}
+              {(() => {
+                const suggestions = tagsRef.filter((t) => !tags.includes(t.name)).slice(0, 6);
+                if (suggestions.length === 0) return null;
+                return (
+                  <div>
+                    <Text type="secondary" style={{ fontSize: 11 }}>Suggestions :</Text>
+                    <Space size={4} wrap style={{ marginTop: 4 }}>
+                      {suggestions.map((t) => (
+                        <Tag
+                          key={t.id}
+                          color={t.color ?? "default"}
+                          style={{ cursor: "pointer", margin: 0 }}
+                          onClick={() => setTags((cur) => Array.from(new Set([...cur, t.name])))}
+                        >
+                          + {t.name}
+                        </Tag>
+                      ))}
+                    </Space>
+                  </div>
+                );
+              })()}
+
+              <Button
+                size="small"
+                type="primary"
+                loading={savingTags}
+                onClick={saveTags}
+                disabled={JSON.stringify(tags) === JSON.stringify(lead.tags)}
+              >
                 Enregistrer les tags
               </Button>
             </Space>
