@@ -971,6 +971,214 @@ export const LEAD_FIXTURES = [
 ];
 
 // ──────────────────────────────────────────────────────────────────────────────
+// SMTP / IMAP — module Emailing (M-01) + Réponses (R-01)
+// ──────────────────────────────────────────────────────────────────────────────
+// ⚠️ Les identifiants ci-dessous sont **factices** : ils ne permettent ni
+// d'envoyer ni de relever — ils servent juste à peupler l'UI Settings et à
+// rattacher les InboxMessage de démo. Pour un test E2E réel, remplacer
+// `login`/`password` par les credentials du compte Mailtrap/Inbucket local.
+export const SMTP_CONFIG_FIXTURES = [
+  {
+    label: "Compte principal — prospection",
+    host: "smtp.demo.local",
+    port: 587,
+    login: "noreply-demo@crm.local",
+    password: "demo-smtp-password-1",
+    fromName: "Équipe CRM Démo",
+    fromEmail: "noreply-demo@crm.local",
+    dailyLimit: 500,
+    isActive: true,
+  },
+  {
+    label: "Compte secondaire — relances",
+    host: "smtp.demo.local",
+    port: 587,
+    login: "relance-demo@crm.local",
+    password: "demo-smtp-password-2",
+    fromName: "Équipe CRM Démo",
+    fromEmail: "relance-demo@crm.local",
+    dailyLimit: 300,
+    isActive: true,
+  },
+];
+
+export const IMAP_CONFIG_FIXTURES = [
+  {
+    label: "Inbox principale — réponses prospection",
+    host: "imap.demo.local",
+    port: 993,
+    login: "noreply-demo@crm.local",
+    password: "demo-imap-password-1",
+    isActive: true,
+    lastSyncDaysAgo: 0,
+  },
+  {
+    label: "Inbox secondaire — réponses relances",
+    host: "imap.demo.local",
+    port: 993,
+    login: "relance-demo@crm.local",
+    password: "demo-imap-password-2",
+    isActive: true,
+    lastSyncDaysAgo: 1,
+  },
+];
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Inbox — module Réponses (R-01, R-02, R-07)
+// ──────────────────────────────────────────────────────────────────────────────
+// Chaque thread est ancré à un `leadEmail` (sera résolu en leadId au seed).
+// `messageId` doit être unique : utilisé pour l'idempotence et le matching
+// In-Reply-To/References. Les `daysAgo` permettent de positionner le fil.
+// Si `leadEmail` est `null`, le message reste "orphan" (sans lead rattaché).
+export const INBOX_MESSAGE_FIXTURES = [
+  // — Thread 1 : Julien Moreau (EN_DISCUSSION, hasReplied) — fil complet
+  {
+    leadEmail: "julien.moreau@demo.crm.local",
+    messageId: "crm-demo-out-1-julien@demo.crm.local",
+    direction: "outbound",
+    from: '"Lucas Bernard" <lucas.bernard@crm.local>',
+    to: "julien.moreau@demo.crm.local",
+    subject: "Pilote 30 jours — HelioSaaS",
+    bodyHtml: "<p>Bonjour Julien,</p><p>Suite à notre échange, voici la proposition de pilote 30 jours pour HelioSaaS : 3 commerciaux, accompagnement onboarding, restitution KPI à J+30.</p><p>Disponible cette semaine pour un kickoff ?</p><p>Lucas</p>",
+    bodyText: "Bonjour Julien, Suite à notre échange, voici la proposition de pilote 30 jours...",
+    daysAgo: 3,
+  },
+  {
+    leadEmail: "julien.moreau@demo.crm.local",
+    messageId: "reply-demo-julien-001@heliosaas.io",
+    inReplyTo: "crm-demo-out-1-julien@demo.crm.local",
+    direction: "inbound",
+    from: '"Julien Moreau" <julien.moreau@heliosaas.io>',
+    to: "lucas.bernard@crm.local",
+    subject: "Re: Pilote 30 jours — HelioSaaS",
+    bodyHtml: "<p>Bonjour Lucas,</p><p>Très intéressé. Pouvez-vous nous transmettre le détail du SLA et l'estimation de prix au-delà des 30 jours pilote ?</p><p>Mercredi 10h vous conviendrait pour le kickoff.</p><p>Julien</p>",
+    bodyText: "Bonjour Lucas, Très intéressé. Pouvez-vous nous transmettre le détail du SLA...",
+    isRead: true,
+    daysAgo: 1,
+  },
+  // — Thread 2 : Camille Rousseau (QUALIFIE) — message reçu non lu (cas R-06 demo)
+  {
+    leadEmail: "camille.rousseau@demo.crm.local",
+    messageId: "crm-demo-out-1-camille@demo.crm.local",
+    direction: "outbound",
+    from: '"Lucas Bernard" <lucas.bernard@crm.local>',
+    to: "camille.rousseau@demo.crm.local",
+    subject: "Démo pipeline & scoring — NovaRetail",
+    bodyHtml: "<p>Bonjour Camille,</p><p>Comme convenu sur le salon, voici les créneaux disponibles pour la démo pipeline + scoring : mardi 14h, jeudi 10h.</p><p>Lucas</p>",
+    daysAgo: 2,
+  },
+  {
+    leadEmail: "camille.rousseau@demo.crm.local",
+    messageId: "reply-demo-camille-001@novaretail.fr",
+    inReplyTo: "crm-demo-out-1-camille@demo.crm.local",
+    direction: "inbound",
+    from: '"Camille Rousseau" <camille.rousseau@novaretail.fr>',
+    to: "lucas.bernard@crm.local",
+    subject: "Re: Démo pipeline & scoring — NovaRetail",
+    bodyHtml: "<p>Bonjour Lucas,</p><p>Jeudi 10h c'est parfait. Pouvez-vous m'envoyer le lien Teams ?</p><p>Camille</p>",
+    isRead: false,
+    daysAgo: 0,
+  },
+  // — Thread 3 : Sarah Benali (CONTACTE) — auto-reply (R-08)
+  {
+    leadEmail: "sarah.benali@demo.crm.local",
+    messageId: "crm-demo-out-1-sarah@demo.crm.local",
+    direction: "outbound",
+    from: '"Lucas Bernard" <lucas.bernard@crm.local>',
+    to: "sarah.benali@demo.crm.local",
+    subject: "Optimisation tournées — Atlas Logistique",
+    bodyHtml: "<p>Bonjour Sarah,</p><p>Comme évoqué avec notre partenaire, je vous propose un échange pour explorer l'optimisation de vos tournées. 30 min cette semaine ?</p>",
+    daysAgo: 4,
+  },
+  {
+    leadEmail: "sarah.benali@demo.crm.local",
+    messageId: "autoreply-demo-sarah@atlas-logistique.com",
+    inReplyTo: "crm-demo-out-1-sarah@demo.crm.local",
+    direction: "inbound",
+    from: '"Sarah Benali" <sarah.benali@atlas-logistique.com>',
+    to: "lucas.bernard@crm.local",
+    subject: "Absence du bureau — Re: Optimisation tournées",
+    bodyHtml: "<p>Bonjour,</p><p>Je suis actuellement absente du bureau jusqu'au lundi prochain. Pour toute urgence, contactez mon assistante.</p><p>Cordialement, Sarah</p>",
+    bodyText: "Bonjour, Je suis actuellement absente du bureau jusqu'au lundi prochain...",
+    isAutoReply: true,
+    isRead: false,
+    daysAgo: 3,
+  },
+  // — Message orphan : pas de lead rattaché (cas matching échoué)
+  {
+    leadEmail: null,
+    messageId: "orphan-demo-001@unknown-prospect.com",
+    direction: "inbound",
+    from: '"Prospect inconnu" <contact@unknown-prospect.com>',
+    to: "noreply-demo@crm.local",
+    subject: "Demande d'information sur vos services",
+    bodyHtml: "<p>Bonjour,</p><p>Nous avons découvert votre solution via LinkedIn. Pourriez-vous nous envoyer une présentation et tarifs ?</p><p>Cordialement</p>",
+    isRead: false,
+    daysAgo: 0,
+  },
+  // — Thread 4 : Thomas Girard (NOUVEAU) — premier email de réponse à une campagne
+  {
+    leadEmail: "thomas.girard@demo.crm.local",
+    messageId: "reply-demo-thomas-001@greenbuild.fr",
+    direction: "inbound",
+    from: '"Thomas Girard" <thomas.girard@greenbuild.fr>',
+    to: "noreply-demo@crm.local",
+    subject: "Re: Découvrez notre nouvelle offre BTP digital",
+    bodyHtml: "<p>Bonjour,</p><p>Intéressant. Comment cela fonctionne-t-il pour les artisans indépendants ?</p>",
+    isRead: false,
+    daysAgo: 1,
+  },
+];
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Sequences — module Relances (RL-01, RL-02, RL-04, RL-06)
+// ──────────────────────────────────────────────────────────────────────────────
+// `steps[].templateRef` est résolu au seed depuis TEMPLATE_FIXTURES (par `name`).
+// Si `templateRef` est absent, `subject`/`bodyHtml` sont utilisés directement.
+export const SEQUENCE_FIXTURES = [
+  {
+    name: "Relance prospects froids — 3 étapes",
+    maxSteps: 3,
+    isPaused: false,
+    steps: [
+      { delayDays: 0, templateRef: "Cold outreach — SaaS B2B", stopOnReply: true },
+      { delayDays: 4, subject: "{{prenom}}, un rappel rapide sur {{entreprise}}", bodyHtml: "<p>Bonjour {{prenom}},</p><p>Je me permets de revenir vers vous concernant {{entreprise}}. Avez-vous eu l'occasion de regarder ma précédente proposition ?</p><p>Cordialement</p>", stopOnReply: true },
+      { delayDays: 7, subject: "Dernière prise de contact — {{entreprise}}", bodyHtml: "<p>Bonjour {{prenom}},</p><p>Sans nouvelle de votre part, je clôture ce dossier. N'hésitez pas si vos besoins évoluent.</p><p>Cordialement</p>", stopOnReply: true },
+    ],
+  },
+  {
+    name: "Suivi webinar — 2 étapes",
+    maxSteps: 2,
+    isPaused: false,
+    steps: [
+      { delayDays: 1, templateRef: "Suivi webinar croissance B2B", stopOnReply: true },
+      { delayDays: 5, subject: "Replay + ressources — {{entreprise}}", bodyHtml: "<p>Bonjour {{prenom}},</p><p>Je vous renvoie le replay et les ressources du webinar. Disponible pour un échange ?</p>", stopOnReply: true },
+    ],
+  },
+  {
+    name: "Pilote 30 jours — Relance VIP",
+    maxSteps: 2,
+    isPaused: true, // démo RL-06 : pause manuelle (release mobile en cours, etc.)
+    steps: [
+      { delayDays: 0, templateRef: "Relance VIP — proposition commerciale", stopOnReply: true },
+      { delayDays: 7, subject: "Disponibilité kickoff — {{entreprise}}", bodyHtml: "<p>Bonjour {{prenom}},</p><p>Je relance pour caler le kickoff du pilote. Plusieurs créneaux disponibles cette semaine.</p>", stopOnReply: true },
+    ],
+  },
+];
+
+// Inscription de leads dans les séquences. `nextSendDaysAhead` = jours à partir
+// d'aujourd'hui pour le prochain envoi (négatif = passé, positif = futur).
+export const SEQUENCE_LEAD_FIXTURES = [
+  // Sequence "Relance prospects froids"
+  { sequenceName: "Relance prospects froids — 3 étapes", leadEmail: "sarah.benali@demo.crm.local",   currentStep: 1, sentCount: 1, status: "active", nextSendDaysAhead: 2 },
+  { sequenceName: "Relance prospects froids — 3 étapes", leadEmail: "thomas.girard@demo.crm.local",  currentStep: 0, sentCount: 0, status: "active", nextSendDaysAhead: 0 },
+  // Sequence "Suivi webinar"
+  { sequenceName: "Suivi webinar — 2 étapes",            leadEmail: "camille.rousseau@demo.crm.local", currentStep: 1, sentCount: 1, status: "active", nextSendDaysAhead: 3 },
+  // Sequence "Pilote 30 jours — VIP" (Julien a déjà répondu → stopped)
+  { sequenceName: "Pilote 30 jours — Relance VIP",       leadEmail: "julien.moreau@demo.crm.local",   currentStep: 1, sentCount: 1, status: "stopped", stoppedReason: "reply", nextSendDaysAhead: null },
+];
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Exports calculés (en bas pour éviter les TDZ ESM)
 // ──────────────────────────────────────────────────────────────────────────────
 

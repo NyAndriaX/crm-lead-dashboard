@@ -6,6 +6,8 @@ import type { WorkerJobHandler } from "./types";
 const LOCK_MS: Record<string, number> = {
   "campaign-send": 35 * 60 * 1000,
   "import-process": 25 * 60 * 1000,
+  "imap-sync": 15 * 60 * 1000,
+  "sequence-tick": 10 * 60 * 1000,
 };
 
 const CONCURRENCY: Record<string, number> = {
@@ -15,6 +17,8 @@ const CONCURRENCY: Record<string, number> = {
   scoring: 3,
   notification: 5,
   "sequences-stop": 5,
+  "imap-sync": 1,
+  "sequence-tick": 1,
 };
 
 export async function createWorkerAgenda(): Promise<Agenda> {

@@ -25,6 +25,15 @@ async function main() {
 
   console.log(`[worker] Agenda @hokify — fuseau TZ=${agendaTz}, collection=${process.env.AGENDA_COLLECTION ?? "crmAgendaJobs"}`);
   console.log(`[worker] handlers: ${Object.keys(handlers).join(", ")}`);
+
+  // Jobs récurrents (R-01 collecte des réponses IMAP, RL-02 tick séquences).
+  // `every()` upsert atomiquement le job récurrent — sûr en redémarrage à chaud.
+  const imapInterval = process.env.IMAP_SYNC_INTERVAL ?? "5 minutes";
+  const sequenceInterval = process.env.SEQUENCE_TICK_INTERVAL ?? "1 minute";
+  await agenda.every(imapInterval, "imap-sync");
+  await agenda.every(sequenceInterval, "sequence-tick");
+  console.log(`[worker] recurring: imap-sync every ${imapInterval}, sequence-tick every ${sequenceInterval}`);
+
   await agenda.start();
 
   const stop = async (signal: string) => {
