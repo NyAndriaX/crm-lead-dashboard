@@ -15,3 +15,5 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 export * from "@prisma/client";
+export { LEAD_NOT_DELETED, buildLeadWhereFromSegmentFilters, type LeadSegmentFilters } from "./leadWhere";
+export { signEmailTrackToken, verifyEmailTrackToken, type EmailTrackKind, type EmailTrackPayload } from "./emailTrack";

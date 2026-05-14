@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { EmailHtmlDualEditor } from "@/components/emailing/EmailHtmlDualEditor";
 import { EmailHtmlLivePreview } from "@/components/emailing/EmailHtmlLivePreview";
+import { EmailTemplateAiVariants } from "@/components/emailing/EmailTemplateAiVariants";
 import {
   Tabs, Card, Typography, Table, Button, Tag, Space, Form, InputNumber, Row, Col,
   Statistic, Badge, Modal, Input, Select, message, Spin, Alert, Popconfirm, List,
@@ -1331,6 +1332,8 @@ function EmailingTab() {
         <Space direction="vertical" size={4} style={{ width: "100%", marginBottom: 8 }}>
           <Text type="secondary">
             Éditeur M-03 : onglets visuel / HTML, variables <Text code>{"{{prenom}}"}</Text>, aperçu desktop & mobile.
+            {" "}
+            M-05 (optionnel) : dans les modales de création / édition, section « Personnalisation IA » — variantes de ton via OpenAI si <Text code>OPENAI_API_KEY</Text> est définie sur le serveur.
           </Text>
         </Space>
         <Table
@@ -1526,6 +1529,11 @@ function EmailingTab() {
           </Row>
           <Row gutter={16}>
             <Col xs={24}>
+              <EmailTemplateAiVariants form={templateForm} mode="template" />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24}>
               <Form.Item
                 name="variables"
                 label="Variables"
@@ -1614,6 +1622,11 @@ function EmailingTab() {
                   maxHeight={isMobile ? 260 : 380}
                 />
               </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24}>
+              <EmailTemplateAiVariants form={templateBlockForm} mode="block" />
             </Col>
           </Row>
           <Row gutter={16}>

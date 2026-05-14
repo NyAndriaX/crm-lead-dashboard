@@ -17,6 +17,8 @@ Copier `.env.example` → `.env`. Ne jamais committer `.env`. En production, les
 | `WORKER_POLL_INTERVAL_MS` | — | Intervalle de polling de la file `jobs` par le worker. Défaut 3000. |
 | `WORKER_CONCURRENCY` | — | Nombre de jobs traités en parallèle par le worker. Défaut 5. |
 | `SCORING_WEIGHTS` | — | JSON optionnel pour surcharger les poids du lead scoring (CRM-019). Par défaut : voir `apps/web/lib/scoring.ts` (`DEFAULT_WEIGHTS`). |
+| `OPENAI_API_KEY` | — | Optionnel (M-05). Active la génération de variantes d’email dans **Paramètres → Emailing** (templates / blocs). Sans clé, l’API renvoie une erreur explicite. Ne jamais exposer au client. |
+| `OPENAI_MODEL` | — | Modèle OpenAI pour M-05. Défaut : `gpt-4o-mini`. |
 
 > Pas de `REDIS_URL` : la file de tâches asynchrones est la collection MongoDB `jobs`, consommée par `apps/worker` en polling (pas de Redis dans l'architecture).
 >

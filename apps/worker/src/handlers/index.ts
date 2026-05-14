@@ -10,11 +10,15 @@
  * Placeholders :
  *  - "notification"   : envoi de la notification email (CRM-044)
  *  - "sequences-stop" : arrêt des séquences de relance d'un lead (CRM-041/047)
+ *
+ * Emailing / campagnes :
+ *  - "campaign-send"  : envoi lot campagne (M-06 → M-14) — voir `campaignSend.ts`
  */
 import * as fs from "node:fs";
 import * as crypto from "node:crypto";
 import * as XLSX from "xlsx";
 import { prisma, type Job } from "@crm/db";
+import { runCampaignSend } from "../campaignSend";
 
 export type JobHandler = (job: Job) => Promise<unknown> | unknown;
 
@@ -237,4 +241,6 @@ export const handlers: Record<string, JobHandler> = {
     console.log("[worker] sequences-stop (placeholder):", job.payload);
     return { ok: true };
   },
+
+  "campaign-send": runCampaignSend,
 };

@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { handler, json, created, parseBody, requirePermission } from "@/lib/api";
+import { ApiError, handler, json, created, parseBody, requirePermission, requireSession } from "@/lib/api";
+import { can } from "@/lib/rbac";
 import { createTemplate, listTemplates } from "@/lib/services/templates";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,10 @@ const createSchema = z.object({
 });
 
 export const GET = handler(async () => {
-  await requirePermission("settings:manage");
+  const s = await requireSession();
+  if (!can(s.role, "settings:manage") && !can(s.role, "campaigns:read")) {
+    throw new ApiError(403, "Permission manquante", "forbidden");
+  }
   const templates = await listTemplates();
   return json({ data: templates });
 });

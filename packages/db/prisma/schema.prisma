@@ -353,6 +353,8 @@ model Campaign {
   scheduledAt DateTime?
   dailyLimit  Int?
   stats       Json? // compteurs dénormalisés (sent/open/click/...)
+  /// Options M-06→M-14 : throttleMinDelayMs, bodyHtmlOverride, ab{...}, warmup{...}, sendOffset, etc.
+  config      Json?
   createdById String?        @db.ObjectId
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
