@@ -33,6 +33,7 @@ export type InboxItem = {
   to: string;
   subject: string | null;
   preview: string | null;
+  category: string | null;
   isAutoReply: boolean;
   isRead: boolean;
   receivedAt: Date;
@@ -73,6 +74,7 @@ function mapItem(row: {
   subject: string | null;
   bodyText: string | null;
   bodyHtml: string | null;
+  category: string | null;
   isAutoReply: boolean;
   isRead: boolean;
   receivedAt: Date;
@@ -88,6 +90,7 @@ function mapItem(row: {
     to: decryptOrNull(row.toEnc) ?? "",
     subject: row.subject,
     preview: makePreview({ bodyText: row.bodyText, bodyHtml: row.bodyHtml }),
+    category: row.category,
     isAutoReply: row.isAutoReply,
     isRead: row.isRead,
     receivedAt: row.receivedAt,
