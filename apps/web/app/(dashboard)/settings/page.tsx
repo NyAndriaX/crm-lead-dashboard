@@ -9,6 +9,10 @@ import { EmailHtmlDualEditor } from "@/components/emailing/EmailHtmlDualEditor";
 import { EmailHtmlLivePreview } from "@/components/emailing/EmailHtmlLivePreview";
 import { EmailTemplateAiVariants } from "@/components/emailing/EmailTemplateAiVariants";
 import { ImapSection } from "@/components/emailing/ImapSection";
+import { TeamsSection } from "@/components/admin/TeamsSection";
+import { PermissionsSection } from "@/components/admin/PermissionsSection";
+import { AuditLogsSection } from "@/components/admin/AuditLogsSection";
+import { SecuritySection } from "@/components/admin/SecuritySection";
 import {
   Tabs, Card, Typography, Table, Button, Tag, Space, Form, InputNumber, Row, Col,
   Statistic, Badge, Modal, Input, Select, message, Spin, Alert, Popconfirm, List,
@@ -40,6 +44,9 @@ interface AdminStats {
 interface UserRow {
   id: string; name: string; email: string; role: string;
   isActive: boolean; lastLoginAt: string | null; createdAt: string;
+  teamId?: string | null;
+  twoFactorOn?: boolean;
+  invitedAt?: string | null;
 }
 
 interface SmtpConfigRow {
@@ -543,20 +550,29 @@ function OverviewTab() {
 
 // ── Onglet Utilisateurs ──────────────────────────────────────────────────────
 
+type TeamOption = { id: string; name: string };
+
 function UsersTab() {
   const [users, setUsers] = useState<UserRow[]>([]);
+  const [teams, setTeams] = useState<TeamOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [editUser, setEditUser] = useState<UserRow | null>(null);
   const [createForm] = Form.useForm();
+  const [inviteForm] = Form.useForm();
   const [editForm] = Form.useForm();
   const [saving, setSaving] = useState(false);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get<{ data: UserRow[] }>("/users?all=true");
-      setUsers(data.data);
+      const [u, t] = await Promise.all([
+        api.get<{ data: UserRow[] }>("/users?all=true"),
+        api.get<{ data: TeamOption[] }>("/teams"),
+      ]);
+      setUsers(u.data.data);
+      setTeams(t.data.data ?? []);
     } catch { message.error("Impossible de charger les utilisateurs."); }
     finally { setLoading(false); }
   }, []);
@@ -609,6 +625,62 @@ function UsersTab() {
     }
   }
 
+  async function inviteUser() {
+    const values = await inviteForm.validateFields();
+    setSaving(true);
+    try {
+      const { data } = await api.post<{
+        email: { sent: boolean; error: string | null; acceptUrl?: string };
+      }>("/users/invite", values);
+      if (data.email.sent) {
+        message.success(`Invitation envoyée à ${values.email}`);
+      } else if (data.email.acceptUrl) {
+        message.warning(data.email.error ?? "Email non envoyé — utilisez le lien direct ci-dessous.");
+        Modal.info({
+          title: "Lien d'invitation (mode dev)",
+          width: 600,
+          content: (
+            <div>
+              <p>Le compte est créé mais l'email n'a pas pu être envoyé.</p>
+              <p>Communiquez ce lien à l'invité :</p>
+              <Input.TextArea value={data.email.acceptUrl} rows={2} readOnly />
+            </div>
+          ),
+        });
+      } else {
+        message.error(data.email.error ?? "Email d'invitation non envoyé.");
+      }
+      inviteForm.resetFields();
+      setInviteOpen(false);
+      void fetchUsers();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
+      message.error(msg);
+    } finally { setSaving(false); }
+  }
+
+  async function reset2fa(user: UserRow) {
+    try {
+      await api.post(`/users/${user.id}/reset-2fa`);
+      message.success(`2FA réinitialisée pour ${user.name}`);
+      void fetchUsers();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
+      message.error(msg);
+    }
+  }
+
+  async function forceLogout(user: UserRow) {
+    try {
+      await api.post(`/users/${user.id}/force-logout`);
+      message.success(`Sessions de ${user.name} invalidées`);
+      void fetchUsers();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
+      message.error(msg);
+    }
+  }
+
   const columns: ColumnsType<UserRow> = [
     {
       title: "Utilisateur", key: "user",
@@ -639,10 +711,28 @@ function UsersTab() {
       ),
     },
     {
-      title: "Statut", dataIndex: "isActive", key: "isActive", width: 100, responsive: ["md"],
-      render: (v: boolean) => v
-        ? <Badge status="success" text={<Text style={{ fontSize: 12, color: "#52c41a" }}>Actif</Text>} />
+      title: "Équipe", key: "team", width: 150, responsive: ["md"],
+      render: (_, r) => {
+        const team = r.teamId ? teams.find((t) => t.id === r.teamId) : null;
+        return team
+          ? <Tag color="blue">{team.name}</Tag>
+          : <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
+      },
+    },
+    {
+      title: "Statut", dataIndex: "isActive", key: "isActive", width: 110, responsive: ["md"],
+      render: (v: boolean, r) => v
+        ? (r.invitedAt && !r.lastLoginAt
+            ? <Badge status="warning" text={<Text style={{ fontSize: 12, color: "#fa8c16" }}>Invité</Text>} />
+            : <Badge status="success" text={<Text style={{ fontSize: 12, color: "#52c41a" }}>Actif</Text>} />)
         : <Badge status="error" text={<Text style={{ fontSize: 12, color: "#ff4d4f" }}>Inactif</Text>} />,
+    },
+    {
+      title: "2FA", dataIndex: "twoFactorOn", key: "twoFactorOn", width: 80, responsive: ["lg"],
+      align: "center",
+      render: (v: boolean) => v
+        ? <Tooltip title="2FA activée"><SafetyOutlined style={{ color: "#52c41a", fontSize: 16 }} /></Tooltip>
+        : <Tooltip title="2FA inactive"><SafetyOutlined style={{ color: "#d9d9d9", fontSize: 16 }} /></Tooltip>,
     },
     {
       title: "Dernière connexion", dataIndex: "lastLoginAt", key: "lastLoginAt", width: 170, responsive: ["lg"],
@@ -655,15 +745,42 @@ function UsersTab() {
       render: (v) => new Date(v).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }),
     },
     {
-      title: "", key: "actions", width: 90,
+      title: "", key: "actions", width: 160,
       render: (_, r) => (
         <Space size={4}>
           <Tooltip title="Modifier">
             <Button
               size="small" icon={<EditOutlined />}
-              onClick={() => { setEditUser(r); editForm.setFieldsValue({ name: r.name, role: r.role }); }}
+              onClick={() => {
+                setEditUser(r);
+                editForm.setFieldsValue({ name: r.name, role: r.role, teamId: r.teamId ?? null });
+              }}
             />
           </Tooltip>
+          {r.twoFactorOn && (
+            <Tooltip title="Réinitialiser la 2FA">
+              <Popconfirm
+                title={`Réinitialiser la 2FA de ${r.name} ?`}
+                description="L'utilisateur devra réenrôler son 2FA (et sera déconnecté)."
+                onConfirm={() => void reset2fa(r)}
+                okText="Réinitialiser" cancelText="Annuler"
+              >
+                <Button size="small" icon={<SafetyOutlined />} />
+              </Popconfirm>
+            </Tooltip>
+          )}
+          {r.isActive && (
+            <Tooltip title="Forcer la déconnexion">
+              <Popconfirm
+                title={`Déconnecter ${r.name} ?`}
+                description="Toutes ses sessions seront invalidées."
+                onConfirm={() => void forceLogout(r)}
+                okText="Déconnecter" cancelText="Annuler"
+              >
+                <Button size="small" icon={<LockOutlined />} />
+              </Popconfirm>
+            </Tooltip>
+          )}
           <Tooltip title={r.isActive ? "Désactiver" : "Réactiver"}>
             <Popconfirm
               title={r.isActive ? `Désactiver ${r.name} ?` : `Réactiver ${r.name} ?`}
@@ -701,6 +818,9 @@ function UsersTab() {
         ))}
         <Col flex="auto" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
           <Button icon={<ReloadOutlined />} onClick={() => fetchUsers()}>Actualiser</Button>
+          <Button icon={<MailOutlined />} onClick={() => setInviteOpen(true)}>
+            Inviter par email
+          </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
             Nouvel utilisateur
           </Button>
@@ -753,6 +873,53 @@ function UsersTab() {
               }))}
             />
           </Form.Item>
+          <Form.Item name="teamId" label="Équipe (optionnel)">
+            <Select
+              allowClear
+              placeholder="Aucune équipe"
+              options={teams.map((t) => ({ value: t.id, label: t.name }))}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Modale invitation par email */}
+      <Modal
+        title={<Space><MailOutlined /><span>Inviter un utilisateur par email</span></Space>}
+        open={inviteOpen}
+        onOk={() => void inviteUser()}
+        onCancel={() => { setInviteOpen(false); inviteForm.resetFields(); }}
+        confirmLoading={saving}
+        okText="Envoyer l'invitation"
+        cancelText="Annuler"
+        width={480}
+      >
+        <Paragraph type="secondary" style={{ marginBottom: 16 }}>
+          L'utilisateur recevra un email avec un lien d'activation (valide 7 jours)
+          lui permettant de définir son propre mot de passe.
+        </Paragraph>
+        <Form form={inviteForm} layout="vertical">
+          <Form.Item name="name" label="Nom complet" rules={[{ required: true, message: "Champ requis" }]}>
+            <Input prefix={<UserOutlined />} placeholder="Jean Dupont" />
+          </Form.Item>
+          <Form.Item name="email" label="Adresse email" rules={[{ required: true, type: "email", message: "Email invalide" }]}>
+            <Input prefix="@" placeholder="jean@exemple.com" />
+          </Form.Item>
+          <Form.Item name="role" label="Rôle" initialValue="COMMERCIAL">
+            <Select
+              options={Object.entries(ROLE_LABELS).map(([v, l]) => ({
+                value: v,
+                label: <Space><Tag color={ROLE_COLORS[v]}>{l}</Tag></Space>,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item name="teamId" label="Équipe (optionnel)">
+            <Select
+              allowClear
+              placeholder="Aucune équipe"
+              options={teams.map((t) => ({ value: t.id, label: t.name }))}
+            />
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -765,7 +932,7 @@ function UsersTab() {
         confirmLoading={saving}
         okText="Enregistrer"
         cancelText="Annuler"
-        width={400}
+        width={420}
       >
         <Form form={editForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item name="name" label="Nom complet" rules={[{ required: true }]}>
@@ -777,6 +944,13 @@ function UsersTab() {
                 value: v,
                 label: <Space><Tag color={ROLE_COLORS[v]}>{l}</Tag></Space>,
               }))}
+            />
+          </Form.Item>
+          <Form.Item name="teamId" label="Équipe">
+            <Select
+              allowClear
+              placeholder="Aucune équipe"
+              options={teams.map((t) => ({ value: t.id, label: t.name }))}
             />
           </Form.Item>
         </Form>
@@ -1923,6 +2097,46 @@ export default function SettingsPage() {
               </Space>
             ),
             children: <UsersTab />,
+          },
+          {
+            key: "teams",
+            label: (
+              <Space>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#2f54eb" }} />
+                Équipes
+              </Space>
+            ),
+            children: <TeamsSection />,
+          },
+          {
+            key: "permissions",
+            label: (
+              <Space>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#eb2f96" }} />
+                Rôles & permissions
+              </Space>
+            ),
+            children: <PermissionsSection />,
+          },
+          {
+            key: "security",
+            label: (
+              <Space>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#f5222d" }} />
+                Sécurité (2FA)
+              </Space>
+            ),
+            children: <SecuritySection />,
+          },
+          {
+            key: "audit",
+            label: (
+              <Space>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#595959" }} />
+                Journal d&apos;activité
+              </Space>
+            ),
+            children: <AuditLogsSection />,
           },
           {
             key: "scoring",

@@ -16,8 +16,10 @@ const ACCESS_COOKIE = "crm_at";
 // Routes publiques (préfixes).
 const PUBLIC_PATHS = [
   "/login",
+  "/accept-invite",
   "/api/auth/login",
   "/api/auth/refresh",
+  "/api/users/accept-invite",
   "/api/health",
   "/api/emailing/track/",
   "/api/emailing/unsub",
