@@ -17,6 +17,7 @@
     "@asteasolutions/zod-to-openapi": "^7.2.0",
     "@crm/db": "*",
     "@crm/queue": "*",
+    "@hello-pangea/dnd": "^17.0.0",
     "@monaco-editor/react": "^4.7.0",
     "antd": "^5.22.2",
     "axios": "^1.7.7",
