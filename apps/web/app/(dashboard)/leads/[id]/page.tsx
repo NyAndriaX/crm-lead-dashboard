@@ -144,7 +144,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                     <div>
                       <Text strong>{HISTORY_LABELS[h.type] ?? h.type}</Text>
                       <div><Text type="secondary" style={{ fontSize: 12 }}>{new Date(h.createdAt).toLocaleString("fr-FR")}</Text></div>
-                      {h.payload && Object.keys(h.payload as object).length > 0 && (
+                      {!!(h.payload && Object.keys(h.payload as object).length > 0) && (
                         <pre style={{ fontSize: 12, margin: "4px 0 0", color: "#888" }}>{JSON.stringify(h.payload)}</pre>
                       )}
                     </div>

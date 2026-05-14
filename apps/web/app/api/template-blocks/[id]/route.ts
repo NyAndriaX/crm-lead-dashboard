@@ -4,6 +4,8 @@ import { getTemplateBlock, updateTemplateBlock, deleteTemplateBlock } from "@/li
 
 export const dynamic = "force-dynamic";
 
+type Ctx = { params: Promise<{ id: string }> };
+
 const updateSchema = z.object({
   name: z.string().trim().min(1).max(100).optional(),
   category: z.string().trim().min(1).max(50).optional(),
@@ -13,28 +15,25 @@ const updateSchema = z.object({
   isPublic: z.boolean().optional(),
 });
 
-export const GET = handler(async (req, ctx) => {
+export const GET = handler<Ctx>(async (_req, { params }) => {
   await requirePermission("settings:manage");
-  const params = ctx as { params: { id: string } };
-  const id = params.params.id;
+  const { id } = await params;
   const block = await getTemplateBlock(id);
   if (!block) return notFound();
   return json({ data: block });
 });
 
-export const PUT = handler(async (req, ctx) => {
+export const PUT = handler<Ctx>(async (req, { params }) => {
   await requirePermission("settings:manage");
-  const params = ctx as { params: { id: string } };
-  const id = params.params.id;
+  const { id } = await params;
   const input = await parseBody(req, updateSchema);
   const block = await updateTemplateBlock(id, input);
   return json({ data: block });
 });
 
-export const DELETE = handler(async (req, ctx) => {
+export const DELETE = handler<Ctx>(async (_req, { params }) => {
   await requirePermission("settings:manage");
-  const params = ctx as { params: { id: string } };
-  const id = params.params.id;
+  const { id } = await params;
   await deleteTemplateBlock(id);
   return json({ success: true });
 });

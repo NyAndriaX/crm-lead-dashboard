@@ -24,7 +24,7 @@ export const GET = handler(async (req) => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Leads");
     const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
-    return new Response(buf, {
+    return new Response(new Uint8Array(buf), {
       headers: {
         "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "content-disposition": `attachment; filename="leads-${stamp}.xlsx"`,

@@ -222,7 +222,10 @@ export async function updateLead(id: string, input: UpdateLeadInput, actorId?: s
     if (input[k] !== undefined) (data as Record<string, unknown>)[k] = input[k];
   }
   if (input.tags !== undefined) data.tags = input.tags;
-  if (input.assignedToId !== undefined) data.assignedToId = input.assignedToId;
+  if (input.assignedToId !== undefined) {
+    data.assignedTo =
+      input.assignedToId === null ? { disconnect: true } : { connect: { id: input.assignedToId } };
+  }
   data.lastActionAt = new Date();
 
   let lead = await prisma.lead.update({ where: { id }, data });
@@ -336,7 +339,7 @@ export async function collectLeadsForExport(filters: Partial<LeadFilters>, colum
     const dto = toDTO(l);
     const rec: Record<string, unknown> = {};
     for (const c of columns) {
-      const v = (dto as Record<string, unknown>)[c];
+      const v = (dto as unknown as Record<string, unknown>)[c];
       rec[c] = Array.isArray(v) ? (v as string[]).join("; ") : v instanceof Date ? v.toISOString() : (v ?? "");
     }
     return rec;

@@ -59,6 +59,27 @@ _(Optionnels, à arbitrer plus tard : CRM-074 personnalisation IA, CRM-075 webho
 
 L3 (Import CSV/XLSX) puis L4 (Emailing). Voir le tableau des lots ci-dessus.
 
+### L4 — Emailing (suivi CRM CRM-029 → CRM-039)
+
+_Table de suivi alignée sur le lot L4 ; le fichier maître Excel est `docs/backlog/CRM_SUIVI_TICKETS_v2.xlsx` (onglets 📋 / ✅ / 📊)._
+
+| Ticket | Sujet | État |
+|---|---|---|
+| CRM-029 | Config SMTP chiffrée (CRUD `/api/smtp-configs`, onglet Emailing) | ✅ fait |
+| CRM-030 | Guide DNS SPF / DKIM / DMARC intégré (réglages) | ✅ fait |
+| CRM-031 | Éditeur de templates : WYSIWYG (Quill) + HTML (Monaco), variables de fusion, aperçu bureau / mobile | ✅ fait |
+| CRM-032 | Bibliothèque templates & blocs : duplication API, partage `isPublic` | ✅ fait |
+| CRM-033 | Page **Campagnes** (`/campaigns`) : création, planification, envoi | ⏳ à faire (placeholder) |
+| CRM-034 | Segmentation (sélecteurs de destinataires / listes) | ⏳ à faire |
+| CRM-035 | Worker d’envoi régulé (file `jobs`) | ⏳ à faire |
+| CRM-036 | Tracking ouvertures / clics | ⏳ à faire |
+| CRM-037 | Bounces + gestion des erreurs SMTP | ⏳ à faire |
+| CRM-038 | Désabonnement RFC 8058 (List-Unsubscribe) | ⏳ à faire |
+| CRM-039 | Dashboard campagne (stats, état d’envoi) | ⏳ à faire |
+| _(tech)_ | **T-04** dans `docs/backlog/CRM_SUIVI_TICKETS_v2.xlsx` : `next build` OK — routes `params: Promise`, export XLSX `Uint8Array`, login `Suspense`, `assignedTo` Prisma, typage export/historique, Quill client-only | ✅ fait |
+
+**Prochain focus L4 recommandé :** CRM-033 (écran campagnes + modèle de données minimal) ou L3 si priorité import.
+
 ### Definition of Done (par ticket)
 
 - Code + types stricts, `yarn lint` & `yarn typecheck` verts
