@@ -23,7 +23,7 @@ import { canTransition, STOPS_SEQUENCES } from "../leadStatus";
 import { computeScore } from "../scoring";
 import { enqueue } from "../jobs";
 
-const SORTABLE = ["createdAt", "updatedAt", "score", "lastActionAt", "company"];
+const SORTABLE = ["createdAt", "updatedAt", "score", "lastActionAt", "company", "firstName", "lastName"];
 
 /** Représentation "API" d'un lead : PII déchiffrée, pas de champs `*Enc`. */
 export interface LeadDTO {

@@ -128,7 +128,8 @@ export default function LeadsPage() {
   // ── Colonnes ──────────────────────────────────────────────────────────────
 
   const columns: ColumnsType<LeadDTO> = [
-    { title: "Nom", key: "name", render: (_, r) => [r.firstName, r.lastName].filter(Boolean).join(" ") || "—" },
+    { title: "Prénom", dataIndex: "firstName", key: "firstName", sorter: true, render: (v: string | null) => v || <Text type="secondary">—</Text> },
+    { title: "Nom", dataIndex: "lastName", key: "lastName", sorter: true, render: (v: string | null) => v || <Text type="secondary">—</Text> },
     { title: "Entreprise", dataIndex: "company", key: "company", sorter: true, render: (v) => v || "—" },
     { title: "Email", dataIndex: "email", key: "email", responsive: ["md"], render: (v) => v || "—" },
     { title: "Source", dataIndex: "source", key: "source", responsive: ["lg"], render: (v) => v || "—" },
