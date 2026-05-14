@@ -10,7 +10,7 @@ const nextConfig = {
   // Monorepo : tracer les fichiers depuis la racine du repo (pour la sortie standalone).
   outputFileTracingRoot: path.join(__dirname, "../../"),
   // Le client Prisma vit dans le package workspace @crm/db (source TypeScript).
-  transpilePackages: ["@crm/db"],
+  transpilePackages: ["@crm/db", "@crm/queue"],
   experimental: {
     optimizePackageImports: ["antd", "@ant-design/icons"],
   },

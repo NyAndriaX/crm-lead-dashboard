@@ -125,6 +125,15 @@ async function seedScoringConfig(adminId) {
   });
 }
 
+async function seedWorkerConfig() {
+  const existing = await prisma.workerConfig.findUnique({ where: { id: "default" } });
+  if (!existing) {
+    await prisma.workerConfig.create({
+      data: { id: "default", agendaTimezone: process.env.SEED_AGENDA_TIMEZONE || "Europe/Paris" },
+    });
+  }
+}
+
 async function resetDemoData() {
   const demoHashes = ALL_LEAD_FIXTURES.map((fixture) => emailHash(fixture.email));
   const demoLeads = await prisma.lead.findMany({
@@ -537,6 +546,7 @@ async function main() {
   await seedTeam(users);
   await seedPipelineStages();
   await seedTags();
+  await seedWorkerConfig();
 
   if (skipDemo) {
     console.log("✔ Comptes + pipeline + tags (SEED_SKIP_DEMO=true, démo ignorée)");

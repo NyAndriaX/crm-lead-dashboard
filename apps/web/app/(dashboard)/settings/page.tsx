@@ -351,6 +351,71 @@ function DnsSenderAuthGuide(props: {
 
 // ── Onglet Vue d'ensemble ────────────────────────────────────────────────────
 
+function WorkerAgendaTimezoneCard() {
+  const [zones] = useState(() =>
+    typeof Intl !== "undefined" && "supportedValuesOf" in Intl
+      ? Intl.supportedValuesOf("timeZone")
+      : ["UTC", "Europe/Paris", "Europe/Brussels", "America/New_York", "Asia/Tokyo"],
+  );
+  const [tz, setTz] = useState("UTC");
+  const [loading, setLoading] = useState(true);
+  const [visible, setVisible] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api
+      .get<{ data: { agendaTimezone: string } }>("/admin/worker-config")
+      .then((r) => {
+        setTz(r.data.data.agendaTimezone);
+        setVisible(true);
+      })
+      .catch(() => setVisible(false))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const res = await api.patch<{ data: { agendaTimezone: string }; info?: string }>("/admin/worker-config", {
+        agendaTimezone: tz,
+      });
+      setTz(res.data.data.agendaTimezone);
+      message.success(res.data.info ?? "Fuseau enregistré.");
+    } catch {
+      message.error("Modification réservée aux administrateurs (permission Paramètres).");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!visible || loading) return null;
+
+  return (
+    <Card
+      title={<Space><CloudOutlined style={{ color: "#1677ff" }} /><span>Worker — fuseau horaire (Agenda)</span></Space>}
+      style={{ borderRadius: 12, boxShadow: "0 1px 2px rgba(15,23,42,0.06)" }}
+    >
+      <Space direction="vertical" size={12} style={{ width: "100%" }}>
+        <Text type="secondary">
+          Identifiant IANA (ex. Europe/Paris). Appliqué au processus Node du worker via <Text code>TZ</Text> et aux
+          planifications Agenda de type cron qui précisent un fuseau. Redémarrer le worker après changement.
+        </Text>
+        <Select
+          showSearch
+          optionFilterProp="label"
+          style={{ maxWidth: 420, width: "100%" }}
+          options={zones.map((z) => ({ label: z, value: z }))}
+          value={tz}
+          onChange={setTz}
+        />
+        <Button type="primary" loading={saving} onClick={() => void save()}>
+          Enregistrer
+        </Button>
+      </Space>
+    </Card>
+  );
+}
+
 function OverviewTab() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -364,8 +429,6 @@ function OverviewTab() {
   }, []);
 
   if (loading) return <div style={{ padding: 40, textAlign: "center" }}><Spin size="large" /></div>;
-  if (error) return <Alert type="warning" message="Statistiques réservées aux rôles Admin et Manager." showIcon style={{ marginBottom: 16 }} />;
-  if (!stats) return null;
 
   const statusOrder = ["NOUVEAU", "CONTACTE", "QUALIFIE", "EN_DISCUSSION", "CONVERTI", "PERDU"];
   const STATUS_HEX: Record<string, string> = {
@@ -375,6 +438,11 @@ function OverviewTab() {
 
   return (
     <Space direction="vertical" size={24} style={{ width: "100%" }}>
+      {error ? (
+        <Alert type="warning" message="Statistiques réservées aux rôles Admin et Manager." showIcon style={{ marginBottom: 16 }} />
+      ) : null}
+      {!error && stats ? (
+        <>
       {/* ── KPI row ── */}
       <Row gutter={[16, 16]}>
         {[
@@ -465,6 +533,9 @@ function OverviewTab() {
           </Card>
         </Col>
       </Row>
+        </>
+      ) : null}
+      <WorkerAgendaTimezoneCard />
     </Space>
   );
 }

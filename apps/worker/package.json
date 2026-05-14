@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@crm/db": "*",
+    "@crm/queue": "*",
     "nodemailer": "^8.0.7",
     "tsx": "^4.19.2",
     "xlsx": "^0.18.5"

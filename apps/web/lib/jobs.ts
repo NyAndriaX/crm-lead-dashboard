@@ -1,19 +1,12 @@
-// File de tâches asynchrones (collection `jobs`, consommée par apps/worker).
-// Remplace BullMQ/Redis : on insère simplement un document Job en PENDING.
-import { prisma } from "@crm/db";
+// File de tâches asynchrones — **@hokify/agenda** (MongoDB, collection `crmAgendaJobs` par défaut).
+// Le worker (`apps/worker`) consomme les jobs ; l’API web planifie via `enqueueFromWeb`.
+import { enqueueFromWeb } from "@crm/queue";
 
 export async function enqueue(
   type: string,
   payload?: unknown,
   opts: { runAt?: Date; priority?: number; maxAttempts?: number } = {},
 ) {
-  return prisma.job.create({
-    data: {
-      type,
-      payload: (payload ?? null) as object,
-      runAt: opts.runAt ?? new Date(),
-      priority: opts.priority ?? 0,
-      maxAttempts: opts.maxAttempts ?? 3,
-    },
-  });
+  void opts.maxAttempts; // conservé pour compat ; la politique de retry est côté Agenda / handler
+  await enqueueFromWeb(type, payload ?? {}, { runAt: opts.runAt, priority: opts.priority });
 }

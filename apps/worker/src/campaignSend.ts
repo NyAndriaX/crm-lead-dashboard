@@ -7,11 +7,11 @@ import * as crypto from "node:crypto";
 import nodemailer from "nodemailer";
 import {
   prisma,
-  type Job,
   buildLeadWhereFromSegmentFilters,
   signEmailTrackToken,
   type LeadSegmentFilters,
 } from "@crm/db";
+import { getWorkerAgenda, enqueueOneOff, type WorkerJobContext } from "@crm/queue";
 
 const ALGO = "aes-256-gcm";
 const IV_LEN = 12;
@@ -99,13 +99,11 @@ function pickVariant(leadId: string, cfg: CampaignCfg | null): "A" | "B" {
 }
 
 async function enqueueNext(type: string, payload: object, runAt: Date) {
-  await prisma.job.create({
-    data: { type, payload: payload as object, runAt, priority: 1, maxAttempts: 5 },
-  });
+  await enqueueOneOff(getWorkerAgenda(), type, payload, { runAt, priority: 1 });
 }
 
-export async function runCampaignSend(job: Job): Promise<unknown> {
-  const payload = (job.payload ?? {}) as { campaignId?: string; offset?: number };
+export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
+  const payload = (ctx.payload ?? {}) as { campaignId?: string; offset?: number };
   const campaignId = payload.campaignId;
   const offset = Number(payload.offset ?? 0);
   if (!campaignId) return { error: "campaignId manquant" };

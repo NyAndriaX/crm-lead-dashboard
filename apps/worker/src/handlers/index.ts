@@ -1,6 +1,6 @@
 /**
- * Registre des handlers de jobs, indexés par `job.type`.
- * (Le worker reste découplé de l'app web : il n'importe que `@crm/db`.)
+ * Registre des handlers de jobs **@hokify/agenda**, indexés par le nom du job.
+ * (Le worker reste découplé de l'app web : il n'importe que `@crm/db` + `@crm/queue`.)
  *
  * Implémentés :
  *  - "noop"           : témoin de bout en bout
@@ -17,10 +17,11 @@
 import * as fs from "node:fs";
 import * as crypto from "node:crypto";
 import * as XLSX from "xlsx";
-import { prisma, type Job } from "@crm/db";
+import { prisma } from "@crm/db";
+import type { WorkerJobContext, WorkerJobHandler } from "@crm/queue";
 import { runCampaignSend } from "../campaignSend";
 
-export type JobHandler = (job: Job) => Promise<unknown> | unknown;
+export type JobHandler = WorkerJobHandler;
 
 // ── Scoring weights (miroir de apps/web/lib/scoring.ts) ──────────────────────
 const W = {
@@ -96,8 +97,8 @@ interface ColumnMapping {
   country?: string; source?: string; notes?: string;
 }
 
-async function processImport(job: Job): Promise<unknown> {
-  const payload = (job.payload as unknown as ImportPayload) ?? {} as ImportPayload;
+async function processImport(ctx: WorkerJobContext): Promise<unknown> {
+  const payload = (ctx.payload as unknown as ImportPayload) ?? {} as ImportPayload;
   const { importJobId, skipDuplicates = true, defaultSource, defaultTags = [] } = payload;
 
   const importJob = await prisma.importJob.findUnique({ where: { id: importJobId } });
@@ -220,10 +221,10 @@ async function processImport(job: Job): Promise<unknown> {
 // ── Exports ──────────────────────────────────────────────────────────────────
 
 export const handlers: Record<string, JobHandler> = {
-  noop: async (job) => ({ ok: true, echoed: job.payload ?? null, at: new Date().toISOString() }),
+  noop: async (ctx) => ({ ok: true, echoed: ctx.payload ?? null, at: new Date().toISOString() }),
 
-  scoring: async (job) => {
-    const payload = (job.payload ?? {}) as { leadId?: string; leadIds?: string[] };
+  scoring: async (ctx) => {
+    const payload = (ctx.payload ?? {}) as { leadId?: string; leadIds?: string[] };
     const ids = payload.leadIds ?? (payload.leadId ? [payload.leadId] : []);
     const results: Record<string, number | null> = {};
     for (const id of ids) results[id] = await scoreLead(id);
@@ -232,13 +233,13 @@ export const handlers: Record<string, JobHandler> = {
 
   "import-process": processImport,
 
-  notification: async (job) => {
-    console.log("[worker] notification (placeholder):", job.payload);
+  notification: async (ctx) => {
+    console.log("[worker] notification (placeholder):", ctx.payload);
     return { ok: true, delivered: "in-app only" };
   },
 
-  "sequences-stop": async (job) => {
-    console.log("[worker] sequences-stop (placeholder):", job.payload);
+  "sequences-stop": async (ctx) => {
+    console.log("[worker] sequences-stop (placeholder):", ctx.payload);
     return { ok: true };
   },
 

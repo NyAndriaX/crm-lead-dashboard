@@ -1,7 +1,7 @@
 # Docker Compose — CRM Lead Dashboard (dev/preprod)
 # Services : nextjs · worker · mongo (replica set 1 nœud) · nginx
-# Pas de Redis : la file de tâches asynchrones est stockée dans MongoDB
-# (collection `jobs`) et consommée par le worker en polling.
+# Pas de Redis : la file de tâches asynchrone est **@hokify/agenda** (MongoDB,
+# collection `crmAgendaJobs` par défaut) consommée par le worker.
 # Le service `scraper` (Python) sera ajouté ultérieurement.
 #
 # Démarrer l'infra seule :   docker compose up -d mongo

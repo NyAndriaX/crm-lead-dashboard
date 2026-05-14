@@ -16,6 +16,7 @@
     "@ant-design/nextjs-registry": "^1.0.2",
     "@asteasolutions/zod-to-openapi": "^7.2.0",
     "@crm/db": "*",
+    "@crm/queue": "*",
     "@monaco-editor/react": "^4.7.0",
     "antd": "^5.22.2",
     "axios": "^1.7.7",

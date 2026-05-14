@@ -11,7 +11,7 @@ Application full-stack de gestion, qualification et prospection de leads.
 | Frontend + API | Next.js 15 (App Router, TS strict) |
 | UI | Ant Design 5 + `@ant-design/charts` + `@ant-design/icons` |
 | ORM / BDD | Prisma 5 (provider `mongodb`) · MongoDB 7 (replica set 1 nœud) |
-| File de tâches | Collection MongoDB `jobs` + worker en polling (**pas de Redis**) |
+| File de tâches | **@hokify/agenda** sur MongoDB (collection `crmAgendaJobs` par défaut) — **pas de Redis** |
 | Workers | Node.js 20 (process séparé) |
 | Reverse proxy | Nginx |
 | Orchestration | Docker Compose |
@@ -26,7 +26,7 @@ crm-lead-dashboard/
 │   │   ├── app/        # pages (auth)/(dashboard) + app/api/* (Route Handlers)
 │   │   ├── lib/        # auth, crypto, rbac, api, jobs, openapi, services, schemas (Zod)
 │   │   └── middleware.ts
-│   └── worker/     # Worker Node.js — consomme la collection `jobs` (polling), pas de Redis
+│   └── worker/     # Worker Node.js — @hokify/agenda (MongoDB), pas de Redis
 ├── packages/
 │   └── db/         # Schéma Prisma (~25 collections) + client partagé (@crm/db) + seed
 ├── docker/         # Config Nginx
@@ -57,7 +57,7 @@ yarn db:seed                    # Admin: admin@crm.local / ChangeMe!2026 + étap
 # 4. App web (http://localhost:3000)
 yarn dev
 
-# 5. Worker (autre terminal) — traite la file `jobs`
+# 5. Worker (autre terminal) — traite la file Agenda (`crmAgendaJobs`)
 yarn worker
 ```
 
@@ -77,7 +77,7 @@ Ou tout en conteneurs : `docker compose up --build` (Nginx sur :80). Pas de Redi
 
 ## État d'avancement
 
-- **L0 + L1** (socle) : monorepo + CI + Docker Compose · schéma Prisma (~25 collections) · `lib/crypto` AES-256-GCM + HMAC · auth JWT + bcrypt + TOTP (`/api/auth/*`) · RBAC (matrice + `middleware.ts` + `requirePermission`) · OpenAPI 3.1 + Swagger UI (`/api/docs`) · CRUD Leads · shell dashboard Ant Design · worker (file `jobs` MongoDB en polling, sans Redis).
+- **L0 + L1** (socle) : monorepo + CI + Docker Compose · schéma Prisma (~25 collections) · `lib/crypto` AES-256-GCM + HMAC · auth JWT + bcrypt + TOTP (`/api/auth/*`) · RBAC (matrice + `middleware.ts` + `requirePermission`) · OpenAPI 3.1 + Swagger UI (`/api/docs`) · CRUD Leads · shell dashboard Ant Design · worker (**@hokify/agenda** sur MongoDB, sans Redis).
 - **L2** (Leads avancé — en cours) : fiche lead détaillée (Descriptions + Timeline) · filtres avancés multi-critères + recherche · workflow de statuts (transitions validées) · tags + référentiel · assignation + notification in-app · vues sauvegardées · export CSV/XLSX · lead scoring 0–100 (recalcul auto + job batch).
 
 Détail et reste à faire : [docs/BACKLOG.md](docs/BACKLOG.md) (lots L2 → L10).
