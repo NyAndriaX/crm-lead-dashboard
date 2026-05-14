@@ -10,6 +10,7 @@ import {
   PlayCircleOutlined, EditOutlined, TeamOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
+import { SequencesDashboardPanel } from "@/components/sequences/SequencesDashboardPanel";
 
 const { Title, Text } = Typography;
 
@@ -283,7 +284,9 @@ export default function SequencesPage() {
         </Space>
       </div>
 
-      <Card size="small" styles={{ body: { padding: 0 } }}>
+      <SequencesDashboardPanel refreshKey={rows.length} />
+
+      <Card size="small" styles={{ body: { padding: 0 } }} title="Liste des séquences">
         <Table
           rowKey="id"
           dataSource={rows}

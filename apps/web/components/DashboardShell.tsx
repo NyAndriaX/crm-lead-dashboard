@@ -4,16 +4,17 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Layout, Menu, Dropdown, Avatar, Space, Typography, theme as antdTheme, Badge, Divider, Tooltip, Drawer,
+  Layout, Menu, Dropdown, Avatar, Space, Typography, theme as antdTheme, Divider, Drawer,
 } from "antd";
 import {
   DashboardOutlined, TeamOutlined, ImportOutlined, MailOutlined, MessageOutlined,
   RetweetOutlined, ProjectOutlined, BarChartOutlined, SettingOutlined,
   UserOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
-  BellOutlined, HomeOutlined,
+  HomeOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
 import { useBreakpoint, useIsMobile } from "@/lib/responsive";
+import { NotificationsBell } from "@/components/NotificationsBell";
 import type { MenuProps } from "antd";
 
 const { Header, Sider, Content } = Layout;
@@ -259,19 +260,10 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
           </div>
 
           <Space size={8}>
-            <Tooltip title="Notifications (à venir)">
-              <Badge count={0} dot>
-                <div
-                  style={{
-                    width: 36, height: 36, borderRadius: 8, border: `1px solid ${token.colorBorderSecondary}`,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    cursor: "pointer", color: token.colorTextSecondary,
-                  }}
-                >
-                  <BellOutlined />
-                </div>
-              </Badge>
-            </Tooltip>
+            <NotificationsBell
+              borderColor={token.colorBorderSecondary}
+              textColor={token.colorTextSecondary}
+            />
 
             <Divider type="vertical" style={{ margin: "0 4px" }} />
 

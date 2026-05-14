@@ -17,6 +17,7 @@ import {
 import {
   InboxOutlined, ArrowLeftOutlined, ArrowRightOutlined, CheckCircleOutlined,
   CloseCircleOutlined, ReloadOutlined, DeleteOutlined, HistoryOutlined,
+  DownloadOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
@@ -164,21 +165,47 @@ export default function ImportPage() {
   // ── Step 1 : Upload ───────────────────────────────────────────────────────
   function renderUpload() {
     return (
-      <Card>
-        <Dragger
-          accept=".csv,.xlsx,.xls"
-          multiple={false}
-          showUploadList={false}
-          beforeUpload={(file) => { void handleUpload(file); return false; }}
-          disabled={uploading}
-          style={{ padding: "40px 20px" }}
-        >
-          <p className="ant-upload-drag-icon"><InboxOutlined style={{ fontSize: 48, color: "#1677ff" }} /></p>
-          <p className="ant-upload-text" style={{ fontSize: 18 }}>Glissez votre fichier ici</p>
-          <p className="ant-upload-hint">Formats acceptés : CSV, XLSX, XLS · Taille max : 50 Mo</p>
-        </Dragger>
-        {uploading && <Progress percent={99} status="active" style={{ marginTop: 16 }} />}
-      </Card>
+      <Space direction="vertical" size={16} style={{ width: "100%" }}>
+        <Alert
+          message="Pas de fichier sous la main ?"
+          type="info"
+          showIcon
+          description="Téléchargez un modèle pré-rempli avec les colonnes attendues et 3 exemples de leads."
+          action={
+            <Space>
+              <Button
+                size="small"
+                icon={<DownloadOutlined />}
+                href="/api/import/template?format=xlsx"
+              >
+                Modèle Excel
+              </Button>
+              <Button
+                size="small"
+                icon={<DownloadOutlined />}
+                href="/api/import/template?format=csv"
+              >
+                Modèle CSV
+              </Button>
+            </Space>
+          }
+        />
+        <Card>
+          <Dragger
+            accept=".csv,.xlsx,.xls"
+            multiple={false}
+            showUploadList={false}
+            beforeUpload={(file) => { void handleUpload(file); return false; }}
+            disabled={uploading}
+            style={{ padding: "40px 20px" }}
+          >
+            <p className="ant-upload-drag-icon"><InboxOutlined style={{ fontSize: 48, color: "#1677ff" }} /></p>
+            <p className="ant-upload-text" style={{ fontSize: 18 }}>Glissez votre fichier ici</p>
+            <p className="ant-upload-hint">Formats acceptés : CSV, XLSX, XLS · Taille max : 50 Mo</p>
+          </Dragger>
+          {uploading && <Progress percent={99} status="active" style={{ marginTop: 16 }} />}
+        </Card>
+      </Space>
     );
   }
 

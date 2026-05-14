@@ -6,7 +6,7 @@ import {
   Table, Input, Select, Tag, Space, Button, Badge, Drawer, Typography, Divider, Form,
   message, Tooltip, Switch, Empty, Card,
 } from "antd";
-import { ReloadOutlined, MailOutlined, CheckOutlined, SendOutlined } from "@ant-design/icons";
+import { ReloadOutlined, MailOutlined, CheckOutlined, SendOutlined, TagsOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
 import SafeHtml from "@/components/SafeHtml";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
@@ -25,9 +25,25 @@ type InboxItem = {
   to: string;
   subject: string | null;
   preview: string | null;
+  category: string | null;
   isAutoReply: boolean;
   isRead: boolean;
   receivedAt: string;
+};
+
+const CATEGORY_LABEL: Record<string, string> = {
+  interesse: "Intéressé",
+  pas_interesse: "Pas intéressé",
+  hors_sujet: "Hors sujet",
+  rappel: "Demande de rappel",
+  auto_reply: "Auto-reply",
+};
+const CATEGORY_COLOR: Record<string, string> = {
+  interesse: "green",
+  pas_interesse: "red",
+  hors_sujet: "default",
+  rappel: "orange",
+  auto_reply: "default",
 };
 
 type ThreadItem = InboxItem & { bodyText: string | null; bodyHtml: string | null };
@@ -106,6 +122,18 @@ export default function InboxPage() {
     }
   }
 
+  async function recategorize(item: InboxItem) {
+    try {
+      const { data } = await api.post<{ data: { id: string; category: string; source: string } }>(
+        `/inbox/${item.id}/categorize`,
+      );
+      setData((rows) => rows.map((x) => (x.id === item.id ? { ...x, category: data.data.category } : x)));
+      message.success(`Catégorie : ${CATEGORY_LABEL[data.data.category] ?? data.data.category} (${data.data.source})`);
+    } catch {
+      message.error("Échec de la catégorisation.");
+    }
+  }
+
   async function submitReply() {
     if (!opened) return;
     try {
@@ -159,8 +187,15 @@ export default function InboxPage() {
       key: "subject",
       render: (_: unknown, r: InboxItem) => (
         <div>
-          <Text strong={!r.isRead}>{r.subject ?? "(sans sujet)"}</Text>
-          {r.isAutoReply && <Tag color="default" style={{ marginLeft: 8 }}>auto-reply</Tag>}
+          <Space size={6} wrap>
+            <Text strong={!r.isRead}>{r.subject ?? "(sans sujet)"}</Text>
+            {r.category && (
+              <Tag color={CATEGORY_COLOR[r.category] ?? "default"} style={{ margin: 0 }}>
+                {CATEGORY_LABEL[r.category] ?? r.category}
+              </Tag>
+            )}
+            {r.isAutoReply && <Tag color="default" style={{ margin: 0 }}>auto-reply</Tag>}
+          </Space>
           {r.preview && (
             <div>
               <Text type="secondary" style={{ fontSize: 12 }}>{r.preview}</Text>
@@ -178,9 +213,18 @@ export default function InboxPage() {
     {
       title: "",
       key: "actions",
-      width: 90,
+      width: 130,
       render: (_: unknown, r: InboxItem) => (
         <Space size={4}>
+          {r.direction === "inbound" && (
+            <Tooltip title="Re-catégoriser (IA / heuristique)">
+              <Button
+                size="small"
+                icon={<TagsOutlined />}
+                onClick={(e) => { e.stopPropagation(); void recategorize(r); }}
+              />
+            </Tooltip>
+          )}
           <Tooltip title={r.isRead ? "Marquer non lu" : "Marquer lu"}>
             <Button size="small" icon={<CheckOutlined />} onClick={(e) => { e.stopPropagation(); void toggleRead(r); }} />
           </Tooltip>
