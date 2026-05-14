@@ -59,6 +59,28 @@ _(Optionnels, à arbitrer plus tard : CRM-074 personnalisation IA, CRM-075 webho
 
 L3 (Import CSV/XLSX) puis L4 (Emailing). Voir le tableau des lots ci-dessus.
 
+### L4 — Emailing (suivi CRM CRM-029 → CRM-039)
+
+_Table de suivi alignée sur le lot L4 ; le fichier maître Excel est `docs/backlog/CRM_SUIVI_TICKETS_v2.xlsx` (onglets 📋 / ✅ / 📊)._
+
+| Ticket | Sujet | État |
+|---|---|---|
+| CRM-029 | Config SMTP chiffrée (CRUD `/api/smtp-configs`, onglet Emailing) | ✅ fait |
+| CRM-030 | Guide DNS SPF / DKIM / DMARC intégré (réglages) | ✅ fait |
+| CRM-031 | Éditeur de templates : WYSIWYG (Quill) + HTML (Monaco), variables de fusion, aperçu bureau / mobile | ✅ fait |
+| CRM-032 | Bibliothèque templates & blocs : duplication API, partage `isPublic` | ✅ fait |
+| _(IA)_ | Personnalisation IA (optionnel) : variantes de ton — `POST /api/emailing/ai-variants`, UI modales template & bloc, `OPENAI_API_KEY` | ✅ fait |
+| CRM-033 | Page **Campagnes** (`/campaigns`) : CRUD, planification, job `campaign-send` | ✅ fait |
+| CRM-034 | Segmentation : API `/segments`, filtres alignés sur les leads | ✅ fait |
+| CRM-035 | Worker d’envoi régulé (`campaign-send`, lots + re-queue) | ✅ fait |
+| CRM-036 | Tracking ouvertures / clics (`/api/emailing/track/*`) | ✅ fait |
+| CRM-037 | Bounces (événement + statut lead sur échec SMTP) | ✅ fait |
+| CRM-038 | Désabonnement RFC 8058 (`/api/emailing/unsub`, List-Unsubscribe) | ✅ fait |
+| CRM-039 | Dashboard campagne (stats agrégées `/api/campaigns/:id/stats`) | ✅ fait |
+| _(qualité build)_ | Chaîne `next build` stabilisée — routes `params: Promise`, export XLSX `Uint8Array`, login `Suspense`, `assignedTo` Prisma, typage export/historique, Quill client-only (voir aussi suivi Excel) | ✅ fait |
+
+**Prochain focus L4 recommandé :** affinages (file d’attente dédiée par campagne, hard bounces SMTP, relance auto) ou **L5 Inbox** selon priorité produit.
+
 ### Definition of Done (par ticket)
 
 - Code + types stricts, `yarn lint` & `yarn typecheck` verts

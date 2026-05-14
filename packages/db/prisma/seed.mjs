@@ -57,7 +57,7 @@ async function seedUsers(passwordHash) {
   for (const fixture of USER_FIXTURES) {
     const email = fixture.email.toLowerCase();
     const user = await prisma.user.upsert({
-      where: { email },
+    where: { email },
       update: {
         name: fixture.name,
         role: fixture.role,
@@ -123,6 +123,15 @@ async function seedScoringConfig(adminId) {
     update: { weights: SCORING_WEIGHTS, updatedBy: adminId },
     create: { id: "default", weights: SCORING_WEIGHTS, updatedBy: adminId },
   });
+}
+
+async function seedWorkerConfig() {
+  const existing = await prisma.workerConfig.findUnique({ where: { id: "default" } });
+  if (!existing) {
+    await prisma.workerConfig.create({
+      data: { id: "default", agendaTimezone: process.env.SEED_AGENDA_TIMEZONE || "Europe/Paris" },
+    });
+  }
 }
 
 async function resetDemoData() {
@@ -450,6 +459,7 @@ async function seedTemplates() {
       bodyHtml: tpl.bodyHtml,
       variables: tpl.variables,
       isPreset: tpl.isPreset,
+      isPublic: true,
     };
     if (existing) {
       await prisma.template.update({ where: { id: existing.id }, data });
@@ -536,6 +546,7 @@ async function main() {
   await seedTeam(users);
   await seedPipelineStages();
   await seedTags();
+  await seedWorkerConfig();
 
   if (skipDemo) {
     console.log("✔ Comptes + pipeline + tags (SEED_SKIP_DEMO=true, démo ignorée)");

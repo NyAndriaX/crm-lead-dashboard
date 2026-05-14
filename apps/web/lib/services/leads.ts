@@ -11,7 +11,7 @@
  * (substring) + debounce 300 ms côté client. Le text index Mongo (`@@fulltext`) reste
  * disponible pour un `findRaw({ $text })` ranké si besoin ultérieur.
  */
-import { Prisma, prisma, type Lead } from "@crm/db";
+import { Prisma, prisma, type Lead, buildLeadWhereFromSegmentFilters, LEAD_NOT_DELETED } from "@crm/db";
 import { decryptOrNull, emailHash, encryptOrNull, normalizeEmail } from "../crypto";
 import type {
   AssignLeadInput, ChangeStatusInput, CreateLeadInput, LeadFilters, ListLeadsQuery,
@@ -22,7 +22,6 @@ import { ApiError } from "../api";
 import { canTransition, STOPS_SEQUENCES } from "../leadStatus";
 import { computeScore } from "../scoring";
 import { enqueue } from "../jobs";
-import { NOT_DELETED } from "../notDeleted";
 
 const SORTABLE = ["createdAt", "updatedAt", "score", "lastActionAt", "company"];
 
@@ -82,30 +81,7 @@ export function toDTO(l: Lead): LeadDTO {
 }
 
 export function buildWhere(f: Partial<LeadFilters>): Prisma.LeadWhereInput {
-  const where: Prisma.LeadWhereInput = {};
-  if (!f.includeDeleted) Object.assign(where, NOT_DELETED);
-  if (f.status) where.status = f.status;
-  if (f.source) where.source = f.source;
-  if (f.sector) where.sector = f.sector;
-  if (f.city) where.city = f.city;
-  if (f.country) where.country = f.country;
-  if (f.assignedToId) where.assignedToId = f.assignedToId;
-  if (f.tag) where.tags = { has: f.tag };
-  if (f.scoreMin != null || f.scoreMax != null) {
-    where.score = { ...(f.scoreMin != null ? { gte: f.scoreMin } : {}), ...(f.scoreMax != null ? { lte: f.scoreMax } : {}) };
-  }
-  if (f.createdAfter || f.createdBefore) {
-    where.createdAt = { ...(f.createdAfter ? { gte: f.createdAfter } : {}), ...(f.createdBefore ? { lte: f.createdBefore } : {}) };
-  }
-  if (f.q) {
-    where.OR = [
-      { firstName: { contains: f.q, mode: "insensitive" } },
-      { lastName: { contains: f.q, mode: "insensitive" } },
-      { company: { contains: f.q, mode: "insensitive" } },
-      { notes: { contains: f.q, mode: "insensitive" } },
-    ];
-  }
-  return where;
+  return buildLeadWhereFromSegmentFilters(f as import("@crm/db").LeadSegmentFilters);
 }
 
 export async function listLeads(q: ListLeadsQuery) {
@@ -169,7 +145,7 @@ export async function recalcScore(leadId: string): Promise<number> {
 async function assertEmailNotTaken(email: string, exceptId?: string) {
   const hash = emailHash(email);
   const existing = await prisma.lead.findFirst({
-    where: { emailHash: hash, ...NOT_DELETED, ...(exceptId ? { id: { not: exceptId } } : {}) },
+    where: { emailHash: hash, ...LEAD_NOT_DELETED, ...(exceptId ? { id: { not: exceptId } } : {}) },
     select: { id: true },
   });
   if (existing) throw new ApiError(409, "Un lead avec cet email existe déjà", "duplicate_email");
@@ -222,7 +198,10 @@ export async function updateLead(id: string, input: UpdateLeadInput, actorId?: s
     if (input[k] !== undefined) (data as Record<string, unknown>)[k] = input[k];
   }
   if (input.tags !== undefined) data.tags = input.tags;
-  if (input.assignedToId !== undefined) data.assignedToId = input.assignedToId;
+  if (input.assignedToId !== undefined) {
+    data.assignedTo =
+      input.assignedToId === null ? { disconnect: true } : { connect: { id: input.assignedToId } };
+  }
   data.lastActionAt = new Date();
 
   let lead = await prisma.lead.update({ where: { id }, data });
@@ -336,7 +315,7 @@ export async function collectLeadsForExport(filters: Partial<LeadFilters>, colum
     const dto = toDTO(l);
     const rec: Record<string, unknown> = {};
     for (const c of columns) {
-      const v = (dto as Record<string, unknown>)[c];
+      const v = (dto as unknown as Record<string, unknown>)[c];
       rec[c] = Array.isArray(v) ? (v as string[]).join("; ") : v instanceof Date ? v.toISOString() : (v ?? "");
     }
     return rec;

@@ -2,7 +2,7 @@
   "name": "crm-lead-dashboard",
   "version": "0.1.0",
   "private": true,
-  "description": "CRM Lead Dashboard — monorepo (web + worker + db). Stack: Next.js 15 · Ant Design 5 · Prisma 5 · MongoDB 7 · Docker (sans Redis : file de tâches portée par MongoDB).",
+  "description": "CRM Lead Dashboard — monorepo (web + worker + db). Stack: Next.js 15 · Ant Design 5 · Prisma 5 · MongoDB 7 · Docker (sans Redis : file Agenda @hokify/agenda sur MongoDB).",
   "engines": {
     "node": ">=20.6.0",
     "yarn": ">=1.22.0"

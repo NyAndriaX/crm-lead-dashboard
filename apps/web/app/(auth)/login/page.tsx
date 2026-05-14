@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, Form, Input, Button, Typography, Alert, Tag, Space, Divider, message } from "antd";
 import {
@@ -29,7 +29,7 @@ const FEATURES = [
 ];
 
 // Page de connexion — POST /api/auth/login (email + mot de passe + code TOTP si 2FA).
-export default function LoginPage() {
+function LoginPageInner() {
   const router = useRouter();
   const params = useSearchParams();
   const isMobile = useIsMobile();
@@ -416,5 +416,19 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f5f7fb" }}>
+          <Text type="secondary">Chargement…</Text>
+        </div>
+      }
+    >
+      <LoginPageInner />
+    </Suspense>
   );
 }

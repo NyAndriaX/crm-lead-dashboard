@@ -5,15 +5,19 @@
  * Tabs : Vue d'ensemble · Utilisateurs · Scoring · Imports
  */
 import { useCallback, useEffect, useState } from "react";
+import { EmailHtmlDualEditor } from "@/components/emailing/EmailHtmlDualEditor";
+import { EmailHtmlLivePreview } from "@/components/emailing/EmailHtmlLivePreview";
+import { EmailTemplateAiVariants } from "@/components/emailing/EmailTemplateAiVariants";
 import {
   Tabs, Card, Typography, Table, Button, Tag, Space, Form, InputNumber, Row, Col,
   Statistic, Badge, Modal, Input, Select, message, Spin, Alert, Popconfirm, List,
-  Progress, Divider, Avatar, Tooltip,
+  Progress, Divider, Avatar, Tooltip, Checkbox, Collapse,
 } from "antd";
 import {
   UserOutlined, TrophyOutlined, UploadOutlined, PlusOutlined, EditOutlined,
   StopOutlined, CheckOutlined, ReloadOutlined, SafetyOutlined, FireOutlined,
-  TeamOutlined, CalendarOutlined, SettingOutlined, LockOutlined,
+  TeamOutlined, CalendarOutlined, SettingOutlined, LockOutlined, DeleteOutlined,
+  MailOutlined, CloudOutlined, CodeOutlined, EyeOutlined, CopyOutlined, BookOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
@@ -37,6 +41,89 @@ interface UserRow {
   isActive: boolean; lastLoginAt: string | null; createdAt: string;
 }
 
+interface SmtpConfigRow {
+  id: string;
+  label: string;
+  host: string;
+  port: number;
+  fromName?: string | null;
+  fromEmail?: string | null;
+  dailyLimit: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+interface SmtpFormValues {
+  label: string;
+  host: string;
+  port: number;
+  login?: string;
+  password?: string;
+  fromName?: string;
+  fromEmail?: string;
+  dailyLimit: number;
+  isActive: boolean;
+}
+
+interface TemplateRow {
+  id: string;
+  name: string;
+  category?: string | null;
+  subject: string;
+  bodyHtml: string;
+  variables: string[];
+  isPreset: boolean;
+  isPublic: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface TemplateBlockRow {
+  id: string;
+  name: string;
+  category: string;
+  description?: string | null;
+  htmlContent: string;
+  variables: string[];
+  isPublic: boolean;
+  createdAt: string;
+  createdBy?: { name: string };
+}
+
+interface TemplateFormValues {
+  name: string;
+  category?: string;
+  subject: string;
+  bodyHtml: string;
+  variables: string;
+  isPublic: boolean;
+}
+
+interface TemplateBlockFormValues {
+  name: string;
+  category: string;
+  description?: string;
+  htmlContent: string;
+  variables: string;
+  isPublic: boolean;
+}
+
+interface DnsRecordCheckResult {
+  found: boolean;
+  record?: string;
+  error?: string;
+}
+
+interface SmtpDnsCheckResult {
+  domain: string;
+  selector?: string;
+  spf: DnsRecordCheckResult;
+  dkim: DnsRecordCheckResult;
+  dmarc: DnsRecordCheckResult;
+}
+
+const DEFAULT_SMTP_DAILY_LIMIT = 200;
+
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: "Admin", MANAGER: "Manager", COMMERCIAL: "Commercial", LECTEUR: "Lecteur",
 };
@@ -47,7 +134,287 @@ const ROLE_BG: Record<string, string> = {
   ADMIN: "#fff1f0", MANAGER: "#fff7e6", COMMERCIAL: "#e6f4ff", LECTEUR: "#fafafa",
 };
 
+/** Guide intégré SPF / DKIM / DMARC ; le vérificateur est branché sur l’API. */
+function DnsSenderAuthGuide(props: {
+  domainInput: string;
+  dkimSelectorInput: string;
+  onDomainChange: (domain: string) => void;
+  smtpConfigs: SmtpConfigRow[];
+}) {
+  const d = props.domainInput.trim() || "exemple.fr";
+  const sel = props.dkimSelectorInput.trim() || "default";
+  const dmarcFqdn = `_dmarc.${d}`;
+  const dkimFqdn = `${sel}._domainkey.${d}`;
+
+  async function copyTxt(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      message.success("Copié dans le presse-papiers");
+    } catch {
+      message.error("Copie impossible — sélectionnez le texte manuellement.");
+    }
+  }
+
+  const suggestedDomain = (() => {
+    for (const c of props.smtpConfigs) {
+      const e = c.fromEmail?.trim();
+      if (!e?.includes("@")) continue;
+      const host = e.split("@").pop()?.trim().toLowerCase();
+      if (host && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(host)) return host;
+    }
+    return null;
+  })();
+
+  const dmarcExample = `v=DMARC1; p=none; rua=mailto:postmaster@${d}; fo=1; adkim=s; aspf=s`;
+
+  return (
+    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+      <Alert
+        type="info"
+        showIcon
+        message="Authentification de l’expéditeur"
+        description={
+          <span>
+            SPF, DKIM et DMARC réduisent le risque que vos campagnes finissent en spam. Ce bloc résume la configuration
+            attendue ; utilisez ensuite le vérificateur ci-dessous pour contrôler la zone DNS publique de votre domaine.
+          </span>
+        }
+      />
+      <Collapse
+        bordered={false}
+        expandIconPosition="end"
+        style={{ background: "#fafafa", borderRadius: 8 }}
+        items={[
+          {
+            key: "spf",
+            label: (
+              <Space wrap>
+                <BookOutlined />
+                <Tag color="blue">SPF</Tag>
+                <Text>Quels serveurs peuvent envoyer des e-mails pour votre domaine ?</Text>
+              </Space>
+            ),
+            children: (
+              <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+                <List
+                  size="small"
+                  dataSource={[
+                    "Créez un enregistrement TXT sur le nom racine du domaine d’envoi (souvent « @ » ou le FQDN du domaine, ex. exemple.fr).",
+                    "Une seule politique SPF par domaine : regroupez tous les `include:` et `ip4:` / `ip6:` nécessaires (fournisseur SMTP, Google Workspace, etc.).",
+                    "Terminez par `~all` (soft fail) pendant les tests, puis `-all` uniquement lorsque vous êtes certain que tous les envois passent par des sources déclarées.",
+                  ]}
+                  renderItem={(item) => (
+                    <List.Item style={{ padding: "4px 0" }}>
+                      <Text type="secondary">{item}</Text>
+                    </List.Item>
+                  )}
+                />
+                <div>
+                  <Text strong>Exemple générique</Text>
+                  <Paragraph type="secondary" style={{ marginBottom: 8, fontSize: 13 }}>
+                    Remplacez <Text code>include:_spf.mail-provider.example</Text> par la valeur indiquée par votre hébergeur d’e-mails.
+                  </Paragraph>
+                  <Space wrap align="start">
+                    <Text code style={{ wordBreak: "break-all", whiteSpace: "pre-wrap", maxWidth: "100%", display: "inline-block" }}>
+                      v=spf1 include:_spf.mail-provider.example ~all
+                    </Text>
+                    <Button size="small" icon={<CopyOutlined />} onClick={() => void copyTxt("v=spf1 include:_spf.mail-provider.example ~all")}>
+                      Copier
+                    </Button>
+                  </Space>
+                </div>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Le vérificateur lit les enregistrements TXT du nom : <Text code>{d}</Text> et recherche une valeur commençant par{" "}
+                  <Text code>v=spf1</Text>.
+                </Text>
+              </Space>
+            ),
+          },
+          {
+            key: "dkim",
+            label: (
+              <Space wrap>
+                <BookOutlined />
+                <Tag color="purple">DKIM</Tag>
+                <Text>Signature cryptographique des messages</Text>
+              </Space>
+            ),
+            children: (
+              <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+                <List
+                  size="small"
+                  dataSource={[
+                    "Le sélecteur est un préfixe choisi par votre outil d’envoi (ex. default, google, k1, mail). Consultez la documentation de votre fournisseur SMTP.",
+                    "Ajoutez un enregistrement TXT sur le nom hôte : <sélecteur>._domainkey.<votre-domaine>.",
+                    "La valeur contient en général v=DKIM1, le type de clé (souvent k=rsa) et la clé publique p=… fournie par l’outil.",
+                  ]}
+                  renderItem={(item) => (
+                    <List.Item style={{ padding: "4px 0" }}>
+                      <Text type="secondary">{item}</Text>
+                    </List.Item>
+                  )}
+                />
+                <div>
+                  <Text strong>Nom d’hôte attendu pour la vérification</Text>
+                  <Space wrap style={{ marginTop: 8 }}>
+                    <Text code style={{ wordBreak: "break-all" }}>{dkimFqdn}</Text>
+                    <Button size="small" icon={<CopyOutlined />} onClick={() => void copyTxt(dkimFqdn)}>
+                      Copier le FQDN
+                    </Button>
+                  </Space>
+                </div>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Saisissez le même sélecteur dans le champ « Sélecteur DKIM » puis lancez la vérification. Sans sélecteur, DKIM ne peut pas être testé.
+                </Text>
+              </Space>
+            ),
+          },
+          {
+            key: "dmarc",
+            label: (
+              <Space wrap>
+                <BookOutlined />
+                <Tag color="geekblue">DMARC</Tag>
+                <Text>Politique globale sur SPF / DKIM</Text>
+              </Space>
+            ),
+            children: (
+              <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+                <List
+                  size="small"
+                  dataSource={[
+                    "Créez un enregistrement TXT sur le sous-domaine _dmarc (nom complet : _dmarc.votredomaine).",
+                    "Commencez souvent avec p=none pour collecter les rapports sans bloquer les messages, puis passez à p=quarantine ou p=reject.",
+                    "Renseignez rua= (agrégés) et éventuellement ruf= (échecs) vers des adresses mail dédiées.",
+                  ]}
+                  renderItem={(item) => (
+                    <List.Item style={{ padding: "4px 0" }}>
+                      <Text type="secondary">{item}</Text>
+                    </List.Item>
+                  )}
+                />
+                <div>
+                  <Text strong>Nom d’hôte DMARC</Text>
+                  <Space wrap style={{ marginTop: 8 }}>
+                    <Text code>{dmarcFqdn}</Text>
+                    <Button size="small" icon={<CopyOutlined />} onClick={() => void copyTxt(dmarcFqdn)}>
+                      Copier le FQDN
+                    </Button>
+                  </Space>
+                </div>
+                <div>
+                  <Text strong>Exemple de valeur (à ajuster)</Text>
+                  <Space wrap style={{ marginTop: 8 }} align="start">
+                    <Text code style={{ wordBreak: "break-all", whiteSpace: "pre-wrap", maxWidth: "100%", display: "inline-block" }}>
+                      {dmarcExample}
+                    </Text>
+                    <Button size="small" icon={<CopyOutlined />} onClick={() => void copyTxt(dmarcExample)}>
+                      Copier
+                    </Button>
+                  </Space>
+                </div>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Le vérificateur lit les TXT de <Text code>{dmarcFqdn}</Text> et attend <Text code>v=DMARC1</Text>.
+                </Text>
+              </Space>
+            ),
+          },
+        ]}
+      />
+      {suggestedDomain ? (
+        <Card size="small" type="inner" styles={{ body: { padding: "12px 16px" } }}>
+          <Space wrap align="center">
+            <Text type="secondary">Domaine détecté depuis un e-mail expéditeur SMTP configuré :</Text>
+            <Tag color="processing">{suggestedDomain}</Tag>
+            <Button
+              size="small"
+              type="link"
+              onClick={() => {
+                props.onDomainChange(suggestedDomain);
+                message.info("Domaine appliqué — vérifiez le sélecteur DKIM auprès de votre fournisseur.");
+              }}
+            >
+              Remplir le champ « Domaine »
+            </Button>
+          </Space>
+        </Card>
+      ) : null}
+      <Divider orientation="left" plain>
+        <Space>
+          <SafetyOutlined />
+          <span>Vérificateur DNS</span>
+        </Space>
+      </Divider>
+    </Space>
+  );
+}
+
 // ── Onglet Vue d'ensemble ────────────────────────────────────────────────────
+
+function WorkerAgendaTimezoneCard() {
+  const [zones] = useState(() =>
+    typeof Intl !== "undefined" && "supportedValuesOf" in Intl
+      ? Intl.supportedValuesOf("timeZone")
+      : ["UTC", "Europe/Paris", "Europe/Brussels", "America/New_York", "Asia/Tokyo"],
+  );
+  const [tz, setTz] = useState("UTC");
+  const [loading, setLoading] = useState(true);
+  const [visible, setVisible] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api
+      .get<{ data: { agendaTimezone: string } }>("/admin/worker-config")
+      .then((r) => {
+        setTz(r.data.data.agendaTimezone);
+        setVisible(true);
+      })
+      .catch(() => setVisible(false))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const res = await api.patch<{ data: { agendaTimezone: string }; info?: string }>("/admin/worker-config", {
+        agendaTimezone: tz,
+      });
+      setTz(res.data.data.agendaTimezone);
+      message.success(res.data.info ?? "Fuseau enregistré.");
+    } catch {
+      message.error("Modification réservée aux administrateurs (permission Paramètres).");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!visible || loading) return null;
+
+  return (
+    <Card
+      title={<Space><CloudOutlined style={{ color: "#1677ff" }} /><span>Worker — fuseau horaire (Agenda)</span></Space>}
+      style={{ borderRadius: 12, boxShadow: "0 1px 2px rgba(15,23,42,0.06)" }}
+    >
+      <Space direction="vertical" size={12} style={{ width: "100%" }}>
+        <Text type="secondary">
+          Identifiant IANA (ex. Europe/Paris). Appliqué au processus Node du worker via <Text code>TZ</Text> et aux
+          planifications Agenda de type cron qui précisent un fuseau. Redémarrer le worker après changement.
+        </Text>
+        <Select
+          showSearch
+          optionFilterProp="label"
+          style={{ maxWidth: 420, width: "100%" }}
+          options={zones.map((z) => ({ label: z, value: z }))}
+          value={tz}
+          onChange={setTz}
+        />
+        <Button type="primary" loading={saving} onClick={() => void save()}>
+          Enregistrer
+        </Button>
+      </Space>
+    </Card>
+  );
+}
 
 function OverviewTab() {
   const [stats, setStats] = useState<AdminStats | null>(null);
@@ -62,8 +429,6 @@ function OverviewTab() {
   }, []);
 
   if (loading) return <div style={{ padding: 40, textAlign: "center" }}><Spin size="large" /></div>;
-  if (error) return <Alert type="warning" message="Statistiques réservées aux rôles Admin et Manager." showIcon style={{ marginBottom: 16 }} />;
-  if (!stats) return null;
 
   const statusOrder = ["NOUVEAU", "CONTACTE", "QUALIFIE", "EN_DISCUSSION", "CONVERTI", "PERDU"];
   const STATUS_HEX: Record<string, string> = {
@@ -73,6 +438,11 @@ function OverviewTab() {
 
   return (
     <Space direction="vertical" size={24} style={{ width: "100%" }}>
+      {error ? (
+        <Alert type="warning" message="Statistiques réservées aux rôles Admin et Manager." showIcon style={{ marginBottom: 16 }} />
+      ) : null}
+      {!error && stats ? (
+        <>
       {/* ── KPI row ── */}
       <Row gutter={[16, 16]}>
         {[
@@ -163,6 +533,9 @@ function OverviewTab() {
           </Card>
         </Col>
       </Row>
+        </>
+      ) : null}
+      <WorkerAgendaTimezoneCard />
     </Space>
   );
 }
@@ -411,6 +784,940 @@ function UsersTab() {
   );
 }
 
+function EmailingTab() {
+  const [configs, setConfigs] = useState<SmtpConfigRow[]>([]);
+  const [templates, setTemplates] = useState<TemplateRow[]>([]);
+  const [templateBlocks, setTemplateBlocks] = useState<TemplateBlockRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [templateLoading, setTemplateLoading] = useState(true);
+  const [templateBlockLoading, setTemplateBlockLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [templateBlockSaving, setTemplateBlockSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [dnsChecking, setDnsChecking] = useState(false);
+  const [dnsDomain, setDnsDomain] = useState("");
+  const [dnsSelector, setDnsSelector] = useState("");
+  const [dnsResult, setDnsResult] = useState<SmtpDnsCheckResult | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [templateBlockModalOpen, setTemplateBlockModalOpen] = useState(false);
+  const [editingConfig, setEditingConfig] = useState<SmtpConfigRow | null>(null);
+  const [editingTemplate, setEditingTemplate] = useState<TemplateRow | null>(null);
+  const [editingTemplateBlock, setEditingTemplateBlock] = useState<TemplateBlockRow | null>(null);
+  const [form] = Form.useForm<SmtpFormValues>();
+  const [templateForm] = Form.useForm<TemplateFormValues>();
+  const [templateBlockForm] = Form.useForm<TemplateBlockFormValues>();
+  const templateBodyHtmlWatch = Form.useWatch("bodyHtml", templateForm);
+  const blockHtmlContentWatch = Form.useWatch("htmlContent", templateBlockForm);
+  const isMobile = useIsMobile();
+
+  const fetchConfigs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get<{ data: SmtpConfigRow[] }>('/smtp-configs');
+      setConfigs(data.data);
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Impossible de charger les configs SMTP.';
+      message.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchTemplates = useCallback(async () => {
+    setTemplateLoading(true);
+    try {
+      const { data } = await api.get<{ data: TemplateRow[] }>('/templates');
+      setTemplates(data.data);
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Impossible de charger les templates email.';
+      message.error(msg);
+    } finally {
+      setTemplateLoading(false);
+    }
+  }, []);
+
+  const fetchTemplateBlocks = useCallback(async () => {
+    setTemplateBlockLoading(true);
+    try {
+      const { data } = await api.get<{ data: TemplateBlockRow[] }>('/template-blocks');
+      setTemplateBlocks(data.data);
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Impossible de charger les blocs de template.';
+      message.error(msg);
+    } finally {
+      setTemplateBlockLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void fetchConfigs(); void fetchTemplates(); void fetchTemplateBlocks(); }, [fetchConfigs, fetchTemplates, fetchTemplateBlocks]);
+
+  function openCreate() {
+    setEditingConfig(null);
+    form.resetFields();
+    form.setFieldsValue({ dailyLimit: DEFAULT_SMTP_DAILY_LIMIT, isActive: true });
+    setModalOpen(true);
+  }
+
+  function openEdit(config: SmtpConfigRow) {
+    setEditingConfig(config);
+    form.setFieldsValue({
+      label: config.label,
+      host: config.host,
+      port: config.port,
+      login: undefined,
+      password: undefined,
+      fromName: config.fromName ?? undefined,
+      fromEmail: config.fromEmail ?? undefined,
+      dailyLimit: config.dailyLimit,
+      isActive: config.isActive,
+    });
+    setModalOpen(true);
+  }
+
+  async function saveConfig() {
+    const values = await form.validateFields();
+    if (!editingConfig && (!values.login || !values.password)) {
+      message.error('Login et mot de passe sont requis pour créer un compte SMTP.');
+      return;
+    }
+    if (editingConfig) {
+      if (values.login === "") delete values.login;
+      if (values.password === "") delete values.password;
+    }
+
+    setSaving(true);
+    try {
+      if (editingConfig) {
+        await api.put(`/smtp-configs/${editingConfig.id}`, values);
+        message.success('Configuration SMTP mise à jour');
+      } else {
+        await api.post('/smtp-configs', values);
+        message.success('Configuration SMTP créée');
+      }
+      setModalOpen(false);
+      void fetchConfigs();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de l’enregistrement';
+      message.error(msg);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteConfig(config: SmtpConfigRow) {
+    try {
+      await api.delete(`/smtp-configs/${config.id}`);
+      message.success('Configuration SMTP supprimée');
+      void fetchConfigs();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de la suppression';
+      message.error(msg);
+    }
+  }
+
+  async function testConnection() {
+    try {
+      const values = await form.validateFields(['host', 'port', 'login', 'password']);
+      setTesting(true);
+      await api.post('/smtp-configs/test', {
+        host: values.host,
+        port: values.port,
+        login: values.login,
+        password: values.password,
+      });
+      message.success('Connexion SMTP réussie');
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur de connexion SMTP';
+      message.error(msg);
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  async function openTemplateCreate() {
+    setEditingTemplate(null);
+    templateForm.resetFields();
+    templateForm.setFieldsValue({ variables: '', isPublic: true });
+    setTemplateModalOpen(true);
+  }
+
+  async function openTemplateEdit(template: TemplateRow) {
+    setEditingTemplate(template);
+    templateForm.setFieldsValue({
+      name: template.name,
+      category: template.category ?? undefined,
+      subject: template.subject,
+      bodyHtml: template.bodyHtml,
+      variables: template.variables.join(', '),
+      isPublic: template.isPublic ?? true,
+    });
+    setTemplateModalOpen(true);
+  }
+
+  async function duplicateTemplateRow(row: TemplateRow) {
+    try {
+      const { data } = await api.post<{ data: TemplateRow }>(`/templates/${row.id}/duplicate`);
+      message.success(`Modèle dupliqué : ${data.data.name}`);
+      void fetchTemplates();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Impossible de dupliquer le template';
+      message.error(msg);
+    }
+  }
+
+  async function duplicateTemplateBlockRow(row: TemplateBlockRow) {
+    try {
+      const { data } = await api.post<{ data: TemplateBlockRow }>(`/template-blocks/${row.id}/duplicate`);
+      message.success(`Bloc dupliqué : ${data.data.name}`);
+      void fetchTemplateBlocks();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Impossible de dupliquer le bloc';
+      message.error(msg);
+    }
+  }
+
+  async function saveTemplate() {
+    const values = await templateForm.validateFields();
+    const payload = {
+      name: values.name,
+      category: values.category?.trim() || undefined,
+      subject: values.subject,
+      bodyHtml: values.bodyHtml,
+      isPublic: values.isPublic,
+      variables: (values.variables ?? '')
+        .split(',')
+        .map((item: string) => item.trim())
+        .filter(Boolean),
+    };
+
+    setTemplateSaving(true);
+    try {
+      if (editingTemplate) {
+        await api.put(`/templates/${editingTemplate.id}`, payload);
+        message.success('Template mis à jour');
+      } else {
+        await api.post('/templates', payload);
+        message.success('Template créé');
+      }
+      setTemplateModalOpen(false);
+      void fetchTemplates();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de l’enregistrement du template';
+      message.error(msg);
+    } finally {
+      setTemplateSaving(false);
+    }
+  }
+
+  async function openTemplateBlockCreate() {
+    setEditingTemplateBlock(null);
+    templateBlockForm.resetFields();
+    templateBlockForm.setFieldsValue({ variables: '', isPublic: true });
+    setTemplateBlockModalOpen(true);
+  }
+
+  async function openTemplateBlockEdit(templateBlock: TemplateBlockRow) {
+    setEditingTemplateBlock(templateBlock);
+    templateBlockForm.setFieldsValue({
+      name: templateBlock.name,
+      category: templateBlock.category,
+      description: templateBlock.description ?? undefined,
+      htmlContent: templateBlock.htmlContent,
+      variables: templateBlock.variables.join(', '),
+      isPublic: templateBlock.isPublic,
+    });
+    setTemplateBlockModalOpen(true);
+  }
+
+  async function saveTemplateBlock() {
+    const values = await templateBlockForm.validateFields();
+    const payload = {
+      name: values.name,
+      category: values.category,
+      description: values.description?.trim() || undefined,
+      htmlContent: values.htmlContent,
+      variables: (values.variables ?? '')
+        .split(',')
+        .map((item: string) => item.trim())
+        .filter(Boolean),
+      isPublic: values.isPublic,
+    };
+
+    setTemplateBlockSaving(true);
+    try {
+      if (editingTemplateBlock) {
+        await api.put(`/template-blocks/${editingTemplateBlock.id}`, payload);
+        message.success('Bloc de template mis à jour');
+      } else {
+        await api.post('/template-blocks', payload);
+        message.success('Bloc de template créé');
+      }
+      setTemplateBlockModalOpen(false);
+      void fetchTemplateBlocks();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de l’enregistrement du bloc de template';
+      message.error(msg);
+    } finally {
+      setTemplateBlockSaving(false);
+    }
+  }
+
+  async function deleteTemplate(template: TemplateRow) {
+    try {
+      await api.delete(`/templates/${template.id}`);
+      message.success('Template supprimé');
+      void fetchTemplates();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de la suppression du template';
+      message.error(msg);
+    }
+  }
+
+  async function deleteTemplateBlock(templateBlock: TemplateBlockRow) {
+    try {
+      await api.delete(`/template-blocks/${templateBlock.id}`);
+      message.success('Bloc de template supprimé');
+      void fetchTemplateBlocks();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de la suppression du bloc de template';
+      message.error(msg);
+    }
+  }
+
+  async function checkDnsRecords() {
+    if (!dnsDomain.trim()) {
+      message.error('Veuillez saisir un domaine pour la vérification DNS.');
+      return;
+    }
+    setDnsChecking(true);
+    try {
+      const { data } = await api.post<{ data: SmtpDnsCheckResult }>('/smtp-configs/dns', {
+        domain: dnsDomain.trim(),
+        dkimSelector: dnsSelector.trim() || undefined,
+      });
+      setDnsResult(data.data);
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de la vérification DNS';
+      message.error(msg);
+    } finally {
+      setDnsChecking(false);
+    }
+  }
+
+  const columns: ColumnsType<SmtpConfigRow> = [
+    { title: 'Nom', dataIndex: 'label', key: 'label', ellipsis: true },
+    { title: 'Serveur', dataIndex: 'host', key: 'host', ellipsis: true },
+    { title: 'Port', dataIndex: 'port', key: 'port', width: 90 },
+    { title: 'Expéditeur', key: 'from', render: (_, row) => row.fromEmail ? `${row.fromName ?? ''} <${row.fromEmail}>` : '—' },
+    { title: 'Quota / jour', dataIndex: 'dailyLimit', key: 'dailyLimit', width: 140 },
+    {
+      title: 'Actif', dataIndex: 'isActive', key: 'isActive', width: 100,
+      render: (value: boolean) => value
+        ? <Tag color="success">Oui</Tag>
+        : <Tag color="default">Non</Tag>,
+    },
+    {
+      title: '', key: 'actions', width: 140,
+      render: (_, row) => (
+        <Space>
+          <Button size="small" onClick={() => openEdit(row)}>Modifier</Button>
+          <Popconfirm
+            title={`Supprimer ${row.label} ?`}
+            onConfirm={() => void deleteConfig(row)}
+            okText="Supprimer"
+            cancelText="Annuler"
+          >
+            <Button size="small" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  const templateColumns: ColumnsType<TemplateRow> = [
+    { title: 'Nom', dataIndex: 'name', key: 'name', ellipsis: true },
+    { title: 'Catégorie', dataIndex: 'category', key: 'category', ellipsis: true },
+    {
+      title: 'Origine',
+      key: 'isPreset',
+      width: 110,
+      render: (_: unknown, row) =>
+        row.isPreset ? <Tag color="purple">Catalogue</Tag> : <Tag>Personnalisé</Tag>,
+    },
+    {
+      title: 'Partagé',
+      dataIndex: 'isPublic',
+      key: 'isPublic',
+      width: 90,
+      render: (v: boolean) => (v ? <Tag color="success">Oui</Tag> : <Tag>Non</Tag>),
+    },
+    { title: 'Sujet', dataIndex: 'subject', key: 'subject', ellipsis: true },
+    {
+      title: 'Variables', dataIndex: 'variables', key: 'variables', ellipsis: true,
+      render: (value: string[]) => value.length > 0 ? value.join(', ') : 'Aucune',
+    },
+    {
+      title: 'Mis à jour', dataIndex: 'updatedAt', key: 'updatedAt', width: 150,
+      render: (value: string) => new Date(value).toLocaleDateString('fr-FR'),
+    },
+    {
+      title: '',
+      key: 'actions',
+      width: 220,
+      render: (_, row) => (
+        <Space wrap>
+          <Button size="small" onClick={() => void openTemplateEdit(row)}>Modifier</Button>
+          <Tooltip title="Dupliquer en modèle indépendant (préréglé ou non)">
+            <Button size="small" icon={<CopyOutlined />} onClick={() => void duplicateTemplateRow(row)} />
+          </Tooltip>
+          <Popconfirm
+            title={`Supprimer ${row.name} ?`}
+            onConfirm={() => void deleteTemplate(row)}
+            okText="Supprimer"
+            cancelText="Annuler"
+          >
+            <Button size="small" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  const templateBlockColumns: ColumnsType<TemplateBlockRow> = [
+    { title: 'Nom', dataIndex: 'name', key: 'name', ellipsis: true },
+    { title: 'Catégorie', dataIndex: 'category', key: 'category', ellipsis: true },
+    { title: 'Description', dataIndex: 'description', key: 'description', ellipsis: true },
+    {
+      title: 'Variables', dataIndex: 'variables', key: 'variables', ellipsis: true,
+      render: (value: string[]) => value.length > 0 ? value.join(', ') : 'Aucune',
+    },
+    {
+      title: 'Public', dataIndex: 'isPublic', key: 'isPublic', width: 100,
+      render: (value: boolean) => value
+        ? <Tag color="success">Oui</Tag>
+        : <Tag color="default">Non</Tag>,
+    },
+    {
+      title: 'Créé par', key: 'createdBy', width: 120,
+      render: (_, row) => row.createdBy?.name ?? 'Système',
+    },
+    {
+      title: '',
+      key: 'actions',
+      width: 210,
+      render: (_, row) => (
+        <Space wrap>
+          <Button size="small" onClick={() => void openTemplateBlockEdit(row)}>Modifier</Button>
+          <Tooltip title="Dupliquer le bloc">
+            <Button size="small" icon={<CopyOutlined />} onClick={() => void duplicateTemplateBlockRow(row)} />
+          </Tooltip>
+          <Popconfirm
+            title={`Supprimer ${row.name} ?`}
+            onConfirm={() => void deleteTemplateBlock(row)}
+            okText="Supprimer"
+            cancelText="Annuler"
+          >
+            <Button size="small" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  const previewEmptyHtml =
+    '<p style="margin:16px;color:#8c8c8c;font-family:system-ui,sans-serif;font-size:13px">Saisissez du HTML dans l’éditeur pour afficher l’aperçu ici.</p>';
+
+  return (
+    <Space direction="vertical" size={28} style={{ width: "100%" }}>
+      <Card
+        bordered={false}
+        style={{
+          borderRadius: 12,
+          background: "linear-gradient(135deg, #f9f0ff 0%, #efdbff 42%, #ffffff 100%)",
+          border: "1px solid #d3adf7",
+          boxShadow: "0 2px 8px rgba(114, 46, 209, 0.08)",
+        }}
+      >
+        <Row align="middle" gutter={[16, 16]}>
+          <Col flex="none">
+            <div
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 14,
+                background: "linear-gradient(145deg, #722ed1 0%, #391085 100%)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "0 4px 14px rgba(114, 46, 209, 0.35)",
+              }}
+            >
+              <MailOutlined style={{ fontSize: 26, color: "#fff" }} />
+            </div>
+          </Col>
+          <Col flex="auto">
+            <Title level={4} style={{ margin: 0 }}>
+              Emailing
+            </Title>
+            <Text type="secondary">
+              Comptes SMTP, vérification DNS (SPF / DKIM / DMARC) et bibliothèque de templates HTML.
+            </Text>
+          </Col>
+        </Row>
+      </Card>
+
+      <Card
+        title={
+          <Space>
+            <CloudOutlined style={{ color: "#1677ff" }} />
+            <span>Configuration SMTP</span>
+          </Space>
+        }
+        extra={
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            Ajouter un compte SMTP
+          </Button>
+        }
+        style={{ borderRadius: 12, boxShadow: "0 1px 2px rgba(15,23,42,0.06)" }}
+      >
+        <Text type="secondary" style={{ display: "block", marginBottom: 16 }}>
+          Les identifiants sont stockés de façon sécurisée et servent à l’envoi des campagnes.
+        </Text>
+        <Table
+          rowKey="id"
+          columns={columns}
+          dataSource={configs}
+          loading={loading}
+          pagination={{ pageSize: 10, showTotal: (total) => `${total} compte(s)` }}
+          scroll={{ x: 900 }}
+        />
+      </Card>
+
+      <Card
+        title={
+          <Space>
+            <SafetyOutlined style={{ color: "#52c41a" }} />
+            <span>Guide et vérification DNS (SPF / DKIM / DMARC)</span>
+          </Space>
+        }
+        style={{ borderRadius: 12, boxShadow: "0 1px 2px rgba(15,23,42,0.06)" }}
+      >
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <DnsSenderAuthGuide
+            domainInput={dnsDomain}
+            dkimSelectorInput={dnsSelector}
+            onDomainChange={setDnsDomain}
+            smtpConfigs={configs}
+          />
+          <Text type="secondary">
+            Saisissez le domaine d’envoi (sans <Text code>mailto:</Text>) et le sélecteur DKIM fourni par votre outil, puis lancez la vérification.
+          </Text>
+          <Row gutter={[16, 16]} align="middle">
+            <Col xs={24} sm={10}>
+              <Form.Item label="Domaine" style={{ marginBottom: 0 }}>
+                <Input
+                  value={dnsDomain}
+                  onChange={(event) => setDnsDomain(event.target.value)}
+                  placeholder="example.com"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={10}>
+              <Form.Item label="Sélecteur DKIM" style={{ marginBottom: 0 }}>
+                <Input
+                  value={dnsSelector}
+                  onChange={(event) => setDnsSelector(event.target.value)}
+                  placeholder="default"
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={4}>
+              <Button type="primary" loading={dnsChecking} onClick={() => void checkDnsRecords()} block>
+                Vérifier
+              </Button>
+            </Col>
+          </Row>
+
+          {!dnsResult ? null : (
+            <Card size="small" style={{ borderRadius: 8 }}>
+              <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                <Text strong>Résultats pour {dnsResult.domain}</Text>
+                <Row gutter={[16, 16]}>
+                  {[
+                    { label: 'SPF', result: dnsResult.spf, help: 'Enregistrement TXT v=spf1 sur @' },
+                    { label: 'DKIM', result: dnsResult.dkim, help: `Enregistrement TXT v=DKIM1 sur ${dnsResult.selector ?? 'selector'}._domainkey` },
+                    { label: 'DMARC', result: dnsResult.dmarc, help: 'Enregistrement TXT v=DMARC1 sur _dmarc' },
+                  ].map(({ label, result, help }) => (
+                    <Col xs={24} sm={8} key={label}>
+                      <Card size="small" type="inner" title={label} style={{ minHeight: 160 }}>
+                        <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                          <Tag color={result.found ? 'success' : 'warning'}>
+                            {result.found ? 'Trouvé' : 'Non trouvé'}
+                          </Tag>
+                          <Text type="secondary" style={{ fontSize: 12 }}>{help}</Text>
+                          {result.error ? <Text type="danger">{result.error}</Text> : null}
+                          {result.record ? <Text code style={{ wordBreak: 'break-word' }}>{result.record}</Text> : null}
+                        </Space>
+                      </Card>
+                    </Col>
+                  ))}
+                </Row>
+              </Space>
+            </Card>
+          )}
+        </Space>
+      </Card>
+
+      <Card
+        title={
+          <Space>
+            <CodeOutlined style={{ color: "#722ed1" }} />
+            <span>Éditeur de templates email</span>
+          </Space>
+        }
+        extra={
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => void openTemplateCreate()}>
+            Nouveau template
+          </Button>
+        }
+        style={{ borderRadius: 12, boxShadow: "0 1px 2px rgba(15,23,42,0.06)" }}
+      >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="Bibliothèque (catalogue + partage)"
+          description={
+            <span>
+              Les modèles marqués <Tag color="purple">Catalogue</Tag> proviennent des exemples livrés avec le CRM (réinitialisables via le seed).
+              Utilisez <strong>Dupliquer</strong> pour partir d’un préréglé sans le modifier à la source. Cochez <strong>Visible par tous</strong> pour partager un modèle personnalisé avec les utilisateurs autorisés.
+            </span>
+          }
+        />
+        <Space direction="vertical" size={4} style={{ width: "100%", marginBottom: 8 }}>
+          <Text type="secondary">
+            Éditeur double onglet (visuel / HTML), variables de fusion <Text code>{"{{prenom}}"}</Text>, aperçu bureau et mobile.
+            {" "}
+            Optionnel : dans les modales de création ou d’édition, la section « Suggestions IA » propose des variantes de ton via OpenAI lorsque <Text code>OPENAI_API_KEY</Text> est définie sur le serveur.
+          </Text>
+        </Space>
+        <Table
+          rowKey="id"
+          columns={templateColumns}
+          dataSource={templates}
+          loading={templateLoading}
+          pagination={{ pageSize: 8, showTotal: (total) => `${total} template(s)` }}
+          scroll={{ x: 1100 }}
+        />
+      </Card>
+
+      <Card
+        title={
+          <Space>
+            <MailOutlined style={{ color: "#eb2f96" }} />
+            <span>Bibliothèque de blocs de contenu</span>
+          </Space>
+        }
+        extra={
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => void openTemplateBlockCreate()}>
+            Nouveau bloc
+          </Button>
+        }
+        style={{ borderRadius: 12, boxShadow: "0 1px 2px rgba(15,23,42,0.06)" }}
+      >
+        <Space direction="vertical" size={4} style={{ width: "100%", marginBottom: 8 }}>
+          <Text type="secondary">
+            Blocs réutilisables : duplication en un clic, partage public ou privé.
+          </Text>
+        </Space>
+        <Table
+          rowKey="id"
+          columns={templateBlockColumns}
+          dataSource={templateBlocks}
+          loading={templateBlockLoading}
+          pagination={{ pageSize: 8, showTotal: (total) => `${total} bloc(s)` }}
+          scroll={{ x: 1000 }}
+        />
+      </Card>
+
+      <Modal
+        title={<Space><MailOutlined /><span>{editingConfig ? 'Modifier' : 'Nouvelle'} configuration SMTP</span></Space>}
+        open={modalOpen}
+        onOk={() => void saveConfig()}
+        onCancel={() => { setModalOpen(false); form.resetFields(); }}
+        confirmLoading={saving}
+        width={600}
+        okText={editingConfig ? 'Enregistrer' : 'Créer'}
+      >
+        <Form form={form} layout="vertical" initialValues={{ dailyLimit: DEFAULT_SMTP_DAILY_LIMIT, isActive: true }}>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="label" label="Nom du compte" rules={[{ required: true, message: 'Nom requis' }]}> 
+                <Input placeholder="Ex: SMTP principal" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="host" label="Hôte SMTP" rules={[{ required: true, message: 'Hôte requis' }]}> 
+                <Input placeholder="smtp.example.com" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="port" label="Port" rules={[{ required: true, message: 'Port requis' }]}> 
+                <InputNumber min={1} max={65535} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="dailyLimit" label="Quota journalier" rules={[{ required: true, type: 'number', message: 'Quota requis' }]}> 
+                <InputNumber min={1} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="login" label="Login SMTP" rules={[{ required: !editingConfig, message: 'Login requis' }]}> 
+                <Input placeholder="login@mail.com" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="password" label="Mot de passe SMTP" rules={[{ required: !editingConfig, message: 'Mot de passe requis' }]}> 
+                <Input.Password placeholder={editingConfig ? 'Laisser vide pour conserver' : 'Mot de passe'} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="fromName" label="Nom expéditeur" rules={[{ max: 100 }]}>
+                <Input placeholder="CRM Lead Dashboard" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="fromEmail" label="Email expéditeur" rules={[{ type: 'email', message: 'Email invalide' }]}>
+                <Input placeholder="no-reply@example.com" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="isActive" valuePropName="checked">
+            <Checkbox>Activer ce compte SMTP</Checkbox>
+          </Form.Item>
+          <Space style={{ marginTop: 10 }}>
+            <Button type="default" onClick={() => void testConnection()} loading={testing}>
+              Tester la connexion
+            </Button>
+            <Button type="primary" onClick={() => void saveConfig()} loading={saving}>
+              {editingConfig ? 'Enregistrer' : 'Créer'}
+            </Button>
+          </Space>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={<Space><MailOutlined /><span>{editingTemplate ? 'Modifier' : 'Nouveau'} template email</span></Space>}
+        open={templateModalOpen}
+        onOk={() => void saveTemplate()}
+        onCancel={() => { setTemplateModalOpen(false); templateForm.resetFields(); setEditingTemplate(null); }}
+        confirmLoading={templateSaving}
+        width={isMobile ? "min(100%, 520px)" : 1040}
+        styles={{ body: { maxHeight: "calc(100vh - 200px)", overflowY: "auto" } }}
+        okText={editingTemplate ? 'Enregistrer' : 'Créer'}
+      >
+        <Form form={templateForm} layout="vertical" initialValues={{ variables: '', isPublic: true }}>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="name" label="Nom du template" rules={[{ required: true, message: 'Nom requis' }]}> 
+                <Input placeholder="Ex: Relance 1" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="category" label="Catégorie" rules={[{ max: 100 }]}> 
+                <Input placeholder="Ex: Prospect" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24}>
+              <Form.Item name="subject" label="Sujet" rules={[{ required: true, message: 'Sujet requis' }]}> 
+                <Input placeholder="Objet de l'email" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24}>
+              <Form.Item
+                name="isPublic"
+                valuePropName="checked"
+                help="Si décoché, le modèle reste utilisable par vous mais n’apparaît pas comme « partagé » pour les autres (évolution future : filtrage par équipe)."
+              >
+                <Checkbox>Modèle visible par tous les utilisateurs (bibliothèque partagée)</Checkbox>
+              </Form.Item>
+            </Col>
+          </Row>
+          <Divider orientation="left" plain>
+            <Space size={6}>
+              <CodeOutlined />
+              <span>Corps du message</span>
+            </Space>
+          </Divider>
+          <Row gutter={[16, 16]}>
+            <Col xs={24} lg={14}>
+              <Form.Item
+                name="bodyHtml"
+                label="Éditeur visuel + HTML"
+                rules={[
+                  {
+                    validator: async (_, v) => {
+                      if (typeof v !== "string" || !v.trim()) {
+                        throw new Error("Corps du message requis");
+                      }
+                    },
+                  },
+                ]}
+                extra="Onglet Visuel (Quill) pour le texte riche ; onglet HTML (Monaco) pour le code. Basculez selon vos besoins — le contenu est synchronisé."
+              >
+                <EmailHtmlDualEditor
+                  monacoHeight={isMobile ? "260px" : "420px"}
+                  quillHeight={isMobile ? 220 : 340}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} lg={10}>
+              <Form.Item label={<Space><EyeOutlined /><span>Aperçu en direct</span></Space>}>
+                <EmailHtmlLivePreview
+                  html={typeof templateBodyHtmlWatch === "string" ? templateBodyHtmlWatch : ""}
+                  emptyHtml={previewEmptyHtml}
+                  minHeight={isMobile ? 200 : 300}
+                  maxHeight={isMobile ? 280 : 420}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24}>
+              <EmailTemplateAiVariants form={templateForm} mode="template" />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24}>
+              <Form.Item
+                name="variables"
+                label="Variables"
+                help="Champs utilisables côté envoi : liste séparée par des virgules (ex: prenom, entreprise). Dans le HTML vous pouvez aussi utiliser {{prenom}}, {{entreprise}}, {{actu}}, {{custom}}."
+              >
+                <Input placeholder="prenom, entreprise, actu" />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={<Space><MailOutlined /><span>{editingTemplateBlock ? 'Modifier' : 'Nouveau'} bloc de contenu</span></Space>}
+        open={templateBlockModalOpen}
+        onOk={() => void saveTemplateBlock()}
+        onCancel={() => { setTemplateBlockModalOpen(false); templateBlockForm.resetFields(); setEditingTemplateBlock(null); }}
+        confirmLoading={templateBlockSaving}
+        width={isMobile ? "min(100%, 520px)" : 1040}
+        styles={{ body: { maxHeight: "calc(100vh - 200px)", overflowY: "auto" } }}
+        okText={editingTemplateBlock ? 'Enregistrer' : 'Créer'}
+      >
+        <Form form={templateBlockForm} layout="vertical" initialValues={{ variables: '', isPublic: true }}>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item name="name" label="Nom du bloc" rules={[{ required: true, message: 'Nom requis' }]}> 
+                <Input placeholder="Ex: Signature entreprise" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="category" label="Catégorie" rules={[{ required: true, message: 'Catégorie requise' }]}>
+                <Select placeholder="Sélectionner une catégorie">
+                  <Select.Option value="header">En-tête</Select.Option>
+                  <Select.Option value="content">Contenu</Select.Option>
+                  <Select.Option value="cta">Call-to-action</Select.Option>
+                  <Select.Option value="footer">Pied de page</Select.Option>
+                  <Select.Option value="signature">Signature</Select.Option>
+                  <Select.Option value="divider">Séparateur</Select.Option>
+                  <Select.Option value="image">Image</Select.Option>
+                  <Select.Option value="social">Réseaux sociaux</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24}>
+              <Form.Item name="description" label="Description" rules={[{ max: 500 }]}>
+                <Input placeholder="Description courte du bloc" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Divider orientation="left" plain>
+            <Space size={6}>
+              <CodeOutlined />
+              <span>Contenu HTML</span>
+            </Space>
+          </Divider>
+          <Row gutter={[16, 16]}>
+            <Col xs={24} lg={14}>
+              <Form.Item
+                name="htmlContent"
+                label="Éditeur visuel + HTML"
+                rules={[
+                  {
+                    validator: async (_, v) => {
+                      if (typeof v !== "string" || !v.trim()) {
+                        throw new Error("Contenu HTML requis");
+                      }
+                    },
+                  },
+                ]}
+                extra="Même éditeur double (Quill + Monaco) que pour les templates email."
+              >
+                <EmailHtmlDualEditor
+                  monacoHeight={isMobile ? "240px" : "380px"}
+                  quillHeight={isMobile ? 200 : 300}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} lg={10}>
+              <Form.Item label={<Space><EyeOutlined /><span>Aperçu en direct</span></Space>}>
+                <EmailHtmlLivePreview
+                  html={typeof blockHtmlContentWatch === "string" ? blockHtmlContentWatch : ""}
+                  emptyHtml={previewEmptyHtml}
+                  minHeight={isMobile ? 180 : 260}
+                  maxHeight={isMobile ? 260 : 380}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24}>
+              <EmailTemplateAiVariants form={templateBlockForm} mode="block" />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                name="variables"
+                label="Variables"
+                help="Liste séparée par des virgules. Vous pouvez aussi insérer {{prenom}}, {{entreprise}}, {{actu}}, {{custom}} dans le contenu."
+              >
+                <Input placeholder="prenom, entreprise" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12}>
+              <Form.Item name="isPublic" valuePropName="checked">
+                <Checkbox>Rendre ce bloc public (visible par tous les utilisateurs)</Checkbox>
+              </Form.Item>
+            </Col>
+          </Row>
+        </Form>
+      </Modal>
+    </Space>
+  );
+}
+
 // ── Onglet Scoring ───────────────────────────────────────────────────────────
 
 const WEIGHT_GROUPS = [
@@ -625,6 +1932,16 @@ export default function SettingsPage() {
               </Space>
             ),
             children: <ScoringTab />,
+          },
+          {
+            key: "emailing",
+            label: (
+              <Space>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#722ed1" }} />
+                Emailing
+              </Space>
+            ),
+            children: <EmailingTab />,
           },
           {
             key: "imports",

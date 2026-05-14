@@ -10,7 +10,7 @@ yarn db:generate && yarn db:push
 # index manuels (TTL / text / partiels) — voir packages/db/prisma/manual-indexes.md
 yarn db:seed                  # crée un Admin (admin@crm.local / ChangeMe!2026) + étapes pipeline
 yarn dev                      # web  → http://localhost:3000
-yarn worker                   # worker (autre terminal) — poll de la collection `jobs`
+yarn worker                   # worker (autre terminal) — @hokify/agenda (collection crmAgendaJobs par défaut)
 ```
 
 > Les commandes `yarn dev`/`worker`/`db:*` chargent le `.env` racine via `dotenv-cli`. En conteneurs, c'est `env_file: .env` (docker-compose) qui injecte les variables.
@@ -30,7 +30,7 @@ openssl rand -base64 32   # EMAIL_HASH_SECRET
 - `GET /api/health` → `{ status: "ok", db: "ok" }` (200) ; `degraded` + 503 si Mongo down.
 - Logs : `docker compose logs -f nextjs worker`.
 - Mongo : `docker compose exec mongo mongosh` puis `rs.status()`.
-- File de jobs : `db.jobs.find({status:'FAILED'})` / `db.jobs.countDocuments({status:'PENDING'})`.
+- File Agenda : `db.crmAgendaJobs.find({ nextRunAt: { $lte: new Date() } }).limit(5)` (noms : `campaign-send`, `import-process`, …).
 
 ## Sauvegardes
 
@@ -43,7 +43,7 @@ openssl rand -base64 32   # EMAIL_HASH_SECRET
 |---|---|
 | L'app refuse de démarrer (`Configuration d'environnement invalide`) | Une variable critique manque/est mal formée — voir le message ; `PII_ENCRYPTION_KEY` doit faire 64 caractères hex. |
 | Prisma `Transactions are not supported` | Replica set Mongo non initialisé → `rs.status()` / vérifier le healthcheck `mongo`. |
-| Jobs jamais traités | Le worker tourne-t-il (`yarn worker` / conteneur `worker`) ? Voir `db.jobs` (status, lastError). |
+| Jobs jamais traités | Le worker tourne-t-il (`yarn worker` / conteneur `worker`) ? Voir `db.crmAgendaJobs` (`nextRunAt`, `failReason`, `lockedAt`). |
 | Connexion impossible alors que les identifiants sont bons | `2FA` activé sur le compte → fournir le code TOTP ; ou compte `isActive=false`. |
 | Recherche leads lente | Text index `leads` manquant → re-`yarn db:push` + `db.leads.getIndexes()`. |
 | Emails non envoyés | DNS SPF/DKIM/DMARC non propagés (CRM-028) ; quota SMTP atteint (`smtpConfigs.sentToday`). |

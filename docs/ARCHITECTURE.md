@@ -5,13 +5,13 @@
 
 ## Vue d'ensemble
 
-Application **Next.js 15 full-stack** (UI Ant Design + API Route Handlers) + un process **worker Node.js** pour les traitements asynchrones. **MongoDB 7** stocke les données métier **et** la file de tâches (`jobs`). Le tout orchestré par **Docker Compose** derrière **Nginx**.
+Application **Next.js 15 full-stack** (UI Ant Design + API Route Handlers) + un process **worker Node.js** pour les traitements asynchrones. **MongoDB 7** stocke les données métier **et** la file **@hokify/agenda** (collection configurable, défaut `crmAgendaJobs`). Le tout orchestré par **Docker Compose** derrière **Nginx**.
 
 ```
 Navigateur ──► Nginx (SSL/proxy) ──► Next.js ──► Prisma ──► MongoDB
                                        │                       ▲
-                                       └─ enqueue Job ──────────┘
-                                                                │ polling
+                                       └─ Agenda.schedule ─────┘
+                                                                │ @hokify/agenda
                                               Worker Node.js ◄───┘  ──► SMTP / IMAP / APIs
 ```
 
@@ -22,23 +22,25 @@ Navigateur ──► Nginx (SSL/proxy) ──► Next.js ──► Prisma ──
 | Service | Techno | Rôle |
 |---|---|---|
 | `nextjs` | Next.js 15 + TS + Ant Design 5 + Prisma | UI + API + auth + business logic + OpenAPI |
-| `worker` | Node.js 20 + Prisma | Consomme la collection `jobs` (polling) : envoi emails, IMAP sync, scoring, import async |
-| `mongo` | MongoDB 7 (replica set 1 nœud) | Stockage principal + file `jobs`, dump quotidien |
+| `worker` | Node.js 20 + Prisma + @hokify/agenda | Consomme la collection Agenda : envoi emails, import async, scoring, notifications… |
+| `mongo` | MongoDB 7 (replica set 1 nœud) | Stockage principal + collection Agenda (`crmAgendaJobs` par défaut), dump quotidien |
 | `nginx` | Nginx Alpine | Reverse proxy, SSL, compression, rate limit |
 
-## File de tâches sans Redis
+## File de tâches sans Redis (@hokify/agenda)
 
-- Collection `jobs` (model `Job`) : `type`, `payload`, `status` (PENDING→RUNNING→DONE/FAILED), `runAt`, `attempts`/`maxAttempts`, backoff exponentiel.
-- Côté app : `enqueue(type, payload, opts)` (`apps/web/lib/jobs.ts`) insère un job PENDING.
-- Côté worker (`apps/worker`) : boucle de polling toutes les `WORKER_POLL_INTERVAL_MS`, réclame un job atomiquement (`findAndModify`), exécute le handler enregistré pour `job.type` (`apps/worker/src/handlers`), marque DONE/FAILED.
-- Compromis : latence de l'ordre de la seconde (suffisant pour emailing/relances/import) ; pas de pub/sub temps réel. Si un Redis devient disponible plus tard, on pourra rebrancher BullMQ sans changer l'API `enqueue`.
+- Collection MongoDB dédiée (défaut **`crmAgendaJobs`**, surcharge `AGENDA_COLLECTION`) : schéma interne Agenda (`nextRunAt`, verrous, `failCount`, etc.).
+- Côté app : `enqueue(type, payload, opts)` (`apps/web/lib/jobs.ts`) planifie via `@crm/queue` **sans** lancer le processeur Agenda sur Next.js.
+- Côté worker (`apps/worker`) : `Agenda.start()` avec les mêmes handlers (`apps/worker/src/handlers`). Fréquence de scan : `WORKER_POLL_INTERVAL_MS`, concurrence : `WORKER_CONCURRENCY`.
+- Fuseau horaire : `AGENDA_TIMEZONE` (env) ou document Prisma **`workerConfig`** (`agendaTimezone`), appliqué au processus worker via `process.env.TZ` ; l’UI Administration permet de choisir le fuseau (redémarrage worker requis).
+- L’ancienne collection Prisma `jobs` peut subsister pour l’historique ; les nouveaux travaux passent par Agenda.
 
 ## Monorepo
 
 ```
 apps/web      → Next.js (front + API)         @crm/web
-apps/worker   → worker (polling jobs)         @crm/worker
+apps/worker   → worker (Agenda)               @crm/worker
 packages/db   → schéma Prisma + client        @crm/db   (importé par web et worker)
+packages/queue → @hokify/agenda + helpers     @crm/queue (importé par web et worker)
 ```
 
 Gestion : **Yarn 1 (classic) workspaces**. Build : `yarn build` (= `yarn workspaces run build`).

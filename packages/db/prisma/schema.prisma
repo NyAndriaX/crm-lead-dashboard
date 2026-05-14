@@ -106,6 +106,7 @@ model User {
   leadViews     LeadView[]
   importJobs    ImportJob[]
   notifications Notification[]
+  templateBlocks TemplateBlock[]
 
   @@map("users")
 }
@@ -304,12 +305,30 @@ model Template {
   bodyHtml  String
   variables String[] @default([])
   isPreset  Boolean  @default(false)
+  isPublic  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   campaigns Campaign[]
 
   @@map("templates")
+}
+
+model TemplateBlock {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  category    String   // header, footer, cta, content, signature, etc.
+  description String?
+  htmlContent String
+  variables   String[] @default([])
+  isPublic    Boolean  @default(true) // visible par tous les utilisateurs
+  createdById String?  @db.ObjectId
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User? @relation(fields: [createdById], references: [id])
+
+  @@map("templateBlocks")
 }
 
 model Segment {
@@ -334,6 +353,8 @@ model Campaign {
   scheduledAt DateTime?
   dailyLimit  Int?
   stats       Json? // compteurs dénormalisés (sent/open/click/...)
+  /// Options M-06→M-14 : throttleMinDelayMs, bodyHtmlOverride, ab{...}, warmup{...}, sendOffset, etc.
+  config      Json?
   createdById String?        @db.ObjectId
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
@@ -493,9 +514,8 @@ model Notification {
   @@map("notifications")
 }
 
-// File de tâches asynchrones (remplace BullMQ/Redis).
-// Le worker (apps/worker) fait du polling : SELECT ... WHERE status=PENDING AND runAt<=now
-// puis passe en RUNNING (verrou optimiste via updatedAt) → DONE / FAILED.
+// Ancienne file Prisma `jobs` (polling manuel). Les nouveaux envois passent par **@hokify/agenda**
+// (collection `AGENDA_COLLECTION`, défaut `crmAgendaJobs`). Ce modèle reste pour l’historique / migrations.
 model Job {
   id          String    @id @default(auto()) @map("_id") @db.ObjectId
   type        String // "email-send" | "imap-sync" | "import-process" | "scoring" | "notification" | ...
@@ -529,6 +549,16 @@ model ScoringConfig {
   updatedAt DateTime @updatedAt
 
   @@map("scoringConfig")
+}
+
+// Réglages du worker / file Agenda (singleton id = "default").
+model WorkerConfig {
+  id               String   @id @map("_id") // "default"
+  agendaTimezone   String   @default("UTC") // IANA, ex. Europe/Paris — tâches cron Agenda & logs worker
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("workerConfig")
 }
 
 // ──────────────────────────────────────────────────────────────
