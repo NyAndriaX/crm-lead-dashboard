@@ -23,6 +23,22 @@ export const created = <T>(data: T) => NextResponse.json(data, { status: 201 });
 export const notFound = () => NextResponse.json({ message: "Not found" }, { status: 404 });
 export const noContent = () => new NextResponse(null, { status: 204 });
 
+/**
+ * Helper P-01 : réponse JSON avec en-têtes de cache HTTP courts pour les
+ * endpoints read-heavy quasi-statiques (tags, étapes pipeline, templates).
+ * Le navigateur sert la réponse cache pendant `maxAge` puis revalide en
+ * arrière-plan pendant `swr`.
+ */
+export const jsonCached = <T>(
+  data: T,
+  opts: { maxAge?: number; swr?: number } = {},
+) =>
+  NextResponse.json(data, {
+    headers: {
+      "Cache-Control": `private, max-age=${opts.maxAge ?? 30}, stale-while-revalidate=${opts.swr ?? 120}`,
+    },
+  });
+
 /** Enveloppe un handler : capture ApiError / ZodError et renvoie une réponse propre. */
 export function handler<Ctx = unknown>(
   fn: (req: Request, ctx: Ctx) => Promise<Response> | Response,

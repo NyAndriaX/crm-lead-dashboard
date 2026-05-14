@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma, verifyEmailTrackToken } from "@crm/db";
+import { emitWebhookEvent } from "@/lib/services/webhooks";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,8 @@ async function processUnsub(t: string | null): Promise<{ ok: boolean; message: s
       update: { reason: "unsubscribe" },
     }),
   ]);
+  // INT-01 : webhook unsubscribe (best-effort, ne bloque pas la réponse).
+  void emitWebhookEvent("unsubscribe", { leadId: lead.id, campaignId: p.c });
   return { ok: true, message: "Vous êtes désinscrit. Merci." };
 }
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { handler, json, created, parseBody, requirePermission, requireSession, ApiError } from "@/lib/api";
+import { handler, jsonCached, created, parseBody, requirePermission, requireSession, ApiError } from "@/lib/api";
 import { can } from "@/lib/rbac";
 import { audit, clientIp } from "@/lib/audit";
 import { createStage, listStages } from "@/lib/services/pipeline";
@@ -18,7 +18,8 @@ export const GET = handler(async () => {
     throw new ApiError(403, "Permission manquante", "forbidden");
   }
   const data = await listStages();
-  return json({ data });
+  // P-01 : cache 30s + SWR 5min. Les étapes changent rarement.
+  return jsonCached({ data }, { maxAge: 30, swr: 300 });
 });
 
 export const POST = handler(async (req) => {
