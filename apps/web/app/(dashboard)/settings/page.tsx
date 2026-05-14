@@ -13,6 +13,7 @@ import { TeamsSection } from "@/components/admin/TeamsSection";
 import { PermissionsSection } from "@/components/admin/PermissionsSection";
 import { AuditLogsSection } from "@/components/admin/AuditLogsSection";
 import { SecuritySection } from "@/components/admin/SecuritySection";
+import { PipelineStagesSection } from "@/components/admin/PipelineStagesSection";
 import {
   Tabs, Card, Typography, Table, Button, Tag, Space, Form, InputNumber, Row, Col,
   Statistic, Badge, Modal, Input, Select, message, Spin, Alert, Popconfirm, List,
@@ -2107,6 +2108,16 @@ export default function SettingsPage() {
               </Space>
             ),
             children: <TeamsSection />,
+          },
+          {
+            key: "pipeline-stages",
+            label: (
+              <Space>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#08979c" }} />
+                Pipeline (étapes)
+              </Space>
+            ),
+            children: <PipelineStagesSection />,
           },
           {
             key: "permissions",
