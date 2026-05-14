@@ -450,6 +450,7 @@ async function seedTemplates() {
       bodyHtml: tpl.bodyHtml,
       variables: tpl.variables,
       isPreset: tpl.isPreset,
+      isPublic: true,
     };
     if (existing) {
       await prisma.template.update({ where: { id: existing.id }, data });

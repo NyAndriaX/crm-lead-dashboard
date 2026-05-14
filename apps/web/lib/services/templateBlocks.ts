@@ -91,6 +91,32 @@ export async function deleteTemplateBlock(id: string) {
   await prisma.templateBlock.delete({ where: { id } });
 }
 
+/** Duplique un bloc de contenu (même catégorie, copie indépendante). */
+export async function duplicateTemplateBlock(sourceId: string, createdById?: string) {
+  const src = await prisma.templateBlock.findUnique({ where: { id: sourceId } });
+  if (!src) return null;
+  const prefix = "Copie — ";
+  const maxName = 150;
+  const raw = `${prefix}${src.name}`;
+  const name = raw.length <= maxName ? raw : `${raw.slice(0, maxName - 1)}…`;
+  return prisma.templateBlock.create({
+    data: {
+      name,
+      category: src.category,
+      description: src.description,
+      htmlContent: src.htmlContent,
+      variables: [...src.variables],
+      isPublic: src.isPublic,
+      createdById,
+    },
+    include: {
+      createdBy: {
+        select: { name: true },
+      },
+    },
+  });
+}
+
 export const TEMPLATE_BLOCK_CATEGORIES = [
   { value: 'header', label: 'En-tête' },
   { value: 'content', label: 'Contenu' },

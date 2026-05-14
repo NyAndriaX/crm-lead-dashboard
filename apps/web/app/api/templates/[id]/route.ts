@@ -10,6 +10,7 @@ const updateSchema = z.object({
   subject: z.string().trim().min(1).max(200).optional(),
   bodyHtml: z.string().trim().min(1).optional(),
   variables: z.array(z.string().trim().min(1)).optional(),
+  isPublic: z.boolean().optional(),
 });
 
 export const GET = handler<{ params: { id: string } }>(async (req, { params }) => {

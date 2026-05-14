@@ -305,6 +305,7 @@ model Template {
   bodyHtml  String
   variables String[] @default([])
   isPreset  Boolean  @default(false)
+  isPublic  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

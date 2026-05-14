@@ -5,17 +5,18 @@
  * Tabs : Vue d'ensemble · Utilisateurs · Scoring · Imports
  */
 import { useCallback, useEffect, useState } from "react";
-import Editor from "@monaco-editor/react";
+import { EmailHtmlDualEditor } from "@/components/emailing/EmailHtmlDualEditor";
+import { EmailHtmlLivePreview } from "@/components/emailing/EmailHtmlLivePreview";
 import {
   Tabs, Card, Typography, Table, Button, Tag, Space, Form, InputNumber, Row, Col,
   Statistic, Badge, Modal, Input, Select, message, Spin, Alert, Popconfirm, List,
-  Progress, Divider, Avatar, Tooltip, Checkbox,
+  Progress, Divider, Avatar, Tooltip, Checkbox, Collapse,
 } from "antd";
 import {
   UserOutlined, TrophyOutlined, UploadOutlined, PlusOutlined, EditOutlined,
   StopOutlined, CheckOutlined, ReloadOutlined, SafetyOutlined, FireOutlined,
   TeamOutlined, CalendarOutlined, SettingOutlined, LockOutlined, DeleteOutlined,
-  MailOutlined, CloudOutlined, CodeOutlined, EyeOutlined,
+  MailOutlined, CloudOutlined, CodeOutlined, EyeOutlined, CopyOutlined, BookOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
@@ -70,6 +71,8 @@ interface TemplateRow {
   subject: string;
   bodyHtml: string;
   variables: string[];
+  isPreset: boolean;
+  isPublic: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -92,6 +95,7 @@ interface TemplateFormValues {
   subject: string;
   bodyHtml: string;
   variables: string;
+  isPublic: boolean;
 }
 
 interface TemplateBlockFormValues {
@@ -119,73 +123,6 @@ interface SmtpDnsCheckResult {
 
 const DEFAULT_SMTP_DAILY_LIMIT = 200;
 
-// ── HTML Code Editor ─────────────────────────────────────────────────────────
-
-function HtmlCodeEditor({
-  value,
-  onChange,
-  height = "360px",
-}: {
-  value?: string;
-  onChange?: (val: string) => void;
-  height?: string;
-}) {
-  return (
-    <div
-      style={{
-        border: "1px solid #d9d9d9",
-        borderRadius: 8,
-        overflow: "hidden",
-        boxShadow: "inset 0 1px 3px rgba(0,0,0,0.08)",
-      }}
-    >
-      <div
-        style={{
-          background: "linear-gradient(90deg, #1a1a2e 0%, #16213e 100%)",
-          padding: "6px 12px",
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          borderBottom: "1px solid #0f3460",
-        }}
-      >
-        <Space size={4}>
-          <div style={{ width: 11, height: 11, borderRadius: "50%", background: "#ff5f57", border: "1px solid rgba(0,0,0,.2)" }} />
-          <div style={{ width: 11, height: 11, borderRadius: "50%", background: "#febc2e", border: "1px solid rgba(0,0,0,.2)" }} />
-          <div style={{ width: 11, height: 11, borderRadius: "50%", background: "#28c840", border: "1px solid rgba(0,0,0,.2)" }} />
-        </Space>
-        <Text style={{ color: "#858585", fontSize: 11, fontFamily: "monospace", marginLeft: 6 }}>HTML</Text>
-        <Tag style={{ marginLeft: "auto", fontSize: 10, background: "#0f3460", border: "1px solid #1a4a7a", color: "#7eb3ff" }}>
-          Monaco Editor
-        </Tag>
-      </div>
-      <Editor
-        height={height}
-        language="html"
-        value={value ?? ""}
-        onChange={(val) => onChange?.(val ?? "")}
-        theme="vs-dark"
-        options={{
-          minimap: { enabled: false },
-          fontSize: 13,
-          fontFamily: "'Fira Code', 'Cascadia Code', Consolas, monospace",
-          wordWrap: "on",
-          lineNumbers: "on",
-          scrollBeyondLastLine: false,
-          automaticLayout: true,
-          tabSize: 2,
-          folding: true,
-          bracketPairColorization: { enabled: true },
-          formatOnPaste: true,
-          formatOnType: true,
-          renderWhitespace: "selection",
-          padding: { top: 8, bottom: 8 },
-        }}
-      />
-    </div>
-  );
-}
-
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: "Admin", MANAGER: "Manager", COMMERCIAL: "Commercial", LECTEUR: "Lecteur",
 };
@@ -195,6 +132,221 @@ const ROLE_COLORS: Record<string, string> = {
 const ROLE_BG: Record<string, string> = {
   ADMIN: "#fff1f0", MANAGER: "#fff7e6", COMMERCIAL: "#e6f4ff", LECTEUR: "#fafafa",
 };
+
+/** M-02 : guide intégré SPF / DKIM / DMARC (le vérificateur est déjà branché sur l’API). */
+function DnsM02Guide(props: {
+  domainInput: string;
+  dkimSelectorInput: string;
+  onDomainChange: (domain: string) => void;
+  smtpConfigs: SmtpConfigRow[];
+}) {
+  const d = props.domainInput.trim() || "exemple.fr";
+  const sel = props.dkimSelectorInput.trim() || "default";
+  const dmarcFqdn = `_dmarc.${d}`;
+  const dkimFqdn = `${sel}._domainkey.${d}`;
+
+  async function copyTxt(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      message.success("Copié dans le presse-papiers");
+    } catch {
+      message.error("Copie impossible — sélectionnez le texte manuellement.");
+    }
+  }
+
+  const suggestedDomain = (() => {
+    for (const c of props.smtpConfigs) {
+      const e = c.fromEmail?.trim();
+      if (!e?.includes("@")) continue;
+      const host = e.split("@").pop()?.trim().toLowerCase();
+      if (host && /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(host)) return host;
+    }
+    return null;
+  })();
+
+  const dmarcExample = `v=DMARC1; p=none; rua=mailto:postmaster@${d}; fo=1; adkim=s; aspf=s`;
+
+  return (
+    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+      <Alert
+        type="info"
+        showIcon
+        message="Authentification de l’expéditeur (M-02)"
+        description={
+          <span>
+            SPF, DKIM et DMARC réduisent le risque que vos campagnes finissent en spam. Ce bloc résume la configuration
+            attendue ; utilisez ensuite le vérificateur ci-dessous pour contrôler la zone DNS publique de votre domaine.
+          </span>
+        }
+      />
+      <Collapse
+        bordered={false}
+        expandIconPosition="end"
+        style={{ background: "#fafafa", borderRadius: 8 }}
+        items={[
+          {
+            key: "spf",
+            label: (
+              <Space wrap>
+                <BookOutlined />
+                <Tag color="blue">SPF</Tag>
+                <Text>Quels serveurs peuvent envoyer des e-mails pour votre domaine ?</Text>
+              </Space>
+            ),
+            children: (
+              <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+                <List
+                  size="small"
+                  dataSource={[
+                    "Créez un enregistrement TXT sur le nom racine du domaine d’envoi (souvent « @ » ou le FQDN du domaine, ex. exemple.fr).",
+                    "Une seule politique SPF par domaine : regroupez tous les `include:` et `ip4:` / `ip6:` nécessaires (fournisseur SMTP, Google Workspace, etc.).",
+                    "Terminez par `~all` (soft fail) pendant les tests, puis `-all` uniquement lorsque vous êtes certain que tous les envois passent par des sources déclarées.",
+                  ]}
+                  renderItem={(item) => (
+                    <List.Item style={{ padding: "4px 0" }}>
+                      <Text type="secondary">{item}</Text>
+                    </List.Item>
+                  )}
+                />
+                <div>
+                  <Text strong>Exemple générique</Text>
+                  <Paragraph type="secondary" style={{ marginBottom: 8, fontSize: 13 }}>
+                    Remplacez <Text code>include:_spf.mail-provider.example</Text> par la valeur indiquée par votre hébergeur d’e-mails.
+                  </Paragraph>
+                  <Space wrap align="start">
+                    <Text code style={{ wordBreak: "break-all", whiteSpace: "pre-wrap", maxWidth: "100%", display: "inline-block" }}>
+                      v=spf1 include:_spf.mail-provider.example ~all
+                    </Text>
+                    <Button size="small" icon={<CopyOutlined />} onClick={() => void copyTxt("v=spf1 include:_spf.mail-provider.example ~all")}>
+                      Copier
+                    </Button>
+                  </Space>
+                </div>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Le vérificateur lit les enregistrements TXT du nom : <Text code>{d}</Text> et recherche une valeur commençant par{" "}
+                  <Text code>v=spf1</Text>.
+                </Text>
+              </Space>
+            ),
+          },
+          {
+            key: "dkim",
+            label: (
+              <Space wrap>
+                <BookOutlined />
+                <Tag color="purple">DKIM</Tag>
+                <Text>Signature cryptographique des messages</Text>
+              </Space>
+            ),
+            children: (
+              <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+                <List
+                  size="small"
+                  dataSource={[
+                    "Le sélecteur est un préfixe choisi par votre outil d’envoi (ex. default, google, k1, mail). Consultez la documentation de votre fournisseur SMTP.",
+                    "Ajoutez un enregistrement TXT sur le nom hôte : <sélecteur>._domainkey.<votre-domaine>.",
+                    "La valeur contient en général v=DKIM1, le type de clé (souvent k=rsa) et la clé publique p=… fournie par l’outil.",
+                  ]}
+                  renderItem={(item) => (
+                    <List.Item style={{ padding: "4px 0" }}>
+                      <Text type="secondary">{item}</Text>
+                    </List.Item>
+                  )}
+                />
+                <div>
+                  <Text strong>Nom d’hôte attendu pour la vérification</Text>
+                  <Space wrap style={{ marginTop: 8 }}>
+                    <Text code style={{ wordBreak: "break-all" }}>{dkimFqdn}</Text>
+                    <Button size="small" icon={<CopyOutlined />} onClick={() => void copyTxt(dkimFqdn)}>
+                      Copier le FQDN
+                    </Button>
+                  </Space>
+                </div>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Saisissez le même sélecteur dans le champ « Sélecteur DKIM » puis lancez la vérification. Sans sélecteur, DKIM ne peut pas être testé.
+                </Text>
+              </Space>
+            ),
+          },
+          {
+            key: "dmarc",
+            label: (
+              <Space wrap>
+                <BookOutlined />
+                <Tag color="geekblue">DMARC</Tag>
+                <Text>Politique globale sur SPF / DKIM</Text>
+              </Space>
+            ),
+            children: (
+              <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+                <List
+                  size="small"
+                  dataSource={[
+                    "Créez un enregistrement TXT sur le sous-domaine _dmarc (nom complet : _dmarc.votredomaine).",
+                    "Commencez souvent avec p=none pour collecter les rapports sans bloquer les messages, puis passez à p=quarantine ou p=reject.",
+                    "Renseignez rua= (agrégés) et éventuellement ruf= (échecs) vers des adresses mail dédiées.",
+                  ]}
+                  renderItem={(item) => (
+                    <List.Item style={{ padding: "4px 0" }}>
+                      <Text type="secondary">{item}</Text>
+                    </List.Item>
+                  )}
+                />
+                <div>
+                  <Text strong>Nom d’hôte DMARC</Text>
+                  <Space wrap style={{ marginTop: 8 }}>
+                    <Text code>{dmarcFqdn}</Text>
+                    <Button size="small" icon={<CopyOutlined />} onClick={() => void copyTxt(dmarcFqdn)}>
+                      Copier le FQDN
+                    </Button>
+                  </Space>
+                </div>
+                <div>
+                  <Text strong>Exemple de valeur (à ajuster)</Text>
+                  <Space wrap style={{ marginTop: 8 }} align="start">
+                    <Text code style={{ wordBreak: "break-all", whiteSpace: "pre-wrap", maxWidth: "100%", display: "inline-block" }}>
+                      {dmarcExample}
+                    </Text>
+                    <Button size="small" icon={<CopyOutlined />} onClick={() => void copyTxt(dmarcExample)}>
+                      Copier
+                    </Button>
+                  </Space>
+                </div>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Le vérificateur lit les TXT de <Text code>{dmarcFqdn}</Text> et attend <Text code>v=DMARC1</Text>.
+                </Text>
+              </Space>
+            ),
+          },
+        ]}
+      />
+      {suggestedDomain ? (
+        <Card size="small" type="inner" styles={{ body: { padding: "12px 16px" } }}>
+          <Space wrap align="center">
+            <Text type="secondary">Domaine détecté depuis un e-mail expéditeur SMTP configuré :</Text>
+            <Tag color="processing">{suggestedDomain}</Tag>
+            <Button
+              size="small"
+              type="link"
+              onClick={() => {
+                props.onDomainChange(suggestedDomain);
+                message.info("Domaine appliqué — vérifiez le sélecteur DKIM auprès de votre fournisseur.");
+              }}
+            >
+              Remplir le champ « Domaine »
+            </Button>
+          </Space>
+        </Card>
+      ) : null}
+      <Divider orientation="left" plain>
+        <Space>
+          <SafetyOutlined />
+          <span>Vérificateur DNS</span>
+        </Space>
+      </Divider>
+    </Space>
+  );
+}
 
 // ── Onglet Vue d'ensemble ────────────────────────────────────────────────────
 
@@ -715,7 +867,7 @@ function EmailingTab() {
   async function openTemplateCreate() {
     setEditingTemplate(null);
     templateForm.resetFields();
-    templateForm.setFieldsValue({ variables: '' });
+    templateForm.setFieldsValue({ variables: '', isPublic: true });
     setTemplateModalOpen(true);
   }
 
@@ -727,8 +879,31 @@ function EmailingTab() {
       subject: template.subject,
       bodyHtml: template.bodyHtml,
       variables: template.variables.join(', '),
+      isPublic: template.isPublic ?? true,
     });
     setTemplateModalOpen(true);
+  }
+
+  async function duplicateTemplateRow(row: TemplateRow) {
+    try {
+      const { data } = await api.post<{ data: TemplateRow }>(`/templates/${row.id}/duplicate`);
+      message.success(`Modèle dupliqué : ${data.data.name}`);
+      void fetchTemplates();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Impossible de dupliquer le template';
+      message.error(msg);
+    }
+  }
+
+  async function duplicateTemplateBlockRow(row: TemplateBlockRow) {
+    try {
+      const { data } = await api.post<{ data: TemplateBlockRow }>(`/template-blocks/${row.id}/duplicate`);
+      message.success(`Bloc dupliqué : ${data.data.name}`);
+      void fetchTemplateBlocks();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Impossible de dupliquer le bloc';
+      message.error(msg);
+    }
   }
 
   async function saveTemplate() {
@@ -738,6 +913,7 @@ function EmailingTab() {
       category: values.category?.trim() || undefined,
       subject: values.subject,
       bodyHtml: values.bodyHtml,
+      isPublic: values.isPublic,
       variables: (values.variables ?? '')
         .split(',')
         .map((item: string) => item.trim())
@@ -891,6 +1067,20 @@ function EmailingTab() {
   const templateColumns: ColumnsType<TemplateRow> = [
     { title: 'Nom', dataIndex: 'name', key: 'name', ellipsis: true },
     { title: 'Catégorie', dataIndex: 'category', key: 'category', ellipsis: true },
+    {
+      title: 'Origine',
+      key: 'isPreset',
+      width: 110,
+      render: (_: unknown, row) =>
+        row.isPreset ? <Tag color="purple">Catalogue</Tag> : <Tag>Personnalisé</Tag>,
+    },
+    {
+      title: 'Partagé',
+      dataIndex: 'isPublic',
+      key: 'isPublic',
+      width: 90,
+      render: (v: boolean) => (v ? <Tag color="success">Oui</Tag> : <Tag>Non</Tag>),
+    },
     { title: 'Sujet', dataIndex: 'subject', key: 'subject', ellipsis: true },
     {
       title: 'Variables', dataIndex: 'variables', key: 'variables', ellipsis: true,
@@ -901,10 +1091,15 @@ function EmailingTab() {
       render: (value: string) => new Date(value).toLocaleDateString('fr-FR'),
     },
     {
-      title: '', key: 'actions', width: 150,
+      title: '',
+      key: 'actions',
+      width: 220,
       render: (_, row) => (
-        <Space>
+        <Space wrap>
           <Button size="small" onClick={() => void openTemplateEdit(row)}>Modifier</Button>
+          <Tooltip title="Dupliquer en modèle indépendant (préréglé ou non)">
+            <Button size="small" icon={<CopyOutlined />} onClick={() => void duplicateTemplateRow(row)} />
+          </Tooltip>
           <Popconfirm
             title={`Supprimer ${row.name} ?`}
             onConfirm={() => void deleteTemplate(row)}
@@ -937,10 +1132,15 @@ function EmailingTab() {
       render: (_, row) => row.createdBy?.name ?? 'Système',
     },
     {
-      title: '', key: 'actions', width: 150,
+      title: '',
+      key: 'actions',
+      width: 210,
       render: (_, row) => (
-        <Space>
+        <Space wrap>
           <Button size="small" onClick={() => void openTemplateBlockEdit(row)}>Modifier</Button>
+          <Tooltip title="Dupliquer le bloc">
+            <Button size="small" icon={<CopyOutlined />} onClick={() => void duplicateTemplateBlockRow(row)} />
+          </Tooltip>
           <Popconfirm
             title={`Supprimer ${row.name} ?`}
             onConfirm={() => void deleteTemplateBlock(row)}
@@ -1027,15 +1227,21 @@ function EmailingTab() {
         title={
           <Space>
             <SafetyOutlined style={{ color: "#52c41a" }} />
-            <span>Vérification DNS SPF / DKIM / DMARC</span>
+            <span>Guide et vérification DNS (SPF / DKIM / DMARC)</span>
           </Space>
         }
+        extra={<Tag color="success">M-02</Tag>}
         style={{ borderRadius: 12, boxShadow: "0 1px 2px rgba(15,23,42,0.06)" }}
       >
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <DnsM02Guide
+            domainInput={dnsDomain}
+            dkimSelectorInput={dnsSelector}
+            onDomainChange={setDnsDomain}
+            smtpConfigs={configs}
+          />
           <Text type="secondary">
-            Vérifiez que votre domaine est correctement configuré avant l’envoi d’emails.
-            SPF et DMARC doivent être présents sur le domaine principal, DKIM sur le sélecteur spécifié.
+            Saisissez le domaine d’envoi (sans <Text code>mailto:</Text>) et le sélecteur DKIM fourni par votre outil, puis lancez la vérification.
           </Text>
           <Row gutter={[16, 16]} align="middle">
             <Col xs={24} sm={10}>
@@ -1101,15 +1307,30 @@ function EmailingTab() {
           </Space>
         }
         extra={
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => void openTemplateCreate()}>
-            Nouveau template
-          </Button>
+          <Space>
+            <Tag color="processing">M-04</Tag>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => void openTemplateCreate()}>
+              Nouveau template
+            </Button>
+          </Space>
         }
         style={{ borderRadius: 12, boxShadow: "0 1px 2px rgba(15,23,42,0.06)" }}
       >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="Bibliothèque (catalogue + partage)"
+          description={
+            <span>
+              Les modèles marqués <Tag color="purple">Catalogue</Tag> proviennent des exemples livrés avec le CRM (réinitialisables via le seed).
+              Utilisez <strong>Dupliquer</strong> pour partir d’un préréglé sans le modifier à la source. Cochez <strong>Visible par tous</strong> pour partager un modèle personnalisé avec les utilisateurs autorisés.
+            </span>
+          }
+        />
         <Space direction="vertical" size={4} style={{ width: "100%", marginBottom: 8 }}>
           <Text type="secondary">
-            Créez des modèles HTML pour vos campagnes. Variables possibles : <Text code>{"{firstName}"}</Text>, etc.
+            Éditeur M-03 : onglets visuel / HTML, variables <Text code>{"{{prenom}}"}</Text>, aperçu desktop & mobile.
           </Text>
         </Space>
         <Table
@@ -1118,7 +1339,7 @@ function EmailingTab() {
           dataSource={templates}
           loading={templateLoading}
           pagination={{ pageSize: 8, showTotal: (total) => `${total} template(s)` }}
-          scroll={{ x: 900 }}
+          scroll={{ x: 1100 }}
         />
       </Card>
 
@@ -1138,7 +1359,7 @@ function EmailingTab() {
       >
         <Space direction="vertical" size={4} style={{ width: "100%", marginBottom: 8 }}>
           <Text type="secondary">
-            Blocs HTML réutilisables dans vos templates. Même syntaxe de variables que pour les templates.
+            Blocs réutilisables : duplication en un clic, partage public / privé (M-04).
           </Text>
         </Space>
         <Table
@@ -1147,7 +1368,7 @@ function EmailingTab() {
           dataSource={templateBlocks}
           loading={templateBlockLoading}
           pagination={{ pageSize: 8, showTotal: (total) => `${total} bloc(s)` }}
-          scroll={{ x: 900 }}
+          scroll={{ x: 1000 }}
         />
       </Card>
 
@@ -1233,7 +1454,7 @@ function EmailingTab() {
         styles={{ body: { maxHeight: "calc(100vh - 200px)", overflowY: "auto" } }}
         okText={editingTemplate ? 'Enregistrer' : 'Créer'}
       >
-        <Form form={templateForm} layout="vertical" initialValues={{ variables: '' }}>
+        <Form form={templateForm} layout="vertical" initialValues={{ variables: '', isPublic: true }}>
           <Row gutter={16}>
             <Col xs={24} sm={12}>
               <Form.Item name="name" label="Nom du template" rules={[{ required: true, message: 'Nom requis' }]}> 
@@ -1253,64 +1474,64 @@ function EmailingTab() {
               </Form.Item>
             </Col>
           </Row>
+          <Row gutter={16}>
+            <Col xs={24}>
+              <Form.Item
+                name="isPublic"
+                valuePropName="checked"
+                help="Si décoché, le modèle reste utilisable par vous mais n’apparaît pas comme « partagé » pour les autres (évolution future : filtrage par équipe)."
+              >
+                <Checkbox>Modèle visible par tous les utilisateurs (bibliothèque partagée)</Checkbox>
+              </Form.Item>
+            </Col>
+          </Row>
           <Divider orientation="left" plain>
             <Space size={6}>
               <CodeOutlined />
-              <span>Corps HTML</span>
+              <span>Corps du message (M-03)</span>
             </Space>
           </Divider>
           <Row gutter={[16, 16]}>
             <Col xs={24} lg={14}>
               <Form.Item
                 name="bodyHtml"
-                label="Éditeur HTML (Monaco)"
+                label="Éditeur visuel + HTML"
                 rules={[
                   {
                     validator: async (_, v) => {
                       if (typeof v !== "string" || !v.trim()) {
-                        throw new Error("Corps HTML requis");
+                        throw new Error("Corps du message requis");
                       }
                     },
                   },
                 ]}
-                extra="Coloration syntaxique, pliage et formatage adaptés au HTML email."
+                extra="Onglet Visuel (Quill) pour le texte riche ; onglet HTML (Monaco) pour le code. Basculez selon vos besoins — le contenu est synchronisé."
               >
-                <HtmlCodeEditor height={isMobile ? "260px" : "420px"} />
+                <EmailHtmlDualEditor
+                  monacoHeight={isMobile ? "260px" : "420px"}
+                  quillHeight={isMobile ? 220 : 340}
+                />
               </Form.Item>
             </Col>
             <Col xs={24} lg={10}>
               <Form.Item label={<Space><EyeOutlined /><span>Aperçu en direct</span></Space>}>
-                <Card
-                  size="small"
-                  styles={{ body: { padding: 0 } }}
-                  style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #f0f0f0" }}
-                >
-                  <div
-                    style={{
-                      minHeight: isMobile ? 200 : 320,
-                      maxHeight: isMobile ? 280 : 440,
-                      overflow: "auto",
-                      background: "#fff",
-                      padding: 12,
-                    }}
-                  >
-                    <div
-                      dangerouslySetInnerHTML={{
-                        __html:
-                          typeof templateBodyHtmlWatch === "string" && templateBodyHtmlWatch.trim()
-                            ? templateBodyHtmlWatch
-                            : previewEmptyHtml,
-                      }}
-                    />
-                  </div>
-                </Card>
+                <EmailHtmlLivePreview
+                  html={typeof templateBodyHtmlWatch === "string" ? templateBodyHtmlWatch : ""}
+                  emptyHtml={previewEmptyHtml}
+                  minHeight={isMobile ? 200 : 300}
+                  maxHeight={isMobile ? 280 : 420}
+                />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={16}>
             <Col xs={24}>
-              <Form.Item name="variables" label="Variables" help="Séparez les variables par des virgules (ex: firstName, company)."> 
-                <Input placeholder="firstName, company" />
+              <Form.Item
+                name="variables"
+                label="Variables"
+                help="Champs utilisables côté envoi : liste séparée par des virgules (ex: prenom, entreprise). Dans le HTML vous pouvez aussi utiliser {{prenom}}, {{entreprise}}, {{actu}}, {{custom}}."
+              >
+                <Input placeholder="prenom, entreprise, actu" />
               </Form.Item>
             </Col>
           </Row>
@@ -1359,14 +1580,14 @@ function EmailingTab() {
           <Divider orientation="left" plain>
             <Space size={6}>
               <CodeOutlined />
-              <span>Contenu HTML</span>
+              <span>Contenu HTML (M-03)</span>
             </Space>
           </Divider>
           <Row gutter={[16, 16]}>
             <Col xs={24} lg={14}>
               <Form.Item
                 name="htmlContent"
-                label="Éditeur HTML (Monaco)"
+                label="Éditeur visuel + HTML"
                 rules={[
                   {
                     validator: async (_, v) => {
@@ -1376,44 +1597,33 @@ function EmailingTab() {
                     },
                   },
                 ]}
-                extra="Même éditeur que pour les templates : pratique pour les fragments (signature, CTA, etc.)."
+                extra="Même éditeur double (Quill + Monaco) que pour les templates email."
               >
-                <HtmlCodeEditor height={isMobile ? "240px" : "380px"} />
+                <EmailHtmlDualEditor
+                  monacoHeight={isMobile ? "240px" : "380px"}
+                  quillHeight={isMobile ? 200 : 300}
+                />
               </Form.Item>
             </Col>
             <Col xs={24} lg={10}>
               <Form.Item label={<Space><EyeOutlined /><span>Aperçu en direct</span></Space>}>
-                <Card
-                  size="small"
-                  styles={{ body: { padding: 0 } }}
-                  style={{ borderRadius: 8, overflow: "hidden", border: "1px solid #f0f0f0" }}
-                >
-                  <div
-                    style={{
-                      minHeight: isMobile ? 180 : 300,
-                      maxHeight: isMobile ? 260 : 400,
-                      overflow: "auto",
-                      background: "#fff",
-                      padding: 12,
-                    }}
-                  >
-                    <div
-                      dangerouslySetInnerHTML={{
-                        __html:
-                          typeof blockHtmlContentWatch === "string" && blockHtmlContentWatch.trim()
-                            ? blockHtmlContentWatch
-                            : previewEmptyHtml,
-                      }}
-                    />
-                  </div>
-                </Card>
+                <EmailHtmlLivePreview
+                  html={typeof blockHtmlContentWatch === "string" ? blockHtmlContentWatch : ""}
+                  emptyHtml={previewEmptyHtml}
+                  minHeight={isMobile ? 180 : 260}
+                  maxHeight={isMobile ? 260 : 380}
+                />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={16}>
             <Col xs={24} sm={12}>
-              <Form.Item name="variables" label="Variables" help="Séparez les variables par des virgules (ex: firstName, company)."> 
-                <Input placeholder="firstName, company" />
+              <Form.Item
+                name="variables"
+                label="Variables"
+                help="Liste séparée par des virgules. Vous pouvez aussi insérer {{prenom}}, {{entreprise}}, {{actu}}, {{custom}} dans le contenu."
+              >
+                <Input placeholder="prenom, entreprise" />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>

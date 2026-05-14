@@ -6,6 +6,7 @@ export interface TemplateInput {
   subject: string;
   bodyHtml: string;
   variables?: string[];
+  isPublic?: boolean;
 }
 
 export interface TemplateUpdateInput {
@@ -14,6 +15,7 @@ export interface TemplateUpdateInput {
   subject?: string;
   bodyHtml?: string;
   variables?: string[];
+  isPublic?: boolean;
 }
 
 export async function listTemplates() {
@@ -26,6 +28,8 @@ export async function listTemplates() {
       subject: true,
       bodyHtml: true,
       variables: true,
+      isPreset: true,
+      isPublic: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -42,6 +46,8 @@ export async function getTemplate(id: string) {
       subject: true,
       bodyHtml: true,
       variables: true,
+      isPreset: true,
+      isPublic: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -57,6 +63,7 @@ export async function createTemplate(input: TemplateInput) {
       bodyHtml: input.bodyHtml,
       variables: input.variables ?? [],
       isPreset: false,
+      isPublic: input.isPublic ?? true,
     },
     select: {
       id: true,
@@ -65,6 +72,8 @@ export async function createTemplate(input: TemplateInput) {
       subject: true,
       bodyHtml: true,
       variables: true,
+      isPreset: true,
+      isPublic: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -80,6 +89,7 @@ export async function updateTemplate(id: string, input: TemplateUpdateInput) {
       ...(input.subject !== undefined ? { subject: input.subject } : {}),
       ...(input.bodyHtml !== undefined ? { bodyHtml: input.bodyHtml } : {}),
       ...(input.variables !== undefined ? { variables: input.variables } : {}),
+      ...(input.isPublic !== undefined ? { isPublic: input.isPublic } : {}),
     },
     select: {
       id: true,
@@ -88,6 +98,8 @@ export async function updateTemplate(id: string, input: TemplateUpdateInput) {
       subject: true,
       bodyHtml: true,
       variables: true,
+      isPreset: true,
+      isPublic: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -96,4 +108,37 @@ export async function updateTemplate(id: string, input: TemplateUpdateInput) {
 
 export async function deleteTemplate(id: string) {
   await prisma.template.delete({ where: { id } });
+}
+
+/** Duplique un template (y compris un préréglé catalogue) en modèle éditable non-préréglé. */
+export async function duplicateTemplate(sourceId: string) {
+  const src = await prisma.template.findUnique({ where: { id: sourceId } });
+  if (!src) return null;
+  const prefix = "Copie — ";
+  const maxName = 150;
+  const raw = `${prefix}${src.name}`;
+  const name = raw.length <= maxName ? raw : `${raw.slice(0, maxName - 1)}…`;
+  return prisma.template.create({
+    data: {
+      name,
+      category: src.category,
+      subject: src.subject,
+      bodyHtml: src.bodyHtml,
+      variables: [...src.variables],
+      isPreset: false,
+      isPublic: true,
+    },
+    select: {
+      id: true,
+      name: true,
+      category: true,
+      subject: true,
+      bodyHtml: true,
+      variables: true,
+      isPreset: true,
+      isPublic: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
 }

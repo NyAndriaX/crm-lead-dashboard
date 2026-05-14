@@ -10,6 +10,7 @@ const createSchema = z.object({
   subject: z.string().trim().min(1).max(200),
   bodyHtml: z.string().trim().min(1),
   variables: z.array(z.string().trim().min(1)).optional(),
+  isPublic: z.boolean().optional(),
 });
 
 export const GET = handler(async () => {
