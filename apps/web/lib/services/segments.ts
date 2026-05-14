@@ -41,7 +41,7 @@ export async function deleteSegment(id: string) {
   await prisma.segment.delete({ where: { id } });
 }
 
-/** Compte les leads correspondant au segment (aperçu M-07). */
+/** Compte les leads correspondant au segment (aperçu côté API). */
 export async function countSegmentLeads(filters: unknown): Promise<number> {
   const where = buildWhere({ ...(filters as Partial<LeadFilters>), includeDeleted: false });
   return prisma.lead.count({ where });

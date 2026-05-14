@@ -1,5 +1,5 @@
 /**
- * Job `campaign-send` — M-06 → M-14 (MVP intégré) :
+ * Job `campaign-send` — pipeline emailing (MVP intégré) :
  * envoi par lots, throttle, warm-up (plafond journalier progressif), A/B sujet+corps,
  * pixel ouverture, liens trackés, List-Unsubscribe, bounce sur échec SMTP, stats campagne.
  */

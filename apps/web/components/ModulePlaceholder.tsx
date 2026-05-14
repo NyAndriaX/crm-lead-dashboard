@@ -1,17 +1,24 @@
 "use client";
 
-import { Result, Typography } from "antd";
+import { Result } from "antd";
 
-const { Paragraph } = Typography;
-
-// Page d'attente pour les modules pas encore implémentés (cf. docs/BACKLOG.md).
-export default function ModulePlaceholder({ title, tickets }: { title: string; tickets: string }) {
+/** Page d’attente pour un module non encore livré — libellés produit uniquement (pas de codes internes). */
+export default function ModulePlaceholder({
+  title,
+  description,
+}: {
+  title: string;
+  /** Phrase optionnelle expliquant la valeur métier attendue. */
+  description?: string;
+}) {
   return (
     <Result
       status="info"
       title={title}
-      subTitle={`Module à implémenter — tickets ${tickets}.`}
-      extra={<Paragraph type="secondary">Le socle (auth, RBAC, API, Leads) est en place ; ce module arrive dans un prochain lot.</Paragraph>}
+      subTitle={
+        description ??
+        "Cette fonctionnalité est en cours de conception. L’application (authentification, données, sécurité) reste pleinement opérationnelle sur les modules déjà livrés."
+      }
     />
   );
 }

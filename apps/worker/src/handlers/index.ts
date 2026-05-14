@@ -12,7 +12,7 @@
  *  - "sequences-stop" : arrêt des séquences de relance d'un lead (CRM-041/047)
  *
  * Emailing / campagnes :
- *  - "campaign-send"  : envoi lot campagne (M-06 → M-14) — voir `campaignSend.ts`
+ *  - "campaign-send"  : envoi par lots des campagnes emailing — voir `campaignSend.ts`
  */
 import * as fs from "node:fs";
 import * as crypto from "node:crypto";

@@ -21,7 +21,7 @@ const bodySchema = z.object({
   leadContext: leadContextSchema.optional(),
 });
 
-/** POST /api/emailing/ai-variants — M-05 variantes personnalisées (OpenAI, OPENAI_API_KEY). */
+/** POST /api/emailing/ai-variants — variantes personnalisées (OpenAI, OPENAI_API_KEY). */
 export const POST = handler(async (req) => {
   await requirePermission("settings:manage");
   const body = await parseBody(req, bodySchema);

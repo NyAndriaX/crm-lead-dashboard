@@ -131,7 +131,7 @@ export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mo
           label: (
             <Space>
               <ThunderboltOutlined />
-              <span>Personnalisation IA (M-05) — variantes de ton</span>
+              <span>Suggestions IA — variantes de ton</span>
             </Space>
           ),
           children: (

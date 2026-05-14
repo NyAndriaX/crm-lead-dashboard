@@ -3,7 +3,7 @@ import { prisma, verifyEmailTrackToken } from "@crm/db";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/emailing/track/click?t=… — M-09 clics (redirection)
+// GET /api/emailing/track/click?t=… — redirection après enregistrement du clic
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const t = url.searchParams.get("t");

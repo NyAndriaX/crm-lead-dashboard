@@ -70,7 +70,7 @@ function buildUserPayload(input: GenerateEmailAiVariantsInput): string {
 }
 
 /**
- * M-05 — Suggestion de variantes (sujet + corps ou corps seul) via OpenAI.
+ * Suggestion de variantes (sujet + corps ou corps seul) via OpenAI.
  * Nécessite OPENAI_API_KEY. Les merge tags {{...}} doivent être conservés.
  */
 export async function generateEmailAiVariants(

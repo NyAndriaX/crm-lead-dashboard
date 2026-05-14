@@ -9,7 +9,7 @@ const PIXEL_GIF = Buffer.from(
   "base64",
 );
 
-// GET /api/emailing/track/open?t=… — M-09 ouvertures
+// GET /api/emailing/track/open?t=… — pixel 1×1, enregistrement ouverture
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const t = url.searchParams.get("t");

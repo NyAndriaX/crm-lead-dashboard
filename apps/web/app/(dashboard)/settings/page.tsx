@@ -134,8 +134,8 @@ const ROLE_BG: Record<string, string> = {
   ADMIN: "#fff1f0", MANAGER: "#fff7e6", COMMERCIAL: "#e6f4ff", LECTEUR: "#fafafa",
 };
 
-/** M-02 : guide intégré SPF / DKIM / DMARC (le vérificateur est déjà branché sur l’API). */
-function DnsM02Guide(props: {
+/** Guide intégré SPF / DKIM / DMARC ; le vérificateur est branché sur l’API. */
+function DnsSenderAuthGuide(props: {
   domainInput: string;
   dkimSelectorInput: string;
   onDomainChange: (domain: string) => void;
@@ -172,7 +172,7 @@ function DnsM02Guide(props: {
       <Alert
         type="info"
         showIcon
-        message="Authentification de l’expéditeur (M-02)"
+        message="Authentification de l’expéditeur"
         description={
           <span>
             SPF, DKIM et DMARC réduisent le risque que vos campagnes finissent en spam. Ce bloc résume la configuration
@@ -1231,11 +1231,10 @@ function EmailingTab() {
             <span>Guide et vérification DNS (SPF / DKIM / DMARC)</span>
           </Space>
         }
-        extra={<Tag color="success">M-02</Tag>}
         style={{ borderRadius: 12, boxShadow: "0 1px 2px rgba(15,23,42,0.06)" }}
       >
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
-          <DnsM02Guide
+          <DnsSenderAuthGuide
             domainInput={dnsDomain}
             dkimSelectorInput={dnsSelector}
             onDomainChange={setDnsDomain}
@@ -1308,12 +1307,9 @@ function EmailingTab() {
           </Space>
         }
         extra={
-          <Space>
-            <Tag color="processing">M-04</Tag>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => void openTemplateCreate()}>
-              Nouveau template
-            </Button>
-          </Space>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => void openTemplateCreate()}>
+            Nouveau template
+          </Button>
         }
         style={{ borderRadius: 12, boxShadow: "0 1px 2px rgba(15,23,42,0.06)" }}
       >
@@ -1331,9 +1327,9 @@ function EmailingTab() {
         />
         <Space direction="vertical" size={4} style={{ width: "100%", marginBottom: 8 }}>
           <Text type="secondary">
-            Éditeur M-03 : onglets visuel / HTML, variables <Text code>{"{{prenom}}"}</Text>, aperçu desktop & mobile.
+            Éditeur double onglet (visuel / HTML), variables de fusion <Text code>{"{{prenom}}"}</Text>, aperçu bureau et mobile.
             {" "}
-            M-05 (optionnel) : dans les modales de création / édition, section « Personnalisation IA » — variantes de ton via OpenAI si <Text code>OPENAI_API_KEY</Text> est définie sur le serveur.
+            Optionnel : dans les modales de création ou d’édition, la section « Suggestions IA » propose des variantes de ton via OpenAI lorsque <Text code>OPENAI_API_KEY</Text> est définie sur le serveur.
           </Text>
         </Space>
         <Table
@@ -1362,7 +1358,7 @@ function EmailingTab() {
       >
         <Space direction="vertical" size={4} style={{ width: "100%", marginBottom: 8 }}>
           <Text type="secondary">
-            Blocs réutilisables : duplication en un clic, partage public / privé (M-04).
+            Blocs réutilisables : duplication en un clic, partage public ou privé.
           </Text>
         </Space>
         <Table
@@ -1491,7 +1487,7 @@ function EmailingTab() {
           <Divider orientation="left" plain>
             <Space size={6}>
               <CodeOutlined />
-              <span>Corps du message (M-03)</span>
+              <span>Corps du message</span>
             </Space>
           </Divider>
           <Row gutter={[16, 16]}>
@@ -1588,7 +1584,7 @@ function EmailingTab() {
           <Divider orientation="left" plain>
             <Space size={6}>
               <CodeOutlined />
-              <span>Contenu HTML (M-03)</span>
+              <span>Contenu HTML</span>
             </Space>
           </Divider>
           <Row gutter={[16, 16]}>

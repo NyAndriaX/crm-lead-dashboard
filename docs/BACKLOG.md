@@ -69,7 +69,7 @@ _Table de suivi alignée sur le lot L4 ; le fichier maître Excel est `docs/back
 | CRM-030 | Guide DNS SPF / DKIM / DMARC intégré (réglages) | ✅ fait |
 | CRM-031 | Éditeur de templates : WYSIWYG (Quill) + HTML (Monaco), variables de fusion, aperçu bureau / mobile | ✅ fait |
 | CRM-032 | Bibliothèque templates & blocs : duplication API, partage `isPublic` | ✅ fait |
-| _(CDC **M-05**)_ | Personnalisation IA (optionnel) : variantes de ton — `POST /api/emailing/ai-variants`, UI modales template & bloc, `OPENAI_API_KEY` | ✅ fait |
+| _(IA)_ | Personnalisation IA (optionnel) : variantes de ton — `POST /api/emailing/ai-variants`, UI modales template & bloc, `OPENAI_API_KEY` | ✅ fait |
 | CRM-033 | Page **Campagnes** (`/campaigns`) : CRUD, planification, job `campaign-send` | ✅ fait |
 | CRM-034 | Segmentation : API `/segments`, filtres alignés sur les leads | ✅ fait |
 | CRM-035 | Worker d’envoi régulé (`campaign-send`, lots + re-queue) | ✅ fait |
@@ -77,7 +77,7 @@ _Table de suivi alignée sur le lot L4 ; le fichier maître Excel est `docs/back
 | CRM-037 | Bounces (événement + statut lead sur échec SMTP) | ✅ fait |
 | CRM-038 | Désabonnement RFC 8058 (`/api/emailing/unsub`, List-Unsubscribe) | ✅ fait |
 | CRM-039 | Dashboard campagne (stats agrégées `/api/campaigns/:id/stats`) | ✅ fait |
-| _(tech)_ | **T-04** dans `docs/backlog/CRM_SUIVI_TICKETS_v2.xlsx` : `next build` OK — routes `params: Promise`, export XLSX `Uint8Array`, login `Suspense`, `assignedTo` Prisma, typage export/historique, Quill client-only | ✅ fait |
+| _(qualité build)_ | Chaîne `next build` stabilisée — routes `params: Promise`, export XLSX `Uint8Array`, login `Suspense`, `assignedTo` Prisma, typage export/historique, Quill client-only (voir aussi suivi Excel) | ✅ fait |
 
 **Prochain focus L4 recommandé :** affinages (file d’attente dédiée par campagne, hard bounces SMTP, relance auto) ou **L5 Inbox** selon priorité produit.
 

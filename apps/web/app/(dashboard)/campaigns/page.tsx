@@ -210,8 +210,7 @@ export default function CampaignsPage() {
     }
   };
 
-  // Colonnes stables ; handlers déjà stables via useCallback implicite (fonctions inline).
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- évite re-render Table à chaque tick
+  // Colonnes stables ; dépend uniquement de `isMobile` (handlers exclus volontairement).
   const cols: ColumnsType<CampaignRow> = useMemo(
     () => [
       { title: "Nom", dataIndex: "name", key: "name", ellipsis: true },
@@ -247,6 +246,8 @@ export default function CampaignsPage() {
         ),
       },
     ],
+    // Handlers (schedule, pause, resume, openStats) volontairement exclus pour limiter les re-rendus du tableau.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- colonnes stables, `isMobile` seul suffit
     [isMobile],
   );
 
@@ -257,8 +258,8 @@ export default function CampaignsPage() {
           <MailOutlined /> Campagnes emailing
         </Title>
         <Text type="secondary">
-          M-06 à M-14 : création de campagne, segments, envoi régulé (worker), tracking ouverture/clics, désabonnement RFC 8058,
-          bounces, warm-up & A/B via options avancées du formulaire.
+          Créez des segments sur vos leads, planifiez des campagnes avec envoi régulé, suivez ouvertures et clics,
+          gérez les bounces et les désabonnements (RFC 8058), et affinez la délivrabilité avec montée en charge et tests A/B.
         </Text>
       </div>
 
@@ -270,7 +271,7 @@ export default function CampaignsPage() {
       />
 
       <Card
-        title={<Space><TeamOutlined />Segments (M-07)</Space>}
+        title={<Space><TeamOutlined />Segments ciblés</Space>}
         extra={
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setSegModal(true)}>
             Nouveau segment
@@ -291,7 +292,7 @@ export default function CampaignsPage() {
       </Card>
 
       <Card
-        title={<Space><PlayCircleOutlined />Campagnes (M-06, M-08, M-12–M-14)</Space>}
+        title={<Space><PlayCircleOutlined />Campagnes</Space>}
         extra={
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setCampModal(true)}>
             Nouvelle campagne
@@ -389,7 +390,7 @@ export default function CampaignsPage() {
             </Col>
           </Row>
           <Paragraph strong style={{ marginTop: 8 }}>
-            Options avancées (M-08, M-12, M-13)
+            Options avancées
           </Paragraph>
           <Form.Item name="throttleMinDelayMs" label="Délai min. entre deux envois (ms)">
             <InputNumber min={0} max={600000} style={{ width: "100%" }} />
@@ -397,7 +398,7 @@ export default function CampaignsPage() {
           <Form.Item name="bodyHtmlOverride" label="Corps HTML (remplace le template si renseigné)">
             <Input.TextArea rows={3} placeholder="Laisser vide pour utiliser le template" />
           </Form.Item>
-          <Form.Item name="abEnabled" label="Test A/B (M-13)" valuePropName="checked">
+          <Form.Item name="abEnabled" label="Test A/B" valuePropName="checked">
             <Switch />
           </Form.Item>
           <Row gutter={12}>
@@ -415,7 +416,7 @@ export default function CampaignsPage() {
           <Form.Item name="abBodyHtmlB" label="HTML variante B">
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="warmupEnabled" label="Warm-up domaine (M-12)" valuePropName="checked">
+          <Form.Item name="warmupEnabled" label="Montée en charge du domaine (warm-up)" valuePropName="checked">
             <Switch />
           </Form.Item>
           <Row gutter={12}>
@@ -446,7 +447,7 @@ export default function CampaignsPage() {
           <Text type="secondary">Chargement…</Text>
         )}
         <Paragraph type="secondary" style={{ marginTop: 16 }}>
-          Les compteurs proviennent des événements <Text code>emailEvents</Text> (M-14).
+          Les compteurs agrègent les événements enregistrés dans <Text code>emailEvents</Text> (envois, ouvertures, clics, bounces, désabonnements).
         </Paragraph>
       </Drawer>
     </Space>
