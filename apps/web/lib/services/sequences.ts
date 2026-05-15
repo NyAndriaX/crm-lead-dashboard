@@ -9,6 +9,7 @@ export type SequenceStepInput = {
   subject?: string | null;
   bodyHtml?: string | null;
   stopOnReply?: boolean;
+  aiPersonalize?: boolean;
 };
 
 export type SequenceInput = {
@@ -27,6 +28,7 @@ function normalizeSteps(steps: SequenceStepInput[]): SequenceStepInput[] {
     subject: s.subject?.trim() || null,
     bodyHtml: s.bodyHtml ?? null,
     stopOnReply: s.stopOnReply !== false,
+    aiPersonalize: Boolean(s.aiPersonalize),
   }));
 }
 

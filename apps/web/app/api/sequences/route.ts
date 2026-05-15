@@ -10,6 +10,7 @@ const stepSchema = z.object({
   subject: z.string().trim().min(1).max(500).nullable().optional(),
   bodyHtml: z.string().min(1).max(200_000).nullable().optional(),
   stopOnReply: z.boolean().optional(),
+  aiPersonalize: z.boolean().optional(),
 });
 
 const createSchema = z.object({

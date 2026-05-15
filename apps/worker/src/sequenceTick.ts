@@ -18,6 +18,7 @@ import * as crypto from "node:crypto";
 import nodemailer from "nodemailer";
 import { prisma } from "@crm/db";
 import type { WorkerJobContext } from "@crm/queue";
+import { aiPersonalizeEmail } from "./ai";
 
 const ALGO = "aes-256-gcm";
 const IV_LEN = 12;
@@ -55,6 +56,8 @@ type StepConfig = {
   subject?: string | null;
   bodyHtml?: string | null;
   stopOnReply?: boolean;
+  /** A2 (F6) — réécriture IA unique par destinataire pour cette relance. */
+  aiPersonalize?: boolean;
 };
 
 function parseSteps(raw: unknown): StepConfig[] {
@@ -67,6 +70,7 @@ function parseSteps(raw: unknown): StepConfig[] {
       subject: typeof s.subject === "string" ? s.subject : null,
       bodyHtml: typeof s.bodyHtml === "string" ? s.bodyHtml : null,
       stopOnReply: s.stopOnReply == null ? true : Boolean(s.stopOnReply),
+      aiPersonalize: Boolean(s.aiPersonalize),
     }));
 }
 
@@ -165,6 +169,27 @@ async function sendStep(args: {
     company: lead.company,
     email,
   });
+
+  // A2 (F6) — réécriture IA unique par destinataire pour la relance.
+  if (step.aiPersonalize) {
+    const ai = await aiPersonalizeEmail({
+      subject,
+      html: bodyHtml,
+      lead: {
+        firstName: lead.firstName,
+        lastName: lead.lastName,
+        company: lead.company,
+        sector: lead.sector,
+        city: lead.city,
+        email,
+      },
+      enrichment: lead.enrichment,
+      kind: "relance",
+      stepIndex,
+    });
+    subject = ai.subject;
+    bodyHtml = ai.html;
+  }
 
   const senderDomain = (fromAddr.split("@")[1] ?? "crm").replace(/[^a-zA-Z0-9.\-]/g, "");
   const messageId = `<crm-seq-${sequenceId}-${lead.id}-${stepIndex}@${senderDomain}>`;

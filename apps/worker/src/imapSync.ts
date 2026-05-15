@@ -22,6 +22,7 @@ import { simpleParser, type ParsedMail } from "mailparser";
 import { prisma } from "@crm/db";
 import type { WorkerJobContext } from "@crm/queue";
 import { categorizeReply, type ReplyCategory } from "./replyCategorizer";
+import { maybeAutoRespond } from "./autoResponder";
 
 const ALGO = "aes-256-gcm";
 const IV_LEN = 12;
@@ -196,6 +197,7 @@ async function onReplyReceived(args: {
   receivedAt: Date;
   isAutoReply: boolean;
   category: ReplyCategory;
+  inboundMessageId: string | null;
 }): Promise<void> {
   if (args.isAutoReply) {
     // R-08 : on n'arrête pas les séquences et on ne change pas le statut.
@@ -262,6 +264,21 @@ async function onReplyReceived(args: {
   } catch (e) {
     console.warn(`[imap-sync] notif assignée KO leadId=${args.leadId}:`, e instanceof Error ? e.message : e);
   }
+
+  // A4 (F7) : agent IA d'auto-réponse (off/draft/auto selon AUTO_RESPONDER_MODE).
+  try {
+    const r = await maybeAutoRespond({
+      leadId: args.leadId,
+      category: args.category,
+      inboundSubject: args.subject,
+      inboundMessageId: args.inboundMessageId,
+    });
+    if (r.acted) {
+      console.log(`[imap-sync] auto-responder (${r.mode}) leadId=${args.leadId} cat=${args.category}`);
+    }
+  } catch (e) {
+    console.warn(`[imap-sync] auto-responder KO leadId=${args.leadId}:`, e instanceof Error ? e.message : e);
+  }
 }
 
 async function ingestParsedMessage(parsed: ParsedMail): Promise<{
@@ -320,6 +337,7 @@ async function ingestParsedMessage(parsed: ParsedMail): Promise<{
       receivedAt,
       isAutoReply: auto,
       category,
+      inboundMessageId: messageId,
     });
   }
 

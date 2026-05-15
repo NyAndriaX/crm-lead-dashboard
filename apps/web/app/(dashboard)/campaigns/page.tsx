@@ -122,6 +122,7 @@ export default function CampaignsPage() {
       const config = {
         throttleMinDelayMs: v.throttleMinDelayMs,
         bodyHtmlOverride: v.bodyHtmlOverride || undefined,
+        aiPersonalize: Boolean(v.aiPersonalize),
         ab:
           v.abEnabled
             ? {
@@ -397,6 +398,14 @@ export default function CampaignsPage() {
           </Form.Item>
           <Form.Item name="bodyHtmlOverride" label="Corps HTML (remplace le template si renseigné)">
             <Input.TextArea rows={3} placeholder="Laisser vide pour utiliser le template" />
+          </Form.Item>
+          <Form.Item
+            name="aiPersonalize"
+            label="Personnalisation IA par destinataire (F2/F3)"
+            valuePropName="checked"
+            tooltip="Chaque email est réécrit par l'IA, unique et adapté au lead (utilise l'enrichissement + le brief IA). Fallback variables si OPENAI_API_KEY absent."
+          >
+            <Switch />
           </Form.Item>
           <Form.Item name="abEnabled" label="Test A/B" valuePropName="checked">
             <Switch />

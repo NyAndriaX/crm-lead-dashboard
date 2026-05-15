@@ -12,6 +12,7 @@ import {
   type LeadSegmentFilters,
 } from "@crm/db";
 import { getWorkerAgenda, enqueueOneOff, type WorkerJobContext } from "@crm/queue";
+import { aiPersonalizeEmail } from "./ai";
 
 const ALGO = "aes-256-gcm";
 const IV_LEN = 12;
@@ -50,6 +51,8 @@ type CampaignCfg = {
   bodyHtmlOverride?: string | null;
   ab?: { enabled?: boolean; subjectB?: string | null; bodyHtmlB?: string | null; splitPercent?: number };
   warmup?: { enabled?: boolean; startPerDay?: number; growth?: number };
+  /** A2 (F2/F3) — réécriture IA unique par destinataire. */
+  aiPersonalize?: boolean;
 };
 
 function mergeStats(prev: unknown, patch: Record<string, number>): Record<string, number> {
@@ -213,6 +216,27 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
       email,
     });
 
+    // A2 (F2/F3) — réécriture IA unique par destinataire (avant tracking).
+    let finalSubject = subject;
+    if (cfg?.aiPersonalize) {
+      const ai = await aiPersonalizeEmail({
+        subject,
+        html: body,
+        lead: {
+          firstName: lead.firstName,
+          lastName: lead.lastName,
+          company: lead.company,
+          sector: lead.sector,
+          city: lead.city,
+          email,
+        },
+        enrichment: lead.enrichment,
+        kind: "email",
+      });
+      finalSubject = ai.subject;
+      body = ai.html;
+    }
+
     const openTok = signEmailTrackToken({ k: "open", c: campaignId, l: lead.id, v: variant });
     const openUrl = `${baseUrl}/api/emailing/track/open?t=${encodeURIComponent(openTok)}`;
     const unsubTok = signEmailTrackToken({ k: "unsub", c: campaignId, l: lead.id, v: variant });
@@ -231,7 +255,7 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
       await transporter.sendMail({
         from: `"${fromName}" <${fromAddr}>`,
         to: email,
-        subject,
+        subject: finalSubject,
         html: body,
         messageId,
         headers: {
@@ -258,7 +282,7 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
             direction: "outbound",
             fromEnc: encryptValue(`"${fromName}" <${fromAddr}>`),
             toEnc: encryptValue(email),
-            subject,
+            subject: finalSubject,
             bodyHtml: body,
             receivedAt: new Date(),
           },

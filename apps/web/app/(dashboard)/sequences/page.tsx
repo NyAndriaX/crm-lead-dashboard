@@ -20,6 +20,7 @@ type Step = {
   subject?: string | null;
   bodyHtml?: string | null;
   stopOnReply?: boolean;
+  aiPersonalize?: boolean;
 };
 type SequenceRow = {
   id: string;
@@ -116,6 +117,7 @@ export default function SequencesPage() {
           subject: s.subject || null,
           bodyHtml: s.bodyHtml || null,
           stopOnReply: s.stopOnReply !== false,
+          aiPersonalize: Boolean(s.aiPersonalize),
         })),
       };
       if (editing) {
@@ -342,6 +344,15 @@ export default function SequencesPage() {
                           style={{ marginBottom: 0 }}
                         >
                           <Switch defaultChecked />
+                        </Form.Item>
+                        <Form.Item
+                          name={[field.name, "aiPersonalize"]}
+                          label="Personnalisation IA"
+                          valuePropName="checked"
+                          tooltip="Réécrit ce message de relance, unique par destinataire (enrichissement + brief IA). Fallback variables sans OPENAI_API_KEY."
+                          style={{ marginBottom: 0 }}
+                        >
+                          <Switch />
                         </Form.Item>
                       </Space>
                       <Form.Item
