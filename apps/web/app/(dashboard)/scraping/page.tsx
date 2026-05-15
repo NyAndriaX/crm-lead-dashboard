@@ -44,6 +44,8 @@ type Mission = {
     language?: string | null;
     limit: number;
     rate: { delayMs: number; retries: number; rotateUserAgent: boolean; proxyUrl?: string | null };
+    dailyQuota?: number | null;
+    autoPipeline?: { enabled: boolean; sequenceId?: string | null };
   };
   schedule: string | null;
   status: string;
@@ -84,6 +86,7 @@ export default function ScrapingPage() {
   const [buffer, setBuffer] = useState<BufferItem[]>([]);
   const [bufferLoading, setBufferLoading] = useState(false);
   const [selectedBuf, setSelectedBuf] = useState<string[]>([]);
+  const [sequences, setSequences] = useState<{ id: string; name: string }[]>([]);
 
   const fetchMissions = useCallback(async () => {
     setLoading(true);
@@ -98,6 +101,12 @@ export default function ScrapingPage() {
   }, []);
 
   useEffect(() => { void fetchMissions(); }, [fetchMissions]);
+
+  useEffect(() => {
+    api.get<{ data: { id: string; name: string }[] }>("/sequences")
+      .then((r) => setSequences(r.data.data ?? []))
+      .catch(() => setSequences([]));
+  }, []);
 
   // Auto-refresh tant qu'une mission tourne.
   useEffect(() => {
@@ -139,6 +148,9 @@ export default function ScrapingPage() {
       rotateUserAgent: m.config.rate.rotateUserAgent,
       proxyUrl: m.config.rate.proxyUrl,
       schedule: m.schedule,
+      dailyQuota: m.config.dailyQuota ?? null,
+      autoPipelineEnabled: m.config.autoPipeline?.enabled ?? false,
+      autoPipelineSequenceId: m.config.autoPipeline?.sequenceId ?? null,
     });
     setFormOpen(true);
   }
@@ -162,6 +174,11 @@ export default function ScrapingPage() {
           retries: v.retries ?? 2,
           rotateUserAgent: v.rotateUserAgent ?? true,
           proxyUrl: v.proxyUrl || null,
+        },
+        dailyQuota: v.dailyQuota ?? null,
+        autoPipeline: {
+          enabled: Boolean(v.autoPipelineEnabled),
+          sequenceId: v.autoPipelineSequenceId || null,
         },
       },
     };
@@ -416,9 +433,34 @@ export default function ScrapingPage() {
             <Col span={6}><Form.Item name="delayMs" label="Délai (ms)"><InputNumber min={0} max={60000} style={{ width: "100%" }} /></Form.Item></Col>
             <Col span={6}><Form.Item name="retries" label="Retries"><InputNumber min={0} max={10} style={{ width: "100%" }} /></Form.Item></Col>
             <Col span={6}><Form.Item name="rotateUserAgent" label="Rotation UA" valuePropName="checked"><Switch /></Form.Item></Col>
-            <Col span={6}><Form.Item name="schedule" label="Planification"><Select allowClear placeholder="Aucune" options={[{ value: "weekly", label: "Hebdo" }, { value: "monthly", label: "Mensuel" }]} /></Form.Item></Col>
+            <Col span={6}><Form.Item name="schedule" label="Planification"><Select allowClear placeholder="Aucune" options={[{ value: "daily", label: "Quotidien" }, { value: "weekly", label: "Hebdo" }, { value: "monthly", label: "Mensuel" }]} /></Form.Item></Col>
           </Row>
           <Form.Item name="proxyUrl" label="Proxy URL (optionnel)"><Input placeholder="http://user:pass@proxy:port" /></Form.Item>
+
+          <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
+            Pipeline automatisé (F4) — scraping → injection → relances IA automatiques
+          </Paragraph>
+          <Row gutter={12} align="middle">
+            <Col span={8}>
+              <Form.Item name="dailyQuota" label="Quota / jour" tooltip="Plafond de leads scrapés par exécution (ex. 100/jour)">
+                <InputNumber min={1} max={1000} style={{ width: "100%" }} placeholder="ex. 100" />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="autoPipelineEnabled" label="Auto-pipeline" valuePropName="checked" tooltip="Injecte automatiquement les leads non-doublons (sans validation manuelle)">
+                <Switch />
+              </Form.Item>
+            </Col>
+            <Col span={10}>
+              <Form.Item name="autoPipelineSequenceId" label="Séquence de relance IA" tooltip="Les leads injectés sont enrôlés ; les étapes avec aiPersonalize envoient des messages uniques par destinataire">
+                <Select
+                  allowClear
+                  placeholder="Aucune (injection seule)"
+                  options={sequences.map((s) => ({ value: s.id, label: s.name }))}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
         </Form>
       </Modal>
 

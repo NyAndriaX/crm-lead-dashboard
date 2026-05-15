@@ -49,6 +49,7 @@ type EnrichmentData = {
   linkedin?: { profileUrlGuess: string | null; companyUrlGuess: string | null; note: string; at: string };
   news?: { items: { title: string; url: string; source: string; date: string | null }[]; source: string; at: string };
   social?: { twitter: string | null; facebook: string | null; instagram: string | null; note: string; at: string };
+  aiBrief?: { summary: string; angle: string; score: number; source: "ai" | "fallback"; at: string };
   lastEnrichedAt?: string;
   providersRun?: Provider[];
 };
@@ -135,6 +136,38 @@ export function LeadEnrichmentCard({
           />
         ) : (
           <Space direction="vertical" size={10} style={{ width: "100%" }}>
+            {/* A1 (F1) — Brief de qualification IA */}
+            {data.aiBrief && (
+              <div
+                style={{
+                  background: "#f6ffed",
+                  border: "1px solid #b7eb8f",
+                  borderRadius: 6,
+                  padding: 12,
+                }}
+              >
+                <Space style={{ width: "100%", justifyContent: "space-between" }}>
+                  <Text strong>🤖 Qualification IA</Text>
+                  <Space size={4}>
+                    <Tag color={data.aiBrief.score >= 70 ? "green" : data.aiBrief.score >= 45 ? "blue" : "default"}>
+                      potentiel {data.aiBrief.score}
+                    </Tag>
+                    <Tag color={data.aiBrief.source === "ai" ? "purple" : "default"}>
+                      {data.aiBrief.source === "ai" ? "IA" : "heuristique"}
+                    </Tag>
+                  </Space>
+                </Space>
+                <div style={{ marginTop: 6 }}>
+                  <Text style={{ fontSize: 13 }}>{data.aiBrief.summary}</Text>
+                </div>
+                <div style={{ marginTop: 6 }}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    <strong>Angle :</strong> {data.aiBrief.angle}
+                  </Text>
+                </div>
+              </div>
+            )}
+
             {/* Email trouvé */}
             {data.email && (
               <div>

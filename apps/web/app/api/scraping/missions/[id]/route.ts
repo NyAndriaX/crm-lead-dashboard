@@ -25,6 +25,13 @@ const configSchema = z.object({
     rotateUserAgent: z.boolean(),
     proxyUrl: z.string().trim().max(300).nullable().optional(),
   }),
+  dailyQuota: z.number().int().min(1).max(1000).nullable().optional(),
+  autoPipeline: z
+    .object({
+      enabled: z.boolean(),
+      sequenceId: z.string().nullable().optional(),
+    })
+    .optional(),
 });
 
 const updateSchema = z.object({

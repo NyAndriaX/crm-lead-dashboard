@@ -12,6 +12,40 @@
  */
 import { prisma, type Prisma } from "@crm/db";
 import { encryptOrNull, emailHash } from "@/lib/crypto";
+import { enrichLeadById } from "@/lib/services/enrichment";
+import { generateLeadAiBrief } from "@/lib/services/aiBrief";
+
+/**
+ * A1 (F1) — enrichit + génère un brief de qualification IA sur un lead
+ * fraîchement injecté. Best-effort : ne jette jamais (n'invalide pas
+ * l'injection si l'enrichissement ou l'IA échoue).
+ */
+const AUTO_ENRICH_CAP = Number(process.env.SCRAPING_AUTOENRICH_CAP ?? 50);
+
+async function autoEnrichAndBrief(leadId: string): Promise<void> {
+  try {
+    await enrichLeadById(leadId, ["email", "emailVerify", "company", "news"]);
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { firstName: true, lastName: true, company: true, sector: true, city: true, enrichment: true },
+    });
+    if (!lead) return;
+    const brief = await generateLeadAiBrief(
+      { firstName: lead.firstName, lastName: lead.lastName, company: lead.company, sector: lead.sector, city: lead.city },
+      lead.enrichment,
+    );
+    const enr = (lead.enrichment ?? {}) as Record<string, unknown>;
+    await prisma.lead.update({
+      where: { id: leadId },
+      data: { enrichment: { ...enr, aiBrief: brief } as object },
+    });
+    await prisma.leadHistory.create({
+      data: { leadId, type: "ai_qualified", payload: { score: brief.score, source: brief.source } as object },
+    });
+  } catch (e) {
+    console.warn(`[scraping] auto-enrich/brief KO leadId=${leadId}:`, e instanceof Error ? e.message : e);
+  }
+}
 
 export type ScrapingSource = "google_maps" | "directories" | "linkedin" | "website";
 
@@ -41,6 +75,13 @@ export type MissionConfig = {
     retries: number;
     rotateUserAgent: boolean;
     proxyUrl?: string | null;
+  };
+  /** A3 (F4) — scraping automatisé : quota/jour + pipeline auto. */
+  dailyQuota?: number | null;
+  autoPipeline?: {
+    enabled: boolean;
+    /** Inscrit les leads injectés dans cette séquence (relances IA si steps.aiPersonalize). */
+    sequenceId?: string | null;
   };
 };
 
@@ -77,6 +118,11 @@ function normalizeConfig(raw: unknown): MissionConfig {
     language: c.language ?? "fr",
     limit: typeof c.limit === "number" && c.limit > 0 ? Math.min(c.limit, 500) : 50,
     rate: { ...DEFAULT_RATE, ...(c.rate ?? {}) },
+    dailyQuota:
+      typeof c.dailyQuota === "number" && c.dailyQuota > 0 ? Math.min(c.dailyQuota, 1000) : null,
+    autoPipeline: c.autoPipeline?.enabled
+      ? { enabled: true, sequenceId: c.autoPipeline.sequenceId ?? null }
+      : { enabled: false, sequenceId: null },
   };
 }
 
@@ -301,6 +347,12 @@ export async function injectAcceptedLeads(missionId: string, actorId?: string): 
       data: { status: "accepted", raw: { ...raw, injectedLeadId: lead.id } as object },
     });
     injected++;
+
+    // A1 (F1) — enrichissement + brief de qualification IA automatiques,
+    // plafonné et best-effort (n'invalide jamais l'injection).
+    if (injected <= AUTO_ENRICH_CAP) {
+      await autoEnrichAndBrief(lead.id);
+    }
   }
 
   return { injected, skippedDuplicate, skippedInvalid };

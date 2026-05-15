@@ -23,6 +23,29 @@ function emailHash(email: string): string {
   return crypto.createHmac("sha256", getHmacSecret()).update(email.trim().toLowerCase()).digest("hex");
 }
 
+// Crypto AES-256-GCM (miroir de lib/crypto.ts) pour l'auto-injection.
+const ALGO = "aes-256-gcm";
+function getEncKey(): Buffer {
+  const hex = process.env.PII_ENCRYPTION_KEY;
+  if (!hex) throw new Error("PII_ENCRYPTION_KEY manquant");
+  const key = Buffer.from(hex, "hex");
+  if (key.length !== 32) throw new Error("PII_ENCRYPTION_KEY doit faire 32 bytes");
+  return key;
+}
+function encryptOrNull(v: string | null | undefined): Buffer | null {
+  if (v == null || v === "") return null;
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv(ALGO, getEncKey(), iv);
+  const enc = Buffer.concat([cipher.update(v, "utf8"), cipher.final()]);
+  return Buffer.concat([iv, cipher.getAuthTag(), enc]);
+}
+
+/** Config enrichie A3 (au-delà du ScrapeConfig adapters). */
+type AutoCfg = {
+  dailyQuota?: number | null;
+  autoPipeline?: { enabled?: boolean; sequenceId?: string | null };
+};
+
 export async function runScraping(ctx: WorkerJobContext): Promise<unknown> {
   const payload = (ctx.payload ?? {}) as { missionId?: string };
   const missionId = payload.missionId;
@@ -43,9 +66,15 @@ export async function runScraping(ctx: WorkerJobContext): Promise<unknown> {
 
   try {
     const cfg = mission.config as unknown as ScrapeConfig;
+    const autoCfg = mission.config as unknown as AutoCfg;
     log(`Mission "${mission.name}" — sources: ${cfg.sources.join(", ")}`);
 
-    const scraped = await scrapeAllSources(cfg, log);
+    let scraped = await scrapeAllSources(cfg, log);
+    // A3 (F4) — quota journalier : plafonne le volume si défini.
+    if (autoCfg.dailyQuota && scraped.length > autoCfg.dailyQuota) {
+      log(`Quota journalier ${autoCfg.dailyQuota} appliqué (${scraped.length} → ${autoCfg.dailyQuota})`);
+      scraped = scraped.slice(0, autoCfg.dailyQuota);
+    }
     log(`Total brut scrapé : ${scraped.length}`);
 
     // S-07 — dédoublonnage avant insertion buffer.
@@ -102,7 +131,73 @@ export async function runScraping(ctx: WorkerJobContext): Promise<unknown> {
     }
 
     log(`Buffer : ${inserted} inséré(s) · ${dupExisting} déjà en base · ${dupInternal} doublons internes`);
-    log("Mission terminée — validez les résultats avant injection CRM.");
+
+    // A3 (F4) — pipeline automatisé : auto-injection + enrôlement séquence.
+    let autoInjected = 0;
+    if (autoCfg.autoPipeline?.enabled) {
+      const pendings = await prisma.scrapedLeadBuffer.findMany({
+        where: { missionId, status: "pending" },
+      });
+      const seqId = autoCfg.autoPipeline.sequenceId || null;
+      for (const row of pendings) {
+        const raw = (row.raw ?? {}) as ScrapedLead & { name?: string | null };
+        const email = (raw.email ?? "").trim() || null;
+        const [firstName, ...rest] = (raw.name ?? "").split(" ");
+        try {
+          const created = await prisma.lead.create({
+            data: {
+              emailEnc: encryptOrNull(email),
+              emailHash: email ? emailHash(email) : null,
+              phoneEnc: encryptOrNull(raw.phone ?? null),
+              firstName: firstName || null,
+              lastName: rest.join(" ") || null,
+              company: raw.company ?? null,
+              website: raw.website ?? null,
+              sector: raw.sector ?? null,
+              city: raw.city ?? null,
+              country: "France",
+              source: `Scraping auto: ${raw.source ?? mission.name}`,
+              status: "NOUVEAU",
+              tags: ["scraping-auto"],
+              lastActionAt: new Date(),
+              deletedAt: null,
+            },
+          });
+          await prisma.scrapedLeadBuffer.update({
+            where: { id: row.id },
+            data: { status: "accepted", raw: { ...raw, injectedLeadId: created.id, auto: true } as object },
+          });
+          await prisma.leadHistory.create({
+            data: { leadId: created.id, type: "scraped_auto_imported", payload: { missionId } as object },
+          });
+          // Enrôle dans la séquence (relances IA si steps.aiPersonalize) → envoi auto.
+          if (seqId) {
+            const seq = await prisma.sequence.findUnique({ where: { id: seqId } });
+            if (seq && !seq.isPaused) {
+              await prisma.sequenceLead.create({
+                data: {
+                  sequenceId: seqId,
+                  leadId: created.id,
+                  currentStep: 0,
+                  status: "active",
+                  nextSendAt: new Date(),
+                },
+              });
+            }
+          }
+          autoInjected++;
+        } catch (e) {
+          log(`auto-inject KO : ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      log(
+        `Auto-pipeline : ${autoInjected} lead(s) injecté(s)` +
+          (seqId ? ` + enrôlés dans la séquence ${seqId}` : "") +
+          ". Les relances personnalisées partent automatiquement.",
+      );
+    } else {
+      log("Mission terminée — validez les résultats avant injection CRM.");
+    }
 
     await prisma.scrapingMission.update({
       where: { id: missionId },
@@ -115,13 +210,16 @@ export async function runScraping(ctx: WorkerJobContext): Promise<unknown> {
       select: { id: true },
       take: 5,
     });
+    const bodyMsg = autoCfg.autoPipeline?.enabled
+      ? `Mission "${mission.name}" : ${autoInjected} lead(s) injecté(s) automatiquement.`
+      : `Mission "${mission.name}" : ${inserted - dupExisting - dupInternal} lead(s) à valider.`;
     for (const a of admins) {
       await prisma.notification.create({
         data: {
           userId: a.id,
           type: "scraping_done",
           title: "Scraping terminé",
-          body: `Mission "${mission.name}" : ${inserted - dupExisting - dupInternal} lead(s) à valider.`,
+          body: bodyMsg,
           link: "/scraping",
         },
       });
@@ -131,6 +229,7 @@ export async function runScraping(ctx: WorkerJobContext): Promise<unknown> {
       ok: true,
       scraped: scraped.length,
       inserted,
+      autoInjected,
       duplicatesExisting: dupExisting,
       duplicatesInternal: dupInternal,
     };
@@ -146,9 +245,9 @@ export async function runScraping(ctx: WorkerJobContext): Promise<unknown> {
 }
 
 /**
- * Job `scraping-scheduler` (cron worker) — S-09.
- * Relance les missions ayant un `schedule` (cron simple : "weekly" /
- * "monthly") et terminées depuis assez longtemps.
+ * Job `scraping-scheduler` (cron worker) — S-09 + A3 (F4).
+ * Relance les missions planifiées : "daily" (F4 — X leads/jour),
+ * "weekly" (7j) ou "monthly" (30j).
  */
 export async function runScrapingScheduler(): Promise<unknown> {
   const missions = await prisma.scrapingMission.findMany({
@@ -160,8 +259,9 @@ export async function runScrapingScheduler(): Promise<unknown> {
   for (const m of missions) {
     if (m.status === "running" || m.status === "queued") continue;
     // Heuristique simple : on relit createdAt comme ancrage faute de
-    // champ "lastRunAt" (schéma CDC figé). weekly = 7j, monthly = 30j.
-    const intervalDays = m.schedule === "monthly" ? 30 : m.schedule === "weekly" ? 7 : 0;
+    // champ "lastRunAt" (schéma CDC figé). daily = 1j / weekly = 7j / monthly = 30j.
+    const intervalDays =
+      m.schedule === "monthly" ? 30 : m.schedule === "weekly" ? 7 : m.schedule === "daily" ? 1 : 0;
     if (intervalDays === 0) continue;
     const ageDays = (now - m.createdAt.getTime()) / 86_400_000;
     // Re-déclenche si la dernière exécution (approx createdAt + cycles) est due.
