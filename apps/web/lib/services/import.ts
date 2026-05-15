@@ -104,25 +104,38 @@ export async function startImportJob(jobId: string, userId: string, input: Start
   return prisma.importJob.findUniqueOrThrow({ where: { id: jobId } });
 }
 
+// La relation ImportJob.user est REQUISE au schéma : un `include: { user }`
+// fait throw Prisma si le User a été supprimé (compte désactivé/purgé alors
+// que l'historique d'import subsiste — cas réaliste en prod). On résout donc
+// le user via une requête séparée, tolérante (null si absent).
+async function attachUsers<T extends { userId: string }>(
+  jobs: T[],
+): Promise<(T & { user: { id: string; name: string } | null })[]> {
+  const ids = [...new Set(jobs.map((j) => j.userId))];
+  const users = ids.length
+    ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
+    : [];
+  const byId = new Map(users.map((u) => [u.id, u]));
+  return jobs.map((j) => ({ ...j, user: byId.get(j.userId) ?? null }));
+}
+
 /** Retourne la liste des imports de l'utilisateur (ou tous pour ADMIN). */
 export async function listImportJobs(userId: string, isAdmin: boolean) {
-  return prisma.importJob.findMany({
+  const jobs = await prisma.importJob.findMany({
     where: isAdmin ? {} : { userId },
     orderBy: { createdAt: "desc" },
     take: 100,
-    include: { user: { select: { id: true, name: true } } },
   });
+  return attachUsers(jobs);
 }
 
 /** Retourne le statut d'un import. */
 export async function getImportJob(jobId: string, userId: string, isAdmin: boolean) {
-  const job = await prisma.importJob.findUnique({
-    where: { id: jobId },
-    include: { user: { select: { id: true, name: true } } },
-  });
+  const job = await prisma.importJob.findUnique({ where: { id: jobId } });
   if (!job) throw new ApiError(404, "Import introuvable", "not_found");
   if (!isAdmin && job.userId !== userId) throw new ApiError(403, "Interdit", "forbidden");
-  return job;
+  const [withUser] = await attachUsers([job]);
+  return withUser;
 }
 
 /** Supprime un import (et le fichier associé). */
