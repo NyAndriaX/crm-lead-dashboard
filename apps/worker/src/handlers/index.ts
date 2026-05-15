@@ -102,7 +102,11 @@ interface ColumnMapping {
 
 async function processImport(ctx: WorkerJobContext): Promise<unknown> {
   const payload = (ctx.payload as unknown as ImportPayload) ?? {} as ImportPayload;
-  const { importJobId, skipDuplicates = true, defaultSource, defaultTags = [] } = payload;
+  const { importJobId, skipDuplicates = true, defaultSource } = payload;
+  // ⚠️ Le défaut `= []` ne couvre QUE `undefined`. Le payload web envoie
+  // souvent `defaultTags: null` (aucun tag dans le mapping) → `[...null]`
+  // levait "defaultTags is not iterable" sur CHAQUE ligne. On coerce.
+  const defaultTags: string[] = Array.isArray(payload.defaultTags) ? payload.defaultTags : [];
 
   const importJob = await prisma.importJob.findUnique({ where: { id: importJobId } });
   if (!importJob) return { error: "ImportJob introuvable" };
