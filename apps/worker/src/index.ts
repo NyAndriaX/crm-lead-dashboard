@@ -30,9 +30,11 @@ async function main() {
   // `every()` upsert atomiquement le job récurrent — sûr en redémarrage à chaud.
   const imapInterval = process.env.IMAP_SYNC_INTERVAL ?? "5 minutes";
   const sequenceInterval = process.env.SEQUENCE_TICK_INTERVAL ?? "1 minute";
+  const scrapingSchedInterval = process.env.SCRAPING_SCHEDULER_INTERVAL ?? "1 hour";
   await agenda.every(imapInterval, "imap-sync");
   await agenda.every(sequenceInterval, "sequence-tick");
-  console.log(`[worker] recurring: imap-sync every ${imapInterval}, sequence-tick every ${sequenceInterval}`);
+  await agenda.every(scrapingSchedInterval, "scraping-scheduler");
+  console.log(`[worker] recurring: imap-sync every ${imapInterval}, sequence-tick every ${sequenceInterval}, scraping-scheduler every ${scrapingSchedInterval}`);
 
   await agenda.start();
 

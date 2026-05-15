@@ -8,6 +8,8 @@ const LOCK_MS: Record<string, number> = {
   "import-process": 25 * 60 * 1000,
   "imap-sync": 15 * 60 * 1000,
   "sequence-tick": 10 * 60 * 1000,
+  "scraping-run": 30 * 60 * 1000,
+  "scraping-scheduler": 5 * 60 * 1000,
 };
 
 const CONCURRENCY: Record<string, number> = {
@@ -19,6 +21,8 @@ const CONCURRENCY: Record<string, number> = {
   "sequences-stop": 5,
   "imap-sync": 1,
   "sequence-tick": 1,
+  "scraping-run": 2,
+  "scraping-scheduler": 1,
 };
 
 export async function createWorkerAgenda(): Promise<Agenda> {

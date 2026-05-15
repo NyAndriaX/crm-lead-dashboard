@@ -10,7 +10,7 @@ import {
   DashboardOutlined, TeamOutlined, ImportOutlined, MailOutlined, MessageOutlined,
   RetweetOutlined, ProjectOutlined, BarChartOutlined, SettingOutlined,
   UserOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
-  HomeOutlined,
+  HomeOutlined, RadarChartOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
 import { useBreakpoint, useIsMobile } from "@/lib/responsive";
@@ -47,6 +47,7 @@ function buildNav(role: ShellUser["role"], collapsed: boolean): MenuProps["items
     ...(collapsed ? [] : [{ type: "group" as const, label: <span style={{ fontSize: 10, letterSpacing: 1, textTransform: "uppercase", opacity: 0.5 }}>Prospection</span>, children: [] }]),
     { key: "/leads", icon: <TeamOutlined />, label: <Link href="/leads">Leads</Link> },
     { key: "/import", icon: <ImportOutlined />, label: <Link href="/import">Import</Link> },
+    { key: "/scraping", icon: <RadarChartOutlined />, label: <Link href="/scraping">Scraping</Link> },
     { type: "divider" },
     ...(collapsed ? [] : [{ type: "group" as const, label: <span style={{ fontSize: 10, letterSpacing: 1, textTransform: "uppercase", opacity: 0.5 }}>Communication</span>, children: [] }]),
     { key: "/campaigns", icon: <MailOutlined />, label: <Link href="/campaigns">Emailing</Link> },
@@ -102,6 +103,7 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
     pathname.startsWith("/settings") ? "/settings" :
     pathname.startsWith("/leads") ? "/leads" :
     pathname.startsWith("/import") ? "/import" :
+    pathname.startsWith("/scraping") ? "/scraping" :
     pathname.startsWith("/campaigns") ? "/campaigns" :
     pathname.startsWith("/inbox") ? "/inbox" :
     pathname.startsWith("/sequences") ? "/sequences" :

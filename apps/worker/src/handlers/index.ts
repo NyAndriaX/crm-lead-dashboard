@@ -22,6 +22,7 @@ import type { WorkerJobContext, WorkerJobHandler } from "@crm/queue";
 import { runCampaignSend } from "../campaignSend";
 import { runImapSync } from "../imapSync";
 import { runSequenceTick } from "../sequenceTick";
+import { runScraping, runScrapingScheduler } from "../scrapingRun";
 
 export type JobHandler = WorkerJobHandler;
 
@@ -250,4 +251,8 @@ export const handlers: Record<string, JobHandler> = {
   "imap-sync": runImapSync,
 
   "sequence-tick": runSequenceTick,
+
+  "scraping-run": runScraping,
+
+  "scraping-scheduler": async () => runScrapingScheduler(),
 };
