@@ -44,3 +44,6 @@ coverage/
 
 # docker volumes (if mounted locally)
 .docker-data/
+
+# Uploads runtime (imports CSV/XLSX) — ne pas versionner
+apps/web/uploads/

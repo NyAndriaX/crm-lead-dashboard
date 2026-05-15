@@ -561,6 +561,23 @@ model WorkerConfig {
   @@map("workerConfig")
 }
 
+// T-02 — Multi-tenant (optionnel). Scaffold "single-tenant par défaut" :
+// l'organisation `default` représente l'instance courante. La vraie
+// isolation par tenant (organizationId sur Lead/Campaign/…) est une
+// évolution phase 2 documentée dans docs/architecture/multi-tenant.md ;
+// on pose ici le modèle + le helper pour ne pas bloquer cette évolution.
+model Organization {
+  id        String   @id @map("_id") // "default" tant que single-tenant
+  name      String
+  plan      String   @default("standard") // standard | pro | enterprise
+  isActive  Boolean  @default(true)
+  settings  Json? // overrides éventuels (limites, branding…)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("organizations")
+}
+
 // ──────────────────────────────────────────────────────────────
 // Scraper (hors périmètre courant — défini pour conformité CDC)
 // ──────────────────────────────────────────────────────────────

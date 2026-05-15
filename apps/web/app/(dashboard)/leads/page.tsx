@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Table, Tag, Typography, Button, Space, Input, InputNumber, Select, Dropdown, message,
   Modal, Form, Row, Col, Popconfirm, Tooltip,
@@ -9,7 +10,7 @@ import {
 import {
   DownloadOutlined, SaveOutlined, ReloadOutlined, PlusOutlined,
   DeleteOutlined, UserSwitchOutlined, TagsOutlined, ThunderboltOutlined,
-  RetweetOutlined, MoreOutlined, EditOutlined,
+  RetweetOutlined, MoreOutlined, EditOutlined, EnvironmentOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType, TablePaginationConfig } from "antd/es/table";
 import type { SorterResult } from "antd/es/table/interface";
@@ -178,6 +179,12 @@ export default function LeadsPage() {
     return `/api/leads/export?${p.toString()}`;
   }
 
+  function crmExportUrl(target: "hubspot" | "pipedrive" | "salesforce") {
+    const p = new URLSearchParams({ format: "csv", target });
+    for (const [k, v] of Object.entries(filters)) if (v !== undefined && v !== "") p.set(k, String(v));
+    return `/api/integrations/crm-export?${p.toString()}`;
+  }
+
   async function saveCurrentView() {
     const name = window.prompt("Nom de la vue ?");
     if (!name) return;
@@ -243,9 +250,15 @@ export default function LeadsPage() {
             options={views.map((v) => ({ value: v.id, label: v.name }))} onChange={(v) => v && applyView(v)}
           />
           <Button icon={<SaveOutlined />} onClick={saveCurrentView}>Sauvegarder la vue</Button>
+          <Link href="/leads/map"><Button icon={<EnvironmentOutlined />}>Carte</Button></Link>
           <Dropdown menu={{ items: [
             { key: "csv", label: <a href={exportUrl("csv")}>CSV</a> },
             { key: "xlsx", label: <a href={exportUrl("xlsx")}>Excel (.xlsx)</a> },
+            { type: "divider" },
+            { key: "g-crm", label: "Export vers un CRM tiers", disabled: true },
+            { key: "hubspot", label: <a href={crmExportUrl("hubspot")}>HubSpot (CSV)</a> },
+            { key: "pipedrive", label: <a href={crmExportUrl("pipedrive")}>Pipedrive (CSV)</a> },
+            { key: "salesforce", label: <a href={crmExportUrl("salesforce")}>Salesforce (CSV)</a> },
           ] }}>
             <Button icon={<DownloadOutlined />}>Exporter</Button>
           </Dropdown>
