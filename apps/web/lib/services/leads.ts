@@ -45,6 +45,7 @@ export interface LeadDTO {
   notes: string | null;
   assignedToId: string | null;
   pipelineStageId: string | null;
+  enrichment: unknown;
   lastActionAt: Date | null;
   lastReplyAt: Date | null;
   deletedAt: Date | null;
@@ -72,6 +73,7 @@ export function toDTO(l: Lead): LeadDTO {
     notes: l.notes,
     assignedToId: l.assignedToId,
     pipelineStageId: l.pipelineStageId,
+    enrichment: l.enrichment ?? null,
     lastActionAt: l.lastActionAt,
     lastReplyAt: l.lastReplyAt,
     deletedAt: l.deletedAt,

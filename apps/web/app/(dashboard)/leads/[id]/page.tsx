@@ -9,6 +9,7 @@ import {
 import { ArrowLeftOutlined, ReloadOutlined, MailOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
 import SafeHtml from "@/components/SafeHtml";
+import { LeadEnrichmentCard } from "@/components/leads/LeadEnrichmentCard";
 import { STATUS_LABELS, STATUS_COLORS, allowedTransitions } from "@/lib/leadStatus";
 import { useBreakpoint, useIsMobile } from "@/lib/responsive";
 import type { LeadStatus } from "@crm/db";
@@ -21,6 +22,7 @@ interface LeadDTO {
   sector: string | null; city: string | null; country: string | null; source: string | null;
   status: LeadStatus; emailStatus: string; score: number; tags: string[]; notes: string | null;
   assignedToId: string | null; lastActionAt: string | null; lastReplyAt: string | null;
+  enrichment: unknown;
   createdAt: string; updatedAt: string;
 }
 interface HistoryEntry { id: string; type: string; userId: string | null; payload: unknown; createdAt: string }
@@ -314,6 +316,12 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
               </Button>
             </Space>
           </Card>
+
+          <LeadEnrichmentCard
+            leadId={lead.id}
+            enrichment={lead.enrichment}
+            onEnriched={() => void load()}
+          />
         </Col>
       </Row>
     </Space>
