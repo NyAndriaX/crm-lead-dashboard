@@ -23,46 +23,71 @@ export async function sendTransactionalEmail(args: {
   html: string;
   text?: string;
 }): Promise<{ messageId: string }> {
+  // 1) SMTP configuré dans l'app (chiffré en base) — prioritaire.
   const smtp = await prisma.smtpConfig.findFirst({
     where: { isActive: true },
     orderBy: { sentToday: "asc" },
   });
-  if (!smtp) {
-    throw new TransactionalEmailError(
-      "no_active_smtp",
-      "Aucune configuration SMTP active n'est disponible. Configurez-en une dans Paramètres → Emailing.",
-    );
+
+  if (smtp) {
+    const login = decryptOrNull(smtp.loginEnc);
+    const pass = decryptOrNull(smtp.passwordEnc);
+    if (!login || !pass) {
+      throw new TransactionalEmailError("smtp_credentials_unreadable");
+    }
+    const fromAddr = smtp.fromEmail ?? login;
+    const fromName = smtp.fromName ?? "CRM";
+    const transporter = nodemailer.createTransport({
+      host: smtp.host,
+      port: smtp.port,
+      secure: smtp.port === 465,
+      auth: { user: login, pass },
+      tls: { rejectUnauthorized: false },
+    });
+    const info = await transporter.sendMail({
+      from: `"${fromName}" <${fromAddr}>`,
+      to: args.to,
+      subject: args.subject,
+      html: args.html,
+      text: args.text,
+    });
+    await prisma.smtpConfig.update({
+      where: { id: smtp.id },
+      data: { sentToday: { increment: 1 } },
+    });
+    return { messageId: info.messageId };
   }
-  const login = decryptOrNull(smtp.loginEnc);
-  const pass = decryptOrNull(smtp.passwordEnc);
-  if (!login || !pass) {
-    throw new TransactionalEmailError("smtp_credentials_unreadable");
+
+  // 2) Fallback : SMTP du .env (bloc « SMTP par défaut »). Permet d'envoyer
+  //    invitations / emails système sans config UI préalable.
+  const envHost = process.env.SMTP_HOST?.trim();
+  const envUser = process.env.SMTP_USER?.trim();
+  const envPass = process.env.SMTP_PASS;
+  if (envHost && envUser && envPass) {
+    const port = Number(process.env.SMTP_PORT ?? 587) || 587;
+    const transporter = nodemailer.createTransport({
+      host: envHost,
+      port,
+      secure: port === 465, // 587 → STARTTLS (auto via nodemailer)
+      auth: { user: envUser, pass: envPass },
+      tls: { rejectUnauthorized: false },
+    });
+    const fromName = process.env.SMTP_FROM_NAME?.trim() || "CRM";
+    const fromAddr = process.env.SMTP_FROM_EMAIL?.trim() || envUser;
+    const info = await transporter.sendMail({
+      from: `"${fromName}" <${fromAddr}>`,
+      to: args.to,
+      subject: args.subject,
+      html: args.html,
+      text: args.text,
+    });
+    return { messageId: info.messageId };
   }
-  const fromAddr = smtp.fromEmail ?? login;
-  const fromName = smtp.fromName ?? "CRM";
 
-  const transporter = nodemailer.createTransport({
-    host: smtp.host,
-    port: smtp.port,
-    secure: smtp.port === 465,
-    auth: { user: login, pass },
-    tls: { rejectUnauthorized: false },
-  });
-
-  const info = await transporter.sendMail({
-    from: `"${fromName}" <${fromAddr}>`,
-    to: args.to,
-    subject: args.subject,
-    html: args.html,
-    text: args.text,
-  });
-
-  await prisma.smtpConfig.update({
-    where: { id: smtp.id },
-    data: { sentToday: { increment: 1 } },
-  });
-
-  return { messageId: info.messageId };
+  throw new TransactionalEmailError(
+    "no_active_smtp",
+    "Aucun SMTP : configurez-en un dans Paramètres → Emailing, ou renseignez SMTP_HOST/SMTP_USER/SMTP_PASS dans le .env.",
+  );
 }
 
 export function inviteEmailTemplate(args: {
