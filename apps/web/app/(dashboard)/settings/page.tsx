@@ -12,6 +12,7 @@ import { ImapSection } from "@/components/emailing/ImapSection";
 import { TeamsSection } from "@/components/admin/TeamsSection";
 import { PermissionsSection } from "@/components/admin/PermissionsSection";
 import { AuditLogsSection } from "@/components/admin/AuditLogsSection";
+import { SystemSection } from "@/components/admin/SystemSection";
 import { SecuritySection } from "@/components/admin/SecuritySection";
 import { PipelineStagesSection } from "@/components/admin/PipelineStagesSection";
 import { WebhooksSection } from "@/components/admin/WebhooksSection";
@@ -2150,6 +2151,16 @@ export default function SettingsPage() {
               </Space>
             ),
             children: <AuditLogsSection />,
+          },
+          {
+            key: "system",
+            label: (
+              <Space>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#ff7a45" }} />
+                Système
+              </Space>
+            ),
+            children: <SystemSection />,
           },
           {
             key: "webhooks",
