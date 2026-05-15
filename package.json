@@ -21,7 +21,9 @@
     "test": "yarn workspaces run test",
     "db:generate": "yarn workspace @crm/db generate",
     "db:push": "dotenv -e .env -- yarn workspace @crm/db push",
+    "db:reset": "dotenv -e .env -- yarn workspace @crm/db reset",
     "db:seed": "dotenv -e .env -- yarn workspace @crm/db seed",
+    "db:init-prod": "dotenv -e .env -- yarn workspace @crm/db init-prod",
     "db:studio": "dotenv -e .env -- yarn workspace @crm/db studio"
   },
   "devDependencies": {

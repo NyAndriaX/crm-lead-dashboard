@@ -21,6 +21,11 @@ const DEMO_ACCOUNTS = [
 ] as const;
 const DEMO_PASSWORD = "ChangeMe!2026";
 
+// Le bloc "Comptes de démonstration" n'est affiché que si explicitement
+// activé (NEXT_PUBLIC_SHOW_DEMO_ACCOUNTS=true). Masqué par défaut → jamais
+// visible en production. Inlined au build par Next.js.
+const SHOW_DEMO_ACCOUNTS = process.env.NEXT_PUBLIC_SHOW_DEMO_ACCOUNTS === "true";
+
 const FEATURES = [
   { icon: <TeamOutlined />,      label: "Gestion centralisée des leads B2B" },
   { icon: <LineChartOutlined />, label: "Scoring & pipeline temps réel" },
@@ -324,7 +329,9 @@ function LoginPageInner() {
               </Button>
             </Form>
 
-            {/* ── Comptes de démo ── */}
+            {/* ── Comptes de démo (masqués hors dev via NEXT_PUBLIC_SHOW_DEMO_ACCOUNTS) ── */}
+            {SHOW_DEMO_ACCOUNTS && (
+            <>
             <Divider plain style={{ margin: "28px 0 16px", color: "#8c8c8c", fontSize: 12 }}>
               <ThunderboltFilled style={{ color: "#faad14", marginRight: 6 }} />
               Comptes de démonstration
@@ -397,6 +404,8 @@ function LoginPageInner() {
                 </div>
               </Space>
             </div>
+            </>
+            )}
 
             <div style={{ textAlign: "center", marginTop: 20 }}>
               <Text type="secondary" style={{ fontSize: 12 }}>

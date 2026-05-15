@@ -10,7 +10,9 @@
   "scripts": {
     "generate": "prisma generate",
     "push": "prisma db push",
+    "reset": "prisma db push --force-reset --skip-generate",
     "seed": "prisma db seed",
+    "init-prod": "node prisma/init-prod.mjs",
     "studio": "prisma studio",
     "build": "prisma generate",
     "lint": "echo \"(no lint for @crm/db)\"",
