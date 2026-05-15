@@ -16,6 +16,7 @@ import type { SorterResult } from "antd/es/table/interface";
 import { api } from "@/lib/client";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
 import { useBreakpoint, useIsMobile } from "@/lib/responsive";
+import { BulkEnrichModal } from "@/components/leads/BulkEnrichModal";
 
 const { Title, Text } = Typography;
 
@@ -56,6 +57,7 @@ export default function LeadsPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkOpen, setBulkOpen] = useState<BulkAction | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [enrichOpen, setEnrichOpen] = useState(false);
   const [bulkForm] = Form.useForm();
 
   // Create modal
@@ -300,6 +302,9 @@ export default function LeadsPage() {
             <Tooltip title="Ajouter des tags">
               <Button icon={<TagsOutlined />} onClick={() => openBulk("tags-add")}>Ajouter tags</Button>
             </Tooltip>
+            <Tooltip title="Enrichir les leads sélectionnés (email, firmographie, LinkedIn, actu…)">
+              <Button icon={<ThunderboltOutlined />} onClick={() => setEnrichOpen(true)}>Enrichir</Button>
+            </Tooltip>
             <Dropdown
               menu={{
                 items: [
@@ -525,6 +530,13 @@ export default function LeadsPage() {
           </Form.Item>
         </Form>
       </Modal>
+
+      <BulkEnrichModal
+        open={enrichOpen}
+        leadIds={selectedIds}
+        onClose={() => setEnrichOpen(false)}
+        onDone={() => { void fetchLeads(); }}
+      />
     </Space>
   );
 }
