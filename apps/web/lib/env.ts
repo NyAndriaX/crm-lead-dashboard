@@ -23,6 +23,18 @@ let cached: z.infer<typeof schema> | undefined;
  */
 function assertProductionSecrets(e: z.infer<typeof schema>): void {
   if (e.NODE_ENV !== "production") return;
+
+  // Trappe d'échappement EXPLICITE pour les tests prod-like en local
+  // (`yarn start:all`) où l'on assume des secrets d'exemple jetables.
+  // ⚠️ NE JAMAIS définir ALLOW_INSECURE_PROD en vrai déploiement.
+  if (process.env.ALLOW_INSECURE_PROD === "true") {
+    console.warn(
+      "\x1b[33m⚠️  ALLOW_INSECURE_PROD=true — garde-fou secrets DÉSACTIVÉ.\n" +
+        "   Acceptable uniquement pour un test prod-like LOCAL. JAMAIS en production.\x1b[0m",
+    );
+    return;
+  }
+
   const problems: string[] = [];
 
   if (/^0+$/.test(e.PII_ENCRYPTION_KEY)) {

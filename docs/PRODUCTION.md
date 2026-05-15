@@ -12,6 +12,11 @@ openssl rand -base64 32  # → EMAIL_HASH_SECRET
 openssl rand -base64 32  # → INTERNAL_API_TOKEN
 ```
 
+> 🧪 **Test prod-like en local** : pour lancer `yarn start:all` avec les
+> secrets d'exemple jetables, mettre `ALLOW_INSECURE_PROD="true"` dans
+> `.env` (désactive le garde-fou). **⚠️ STRICTEMENT INTERDIT sur un vrai
+> serveur de production** — ne jamais définir cette variable en déploiement.
+
 Variables prod requises :
 
 | Variable | Exigence prod |
