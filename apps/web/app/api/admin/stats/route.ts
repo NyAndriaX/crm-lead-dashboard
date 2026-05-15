@@ -32,9 +32,23 @@ export const GET = handler(async () => {
     prisma.lead.count({ where: { ...NOT_DELETED, createdAt: { gte: monthAgo } } }),
     prisma.user.count(),
     prisma.user.count({ where: { isActive: true } }),
-    prisma.importJob.findMany({ orderBy: { createdAt: "desc" }, take: 5, include: { user: { select: { id: true, name: true } } } }),
+    // PAS de `include: { user }` : la relation ImportJob.user est REQUISE,
+    // un import dont le User a été supprimé ferait throw TOUT le batch
+    // ("Error in batch request 7"). On résout le user après, en tolérant.
+    prisma.importJob.findMany({ orderBy: { createdAt: "desc" }, take: 5 }),
     ...STATUSES.map((s) => prisma.lead.count({ where: { ...NOT_DELETED, status: s } })),
   ]);
+
+  const importsRaw = recentImports as { userId: string }[];
+  const importUserIds = [...new Set(importsRaw.map((j) => j.userId))];
+  const importUsers = importUserIds.length
+    ? await prisma.user.findMany({ where: { id: { in: importUserIds } }, select: { id: true, name: true } })
+    : [];
+  const importUserById = new Map(importUsers.map((u) => [u.id, u]));
+  const recentImportsWithUser = importsRaw.map((j) => ({
+    ...j,
+    user: importUserById.get(j.userId) ?? null,
+  }));
 
   const byStatus = Object.fromEntries(STATUSES.map((s, i) => [s, (statusCounts[i] as number) ?? 0]));
 
@@ -43,7 +57,7 @@ export const GET = handler(async () => {
       leads: { total: totalLeads as number, active: activeLeads as number, newToday: newToday as number, newThisWeek: newThisWeek as number, newThisMonth: newThisMonth as number },
       byStatus,
       users: { total: totalUsers as number, active: activeUsers as number },
-      recentImports,
+      recentImports: recentImportsWithUser,
     },
   });
 });
