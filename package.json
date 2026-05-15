@@ -16,6 +16,8 @@
     "worker": "dotenv -e .env -- yarn workspace @crm/worker dev",
     "build": "yarn workspaces run build",
     "start": "dotenv -e .env -- yarn workspace @crm/web start",
+    "start:prod": "dotenv -e .env -- node scripts/start-standalone.mjs",
+    "worker:prod": "dotenv -e .env -- yarn workspace @crm/worker start",
     "lint": "yarn workspaces run lint",
     "typecheck": "yarn workspaces run typecheck",
     "test": "yarn workspaces run test",
