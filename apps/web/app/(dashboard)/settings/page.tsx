@@ -1013,6 +1013,7 @@ function EmailingTab() {
   const [templateSaving, setTemplateSaving] = useState(false);
   const [templateBlockSaving, setTemplateBlockSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [smtpTestResult, setSmtpTestResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [dnsChecking, setDnsChecking] = useState(false);
   const [dnsDomain, setDnsDomain] = useState("");
   const [dnsSelector, setDnsSelector] = useState("");
@@ -1136,6 +1137,7 @@ function EmailingTab() {
   }
 
   async function testConnection() {
+    setSmtpTestResult(null);
     try {
       const values = await form.validateFields(['host', 'port', 'login', 'password']);
       setTesting(true);
@@ -1145,9 +1147,12 @@ function EmailingTab() {
         login: values.login,
         password: values.password,
       });
-      message.success('Connexion SMTP réussie');
+      const successMessage = 'Connexion SMTP réussie';
+      setSmtpTestResult({ type: 'success', message: successMessage });
+      message.success(successMessage);
     } catch (e) {
       const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur de connexion SMTP';
+      setSmtpTestResult({ type: 'error', message: msg });
       message.error(msg);
     } finally {
       setTesting(false);
@@ -1729,6 +1734,14 @@ function EmailingTab() {
               {editingConfig ? 'Enregistrer' : 'Créer'}
             </Button>
           </Space>
+          {smtpTestResult && (
+            <Alert
+              type={smtpTestResult.type}
+              message={smtpTestResult.message}
+              showIcon
+              style={{ marginTop: 16 }}
+            />
+          )}
         </Form>
       </Modal>
 
