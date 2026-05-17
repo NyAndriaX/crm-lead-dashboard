@@ -13,12 +13,14 @@ import {
   Input,
   InputNumber,
   Modal,
+  Popconfirm,
   Row,
   Select,
   Space,
   Switch,
   Table,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from "antd";
@@ -77,6 +79,16 @@ export default function CampaignsPage() {
 
   const [campModal, setCampModal] = useState(false);
   const [segModal, setSegModal] = useState(false);
+  const [editingCampaign, setEditingCampaign] = useState<CampaignRow | null>(null);
+  const [editingSegment, setEditingSegment] = useState<SegmentRow | null>(null);
+  const [campaignDetailOpen, setCampaignDetailOpen] = useState(false);
+  const [detailCampaign, setDetailCampaign] = useState<CampaignRow | null>(null);
+  const [segmentDetailOpen, setSegmentDetailOpen] = useState(false);
+  const [detailSegment, setDetailSegment] = useState<SegmentRow | null>(null);
+  const [campModalMessage, setCampModalMessage] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [segModalMessage, setSegModalMessage] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [campaignQuery, setCampaignQuery] = useState("");
+  const [segmentQuery, setSegmentQuery] = useState("");
   const [campForm] = Form.useForm();
   const [segForm] = Form.useForm();
 
@@ -141,7 +153,7 @@ export default function CampaignsPage() {
               }
             : undefined,
       };
-      await api.post("/campaigns", {
+      const payload = {
         name: v.name,
         templateId: v.templateId,
         segmentId: v.segmentId,
@@ -150,14 +162,23 @@ export default function CampaignsPage() {
         scheduledAt: v.scheduledAt ? v.scheduledAt.toDate() : null,
         dailyLimit: v.dailyLimit ?? null,
         config,
-      });
-      message.success("Campagne créée");
-      setCampModal(false);
-      campForm.resetFields();
+      };
+      if (editingCampaign) {
+        await api.put(`/campaigns/${editingCampaign.id}`, payload);
+        const successMessage = "Campagne mise à jour";
+        setCampModalMessage({ type: "success", message: successMessage });
+        message.success(successMessage);
+      } else {
+        await api.post("/campaigns", payload);
+        message.success("Campagne créée");
+        setCampModal(false);
+        setEditingCampaign(null);
+        campForm.resetFields();
+      }
       void load();
     } catch (e: unknown) {
       if ((e as { errorFields?: unknown }).errorFields) return;
-      message.error("Création impossible");
+      message.error(editingCampaign ? "Mise à jour impossible" : "Création impossible");
     }
   };
 
@@ -170,14 +191,28 @@ export default function CampaignsPage() {
       if (v.fSector) filters.sector = v.fSector;
       if (v.fScoreMin != null) filters.scoreMin = v.fScoreMin;
       if (v.fScoreMax != null) filters.scoreMax = v.fScoreMax;
-      await api.post("/segments", { name: v.name, filters });
-      message.success("Segment créé");
-      setSegModal(false);
-      segForm.resetFields();
+      const payload = { name: v.name, filters };
+      if (editingSegment) {
+        await api.put(`/segments/${editingSegment.id}`, payload);
+        message.success("Segment mis à jour");
+      } else {
+        await api.post("/segments", payload);
+        message.success("Segment créé");
+      }
+      if (editingSegment) {
+        const successMessage = "Segment mis à jour";
+        setSegModalMessage({ type: "success", message: successMessage });
+        message.success(successMessage);
+      } else {
+        setSegModal(false);
+        setEditingSegment(null);
+        segForm.resetFields();
+        message.success("Segment créé");
+      }
       void load();
     } catch (e: unknown) {
       if ((e as { errorFields?: unknown }).errorFields) return;
-      message.error("Segment impossible");
+      message.error(editingSegment ? "Mise à jour impossible" : "Segment impossible");
     }
   };
 
@@ -189,6 +224,94 @@ export default function CampaignsPage() {
     } catch {
       message.error("Planification refusée");
     }
+  };
+
+  const destroyCampaign = async (id: string) => {
+    try {
+      await api.delete(`/campaigns/${id}`);
+      message.success("Campagne supprimée");
+      void load();
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Suppression impossible";
+      message.error(msg);
+    }
+  };
+
+  const deleteSegment = async (id: string) => {
+    try {
+      await api.delete(`/segments/${id}`);
+      message.success("Segment supprimé");
+      void load();
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Suppression impossible";
+      message.error(msg);
+    }
+  };
+
+  const openEditCampaign = async (row: CampaignRow) => {
+    try {
+      const { data } = await api.get<{ data: CampaignRow }>(`/campaigns/${row.id}`);
+      const campaign = data.data;
+      setEditingCampaign(campaign);
+      setCampModalMessage(null);
+      setCampModal(true);
+      const config = (campaign.config ?? {}) as Record<string, unknown>;
+      const ab = (config.ab ?? {}) as Record<string, unknown>;
+      const warmup = (config.warmup ?? {}) as Record<string, unknown>;
+      campForm.setFieldsValue({
+        name: campaign.name,
+        templateId: campaign.template?.id,
+        segmentId: campaign.segment?.id,
+        smtpConfigId: campaign.smtpConfig?.id,
+        subject: campaign.subject ?? undefined,
+        scheduledAt: campaign.scheduledAt ? dayjs(campaign.scheduledAt) : null,
+        dailyLimit: campaign.dailyLimit ?? null,
+        abEnabled: Boolean(ab.enabled),
+        aiPersonalize: Boolean(config.aiPersonalize),
+        throttleMinDelayMs: (config.throttleMinDelayMs as number) ?? undefined,
+        warmupEnabled: Boolean(warmup.enabled),
+        warmupStart: (warmup.startPerDay as number) ?? undefined,
+        warmupGrowth: (warmup.growth as number) ?? undefined,
+        abSubjectB: (ab.subjectB as string) ?? undefined,
+        abBodyHtmlB: (ab.bodyHtmlB as string) ?? undefined,
+        abSplitPercent: (ab.splitPercent as number) ?? 50,
+        bodyHtmlOverride: (config.bodyHtmlOverride as string) ?? undefined,
+      });
+    } catch {
+      message.error("Impossible de charger la campagne");
+    }
+  };
+
+  const openEditSegment = async (row: SegmentRow) => {
+    setEditingSegment(row);
+    setSegModalMessage(null);
+    setSegModal(true);
+    const filters = row.filters as Record<string, unknown>;
+    segForm.setFieldsValue({
+      name: row.name,
+      fStatus: filters.status ?? undefined,
+      fTag: filters.tag ?? undefined,
+      fSector: filters.sector ?? undefined,
+      fScoreMin: filters.scoreMin ?? undefined,
+      fScoreMax: filters.scoreMax ?? undefined,
+    });
+  };
+
+  const openCampaignDetails = (row: CampaignRow) => {
+    setDetailCampaign(row);
+    setCampaignDetailOpen(true);
+  };
+
+  const openSegmentDetails = (row: SegmentRow) => {
+    setDetailSegment(row);
+    setSegmentDetailOpen(true);
+  };
+
+  const closeDetails = () => {
+    setCampaignDetailOpen(false);
+    setSegmentDetailOpen(false);
+    setDetailCampaign(null);
+    setDetailSegment(null);
   };
 
   const pause = async (id: string) => {
@@ -211,6 +334,35 @@ export default function CampaignsPage() {
     }
   };
 
+  const filteredCampaigns = useMemo(
+    () => {
+      const query = campaignQuery.trim().toLowerCase();
+      if (!query) return campaigns;
+      return campaigns.filter((row) => {
+        const values = [row.name, row.template?.name, row.segment?.name, row.status, row.subject ?? ""].join(" ").toLowerCase();
+        return values.includes(query);
+      });
+    },
+    [campaignQuery, campaigns],
+  );
+
+  const filteredSegments = useMemo(
+    () => {
+      const query = segmentQuery.trim().toLowerCase();
+      if (!query) return segments;
+      return segments.filter((row) => row.name.toLowerCase().includes(query));
+    },
+    [segmentQuery, segments],
+  );
+
+  const segmentIdsInUse = useMemo(
+    () => new Set(campaigns.map((campaign) => campaign.segment?.id).filter(Boolean) as string[]),
+    [campaigns],
+  );
+
+  const canEditCampaign = (status: string) => ["DRAFT", "SCHEDULED", "PAUSED"].includes(status);
+  const editingCampaignNotEditable = Boolean(editingCampaign && !canEditCampaign(editingCampaign.status));
+
   // Colonnes stables ; dépend uniquement de `isMobile` (handlers exclus volontairement).
   const cols: ColumnsType<CampaignRow> = useMemo(
     () => [
@@ -227,22 +379,50 @@ export default function CampaignsPage() {
       {
         title: "Actions",
         key: "a",
-        width: isMobile ? 120 : 320,
+        width: isMobile ? 140 : 380,
         render: (_, r) => (
           <Space wrap size={4}>
-            <Button size="small" icon={<BarChartOutlined />} onClick={() => void openStats(r)}>
+            <Button size="small" onClick={(e) => { e.stopPropagation(); void openStats(r); }} icon={<BarChartOutlined />}>
               Stats
             </Button>
+            {canEditCampaign(r.status) ? (
+              <Button size="small" onClick={(e) => { e.stopPropagation(); void openEditCampaign(r); }}>
+                Modifier
+              </Button>
+            ) : (
+              <Tooltip title="Campagne non modifiable dans cet état">
+                <Button size="small" disabled>
+                  Modifier
+                </Button>
+              </Tooltip>
+            )}
             {r.status === "DRAFT" || r.status === "PAUSED" ? (
-              <Button size="small" type="primary" icon={<RocketOutlined />} onClick={() => (r.status === "PAUSED" ? void resume(r.id) : void schedule(r.id))}>
-                {r.status === "PAUSED" ? "Reprendre" : "Lancer"}
+              <Button size="small" type="primary" icon={<RocketOutlined />} onClick={(e) => { e.stopPropagation(); return r.status === "PAUSED" ? void resume(r.id) : void schedule(r.id); }}>
+                {r.status === "PAUSED" ? "Relancer" : "Lancer"}
               </Button>
             ) : null}
             {r.status === "SCHEDULED" || r.status === "SENDING" ? (
-              <Button size="small" icon={<PauseCircleOutlined />} onClick={() => void pause(r.id)}>
+              <Button size="small" icon={<PauseCircleOutlined />} onClick={(e) => { e.stopPropagation(); void pause(r.id); }}>
                 Pause
               </Button>
             ) : null}
+            {r.status === "DRAFT" || r.status === "CANCELLED" ? (
+              <Popconfirm
+                title={`Supprimer la campagne « ${r.name} » ?`}
+                onConfirm={(e) => { e?.stopPropagation(); void destroyCampaign(r.id); }}
+                okButtonProps={{ danger: true }}
+              >
+                <Button size="small" danger onClick={(e) => e.stopPropagation()}>
+                  Supprimer
+                </Button>
+              </Popconfirm>
+            ) : (
+              <Tooltip title="Seules les campagnes brouillon ou annulées peuvent être supprimées">
+                <Button size="small" danger disabled>
+                  Supprimer
+                </Button>
+              </Tooltip>
+            )}
           </Space>
         ),
       },
@@ -274,20 +454,59 @@ export default function CampaignsPage() {
       <Card
         title={<Space><TeamOutlined />Segments ciblés</Space>}
         extra={
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setSegModal(true)}>
-            Nouveau segment
-          </Button>
+          <Space>
+            <Input.Search
+              placeholder="Rechercher un segment"
+              allowClear
+              onSearch={setSegmentQuery}
+              onChange={(e) => setSegmentQuery(e.target.value)}
+              style={{ width: 240 }}
+            />
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => { setSegModal(true); setEditingSegment(null); }}>
+              Nouveau segment
+            </Button>
+          </Space>
         }
       >
         <Table<SegmentRow>
           rowKey="id"
           size="small"
           loading={loading}
-          dataSource={segments}
+          dataSource={filteredSegments}
           pagination={{ pageSize: 6 }}
+          onRow={(record) => ({ onClick: () => openSegmentDetails(record) })}
           columns={[
             { title: "Nom", dataIndex: "name", key: "name" },
             { title: "Créé", dataIndex: "createdAt", key: "c", render: (d: string) => dayjs(d).format("DD/MM/YYYY HH:mm") },
+            {
+              title: "Actions",
+              key: "actions",
+              width: 180,
+              render: (_, row) => (
+                <Space wrap>
+                        <Button size="small" onClick={(e) => { e.stopPropagation(); void openEditSegment(row); }}>
+                    Modifier
+                  </Button>
+                  {segmentIdsInUse.has(row.id) ? (
+                    <Tooltip title="Impossible : ce segment est déjà utilisé par une campagne">
+                      <Button size="small" danger disabled>
+                        Supprimer
+                      </Button>
+                    </Tooltip>
+                  ) : (
+                    <Popconfirm
+                      title={`Supprimer le segment « ${row.name} » ?`}
+                      onConfirm={(e) => { e?.stopPropagation(); void deleteSegment(row.id); }}
+                      okButtonProps={{ danger: true }}
+                    >
+                      <Button size="small" danger onClick={(e) => e.stopPropagation()}>
+                        Supprimer
+                      </Button>
+                    </Popconfirm>
+                  )}
+                </Space>
+              ),
+            },
           ]}
         />
       </Card>
@@ -295,23 +514,45 @@ export default function CampaignsPage() {
       <Card
         title={<Space><PlayCircleOutlined />Campagnes</Space>}
         extra={
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCampModal(true)}>
-            Nouvelle campagne
-          </Button>
+          <Space>
+            <Input.Search
+              placeholder="Rechercher une campagne"
+              allowClear
+              onSearch={setCampaignQuery}
+              onChange={(e) => setCampaignQuery(e.target.value)}
+              style={{ width: 260 }}
+            />
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => { setCampModal(true); setEditingCampaign(null); }}>
+              Nouvelle campagne
+            </Button>
+          </Space>
         }
       >
-        <Table<CampaignRow> rowKey="id" loading={loading} columns={cols} dataSource={campaigns} scroll={{ x: 900 }} pagination={{ pageSize: 8 }} />
+        <Table<CampaignRow>
+          rowKey="id"
+          loading={loading}
+          columns={cols}
+          dataSource={filteredCampaigns}
+          scroll={{ x: 900 }}
+          pagination={{ pageSize: 8 }}
+          onRow={(record) => ({
+            onClick: () => openCampaignDetails(record),
+          })}
+        />
       </Card>
 
       <Modal
-        title="Nouveau segment"
+        title={editingSegment ? "Modifier le segment" : "Nouveau segment"}
         open={segModal}
         onOk={() => void saveSegment()}
-        onCancel={() => { setSegModal(false); segForm.resetFields(); }}
+        onCancel={() => { setSegModal(false); setEditingSegment(null); setSegModalMessage(null); segForm.resetFields(); }}
         width={520}
-        okText="Créer"
+        okText={editingSegment ? "Enregistrer" : "Créer"}
       >
         <Form form={segForm} layout="vertical">
+          {segModalMessage ? (
+            <Alert type={segModalMessage.type} message={segModalMessage.message} showIcon style={{ marginBottom: 16 }} />
+          ) : null}
           <Form.Item name="name" label="Nom" rules={[{ required: true }]}>
             <Input placeholder="Ex: Prospects IT France" />
           </Form.Item>
@@ -347,14 +588,26 @@ export default function CampaignsPage() {
       </Modal>
 
       <Modal
-        title="Nouvelle campagne"
+        title={editingCampaign ? "Modifier la campagne" : "Nouvelle campagne"}
         open={campModal}
         onOk={() => void saveCampaign()}
-        onCancel={() => { setCampModal(false); campForm.resetFields(); }}
+        onCancel={() => { setCampModal(false); setEditingCampaign(null); setCampModalMessage(null); campForm.resetFields(); }}
         width={720}
-        okText="Créer"
+        okText={editingCampaign ? "Enregistrer" : "Créer"}
+        okButtonProps={{ disabled: editingCampaignNotEditable }}
       >
         <Form form={campForm} layout="vertical" initialValues={{ abSplitPercent: 50, throttleMinDelayMs: 12000, warmupStart: 40, warmupGrowth: 1.15 }}>
+          {campModalMessage ? (
+            <Alert type={campModalMessage.type} message={campModalMessage.message} showIcon style={{ marginBottom: 16 }} />
+          ) : null}
+          {editingCampaignNotEditable ? (
+            <Alert
+              type="warning"
+              message="Cette campagne ne peut pas être modifiée dans son état actuel."
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+          ) : null}
           <Form.Item name="name" label="Nom" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
@@ -442,6 +695,45 @@ export default function CampaignsPage() {
           </Row>
         </Form>
       </Modal>
+
+      <Drawer
+        title={detailCampaign ? `Détails campagne — ${detailCampaign.name}` : "Détails campagne"}
+        open={campaignDetailOpen}
+        onClose={closeDetails}
+        width={520}
+      >
+        {detailCampaign ? (
+          <Descriptions column={1} size="small" bordered>
+            <Descriptions.Item label="Nom">{detailCampaign.name}</Descriptions.Item>
+            <Descriptions.Item label="Statut">
+              <Tag color={STATUS_COL[detailCampaign.status] ?? "default"}>{detailCampaign.status}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="Template">{detailCampaign.template?.name ?? "—"}</Descriptions.Item>
+            <Descriptions.Item label="Segment">{detailCampaign.segment?.name ?? "—"}</Descriptions.Item>
+            <Descriptions.Item label="SMTP">{detailCampaign.smtpConfig?.label ?? "—"}</Descriptions.Item>
+            <Descriptions.Item label="Objet">{detailCampaign.subject ?? "—"}</Descriptions.Item>
+            <Descriptions.Item label="Planifiée à">{detailCampaign.scheduledAt ? dayjs(detailCampaign.scheduledAt).format("DD/MM/YYYY HH:mm") : "—"}</Descriptions.Item>
+            <Descriptions.Item label="Limite journalière">{detailCampaign.dailyLimit ?? "—"}</Descriptions.Item>
+          </Descriptions>
+        ) : null}
+      </Drawer>
+
+      <Drawer
+        title={detailSegment ? `Détails segment — ${detailSegment.name}` : "Détails segment"}
+        open={segmentDetailOpen}
+        onClose={closeDetails}
+        width={520}
+      >
+        {detailSegment ? (
+          <Descriptions column={1} size="small" bordered>
+            <Descriptions.Item label="Nom">{detailSegment.name}</Descriptions.Item>
+            <Descriptions.Item label="Créé">{dayjs(detailSegment.createdAt).format("DD/MM/YYYY HH:mm")}</Descriptions.Item>
+            <Descriptions.Item label="Filtres">
+              <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>{JSON.stringify(detailSegment.filters, null, 2)}</pre>
+            </Descriptions.Item>
+          </Descriptions>
+        ) : null}
+      </Drawer>
 
       <Drawer title={statsCamp ? `Stats — ${statsCamp.name}` : "Stats"} open={statsOpen} onClose={() => setStatsOpen(false)} width={400}>
         {stats ? (

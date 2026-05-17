@@ -61,6 +61,7 @@ export default function InboxPage() {
   const [pageSize, setPageSize] = useState(25);
   const [search, setSearch] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
+  const [view, setView] = useState<"replies" | "unmatched" | "auto" | "all">("replies");
   const [loading, setLoading] = useState(false);
   const [opened, setOpened] = useState<ThreadItem | null>(null);
   const [thread, setThread] = useState<ThreadItem[]>([]);
@@ -76,6 +77,7 @@ export default function InboxPage() {
       params.set("pageSize", String(pageSize));
       if (search.trim()) params.set("search", search.trim());
       if (unreadOnly) params.set("unreadOnly", "true");
+      params.set("view", view);
       const r = await api.get<{ data: InboxItem[]; total: number }>(`/inbox?${params.toString()}`);
       setData(r.data.data);
       setTotal(r.data.total);
@@ -84,7 +86,7 @@ export default function InboxPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, search, unreadOnly]);
+  }, [page, pageSize, search, unreadOnly, view]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -240,6 +242,17 @@ export default function InboxPage() {
           <Title level={3} style={{ margin: 0 }}><MailOutlined /> Boîte de réception</Title>
         </Space>
         <Space wrap>
+          <Select
+            value={view}
+            onChange={(v) => { setView(v); setPage(1); }}
+            style={{ width: 180 }}
+            options={[
+              { value: "replies", label: "Réponses" },
+              { value: "unmatched", label: "Non rattachés" },
+              { value: "auto", label: "Auto-replies" },
+              { value: "all", label: "Tous les entrants" },
+            ]}
+          />
           <Input.Search
             placeholder="Sujet, contenu…"
             value={search}

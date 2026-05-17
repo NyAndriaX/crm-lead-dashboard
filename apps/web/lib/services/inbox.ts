@@ -7,11 +7,21 @@
 import { prisma, Prisma } from "@crm/db";
 import { decryptOrNull } from "@/lib/crypto";
 
+/**
+ * Vues de la boîte de réception :
+ *  - "replies"   (défaut) : vraies réponses — rattachées à un lead ET non auto-reply.
+ *  - "unmatched" : entrants non rattachés à un lead (à associer manuellement).
+ *  - "auto"      : auto-replies (absence / OOO / accusés).
+ *  - "all"       : tout (ancien comportement, aucun filtre).
+ */
+export type InboxView = "replies" | "unmatched" | "auto" | "all";
+
 export type InboxFilter = {
   search?: string;
   leadId?: string;
   unreadOnly?: boolean;
   direction?: "inbound" | "outbound";
+  view?: InboxView;
   page?: number;
   pageSize?: number;
 };
@@ -107,9 +117,24 @@ export async function listInbox(filter: InboxFilter): Promise<{
   const pageSize = Math.min(100, Math.max(1, filter.pageSize ?? 25));
 
   const where: Prisma.InboxMessageWhereInput = {};
-  if (filter.direction) where.direction = filter.direction;
-  else where.direction = "inbound";
-  if (filter.leadId) where.leadId = filter.leadId;
+  where.direction = filter.direction ?? "inbound";
+
+  if (filter.leadId) {
+    // Contexte lead explicite (fil d'un lead) : on ne restreint pas par "vue".
+    where.leadId = filter.leadId;
+  } else {
+    const view: InboxView = filter.view ?? "replies";
+    if (view === "replies") {
+      where.leadId = { not: null };
+      where.isAutoReply = false;
+    } else if (view === "unmatched") {
+      where.leadId = null;
+    } else if (view === "auto") {
+      where.isAutoReply = true;
+    }
+    // "all" → aucun filtre supplémentaire.
+  }
+
   if (filter.unreadOnly) where.isRead = false;
   if (filter.search) {
     const search = filter.search.trim();
@@ -187,7 +212,9 @@ export async function assignInboxToLead(id: string, leadId: string | null): Prom
 }
 
 export async function countUnreadInbox(): Promise<number> {
+  // Aligné sur la vue "replies" : ne compte que les vraies réponses non lues
+  // (rattachées à un lead, hors auto-replies) — pas toute la boîte mail.
   return prisma.inboxMessage.count({
-    where: { direction: "inbound", isRead: false },
+    where: { direction: "inbound", isRead: false, leadId: { not: null }, isAutoReply: false },
   });
 }

@@ -18,7 +18,7 @@ export const POST = handler(async (req) => {
     const result = await testImapConnection(input);
     return json({ data: result });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    throw new ApiError(400, `Échec de connexion IMAP : ${msg}`, "imap_test_failed");
+    const msg = e instanceof Error ? e.message || (e as any).name || String(e) : String(e);
+    throw new ApiError(400, `Échec de connexion IMAP : ${msg || "Erreur inconnue"}`, "imap_test_failed");
   }
 });

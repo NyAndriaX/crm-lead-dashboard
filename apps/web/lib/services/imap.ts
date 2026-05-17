@@ -109,6 +109,50 @@ export async function testImapConnection(input: {
     return { ok: true, message: "Connexion IMAP réussie" };
   } catch (e) {
     try { await client.close(); } catch { /* ignore */ }
-    throw e instanceof Error ? e : new Error(String(e));
+    throw new Error(describeImapError(e));
   }
+}
+
+/**
+ * Construit un message d'erreur exploitable à partir d'une erreur imapflow.
+ * imapflow met souvent `.message` à vide sur un échec d'auth ; l'info utile est
+ * alors dans `.authenticationFailed`, `.responseText`, `.response` ou `.code`
+ * (codes socket Node : ENOTFOUND / ECONNREFUSED / ETIMEDOUT…).
+ */
+function describeImapError(e: unknown): string {
+  const err = (e ?? {}) as {
+    message?: string;
+    code?: string;
+    authenticationFailed?: boolean;
+    responseText?: string;
+    response?: string;
+    serverResponseCode?: string;
+  };
+  const serverText = (err.responseText || err.response || "").trim();
+
+  if (err.authenticationFailed || err.serverResponseCode === "AUTHENTICATIONFAILED") {
+    return `Authentification refusée par le serveur IMAP — identifiant ou mot de passe incorrect${
+      serverText ? ` (réponse serveur : ${serverText})` : ""
+    }.`;
+  }
+
+  switch (err.code) {
+    case "ENOTFOUND":
+    case "EAI_AGAIN":
+      return "Hôte IMAP introuvable — vérifiez l'adresse du serveur.";
+    case "ECONNREFUSED":
+      return "Connexion refusée — vérifiez l'hôte et le port.";
+    case "ETIMEDOUT":
+    case "ETIMEOUT":
+      return "Délai de connexion dépassé — hôte/port injoignable ou bloqué par un pare-feu.";
+    case "ECONNRESET":
+      return "Connexion réinitialisée par le serveur (port ou mode TLS incorrect ?).";
+  }
+
+  const raw = (err.message || "").trim();
+  if (/certificate|self.signed|altname|depth zero/i.test(raw)) {
+    return `Erreur de certificat TLS : ${raw}`;
+  }
+
+  return raw || serverText || err.code || "Erreur IMAP inconnue (connexion échouée sans détail du serveur).";
 }

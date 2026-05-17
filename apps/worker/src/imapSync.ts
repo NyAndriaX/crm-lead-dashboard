@@ -421,7 +421,11 @@ export async function runImapSync(_ctx: WorkerJobContext): Promise<unknown> {
     },
   });
 
-  if (accounts.length === 0) return { ok: true, accounts: 0, results: [] };
+  console.log(`[imap-sync] start activeAccounts=${accounts.length}`);
+  if (accounts.length === 0) {
+    console.log("[imap-sync] no active IMAP accounts");
+    return { ok: true, accounts: 0, results: [] };
+  }
 
   const results: Awaited<ReturnType<typeof syncOneAccount>>[] = [];
   for (const acc of accounts) {
@@ -434,15 +438,21 @@ export async function runImapSync(_ctx: WorkerJobContext): Promise<unknown> {
     );
   }
 
+  const totals = {
+    fetched: results.reduce((a, b) => a + b.fetched, 0),
+    saved: results.reduce((a, b) => a + b.saved, 0),
+    matched: results.reduce((a, b) => a + b.matched, 0),
+    errors: results.filter((r) => r.error).length,
+  };
+
+  console.log(
+    `[imap-sync] done accounts=${accounts.length} fetched=${totals.fetched} saved=${totals.saved} matched=${totals.matched} errors=${totals.errors}`,
+  );
+
   return {
     ok: true,
     accounts: accounts.length,
-    totals: {
-      fetched: results.reduce((a, b) => a + b.fetched, 0),
-      saved: results.reduce((a, b) => a + b.saved, 0),
-      matched: results.reduce((a, b) => a + b.matched, 0),
-      errors: results.filter((r) => r.error).length,
-    },
+    totals,
     results,
   };
 }

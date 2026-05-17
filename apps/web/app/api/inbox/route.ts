@@ -9,6 +9,7 @@ const querySchema = z.object({
   leadId: z.string().trim().min(1).optional(),
   unreadOnly: z.enum(["true", "false"]).optional(),
   direction: z.enum(["inbound", "outbound"]).optional(),
+  view: z.enum(["replies", "unmatched", "auto", "all"]).optional(),
   page: z.coerce.number().int().min(1).optional(),
   pageSize: z.coerce.number().int().min(1).max(100).optional(),
 });
@@ -21,6 +22,7 @@ export const GET = handler(async (req) => {
     leadId: q.leadId,
     unreadOnly: q.unreadOnly === "true",
     direction: q.direction,
+    view: q.view,
     page: q.page,
     pageSize: q.pageSize,
   });

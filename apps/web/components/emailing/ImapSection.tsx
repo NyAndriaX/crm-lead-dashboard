@@ -46,6 +46,7 @@ export function ImapSection() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<ImapConfigRow | null>(null);
   const [testing, setTesting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm<FormValues>();
 
@@ -115,13 +116,31 @@ export function ImapSection() {
     try {
       const v = await form.validateFields(["host", "port", "login", "password"]);
       setTesting(true);
-      await api.post("/imap-configs/test", v);
-      message.success("Connexion IMAP réussie");
+      const response = await api.post("/imap-configs/test", v);
+      const msg = response.data?.data?.message || "Connexion IMAP réussie";
+      message.success(msg);
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message;
-      if (msg) message.error(msg);
+      const respMessage = (e as { response?: { data?: { message?: string } } }).response?.data?.message?.trim();
+      const directMessage = e instanceof Error ? e.message : String(e);
+      const msg = respMessage || directMessage || "Échec du test IMAP";
+      message.error(msg);
     } finally {
       setTesting(false);
+    }
+  }
+
+  async function syncNow() {
+    try {
+      setSyncing(true);
+      await api.post("/imap-configs/sync");
+      message.success("Demande de sync IMAP envoyée. Le worker doit l'exécuter sous quelques secondes.");
+    } catch (e) {
+      const respMessage = (e as { response?: { data?: { message?: string } } }).response?.data?.message?.trim();
+      const directMessage = e instanceof Error ? e.message : String(e);
+      const msg = respMessage || directMessage || "Impossible de démarrer la synchronisation IMAP.";
+      message.error(msg);
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -195,6 +214,7 @@ export function ImapSection() {
       extra={
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => void load()}>Rafraîchir</Button>
+          <Button loading={syncing} onClick={() => void syncNow()}>Synchroniser maintenant</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Ajouter un compte</Button>
         </Space>
       }
