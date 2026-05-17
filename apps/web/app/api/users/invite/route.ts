@@ -90,9 +90,15 @@ export const POST = handler(async (req) => {
     emailSent = true;
   } catch (e) {
     if (e instanceof TransactionalEmailError) {
-      emailError = e.reason === "no_active_smtp"
-        ? "Aucun SMTP actif n'est configuré — l'utilisateur a été créé mais l'email d'invitation n'a pas pu être envoyé. Configurez un SMTP dans Paramètres → Emailing puis relancez l'invitation."
-        : `Échec envoi email : ${e.reason}`;
+      if (e.reason === "no_active_smtp") {
+        emailError = "Aucun SMTP actif n'est configuré — l'utilisateur a été créé mais l'email d'invitation n'a pas pu être envoyé. Configurez un SMTP dans Paramètres → Emailing puis relancez l'invitation.";
+      } else if (e.reason === "smtp_send_failed") {
+        emailError = `Échec de l'envoi par le serveur SMTP : ${typeof e.details === "string" ? e.details : "erreur inconnue"}. L'utilisateur a été créé ; relancez l'invitation après correction.`;
+      } else if (e.reason === "smtp_credentials_unreadable") {
+        emailError = "Les identifiants SMTP enregistrés sont illisibles (clé de chiffrement modifiée ?). Reconfigurez le compte SMTP dans Paramètres → Emailing.";
+      } else {
+        emailError = `Échec envoi email : ${e.reason}`;
+      }
     } else {
       emailError = `Échec envoi email : ${e instanceof Error ? e.message : String(e)}`;
     }

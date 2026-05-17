@@ -663,6 +663,24 @@ function UsersTab() {
     } finally { setSaving(false); }
   }
 
+  async function deleteUserPermanently(user: UserRow) {
+    try {
+      const { data } = await api.delete<{
+        data: { unassignedLeads: number };
+      }>(`/users/${user.id}?hard=true`);
+      const n = data.data.unassignedLeads;
+      message.success(
+        n > 0
+          ? `${user.name} supprimé définitivement — ${n} lead(s) remis dans le pool.`
+          : `${user.name} supprimé définitivement.`,
+      );
+      void fetchUsers();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
+      message.error(msg);
+    }
+  }
+
   async function reset2fa(user: UserRow) {
     try {
       await api.post(`/users/${user.id}/reset-2fa`);
@@ -749,7 +767,7 @@ function UsersTab() {
       render: (v) => new Date(v).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }),
     },
     {
-      title: "", key: "actions", width: 160,
+      title: "", key: "actions", width: 200,
       render: (_, r) => (
         <Space size={4}>
           <Tooltip title="Modifier">
@@ -798,6 +816,27 @@ function UsersTab() {
               />
             </Popconfirm>
           </Tooltip>
+          {r.role !== "ADMIN" && (
+            <Tooltip title="Supprimer définitivement">
+              <Popconfirm
+                title={`Supprimer définitivement ${r.name} ?`}
+                description={
+                  <div style={{ maxWidth: 280 }}>
+                    Action <strong>irréversible</strong>. Le compte est supprimé,
+                    ses leads sont remis dans le pool (non assignés), ses vues et
+                    notifications sont effacées. Préférez « Désactiver » si vous
+                    voulez pouvoir réactiver le compte plus tard.
+                  </div>
+                }
+                onConfirm={() => void deleteUserPermanently(r)}
+                okText="Supprimer définitivement"
+                okButtonProps={{ danger: true }}
+                cancelText="Annuler"
+              >
+                <Button size="small" danger icon={<DeleteOutlined />} />
+              </Popconfirm>
+            </Tooltip>
+          )}
         </Space>
       ),
     },
