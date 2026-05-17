@@ -111,6 +111,58 @@ async function enqueueNext(type: string, payload: object, runAt: Date) {
   await enqueueOneOff(getWorkerAgenda(), type, payload, { runAt, priority: 1 });
 }
 
+/** Nom standard de l'étape pipeline "premier contact" (cf. PIPELINE_STAGES seed). */
+const STAGE_NAME_CONTACTED = "Contacté";
+
+/**
+ * Progression CRM à l'envoi d'un email de campagne (PL ↔ emailing).
+ * Conservateur : on ne fait progresser que les leads encore "NOUVEAU"
+ * (NOUVEAU → CONTACTE) et on ne les place dans le pipeline que s'ils n'y
+ * sont pas déjà (pipelineStageId null). Un lead déjà avancé ou déjà
+ * positionné manuellement n'est jamais déplacé en arrière.
+ */
+async function progressLeadAfterSend(args: {
+  lead: { id: string; status: string; pipelineStageId: string | null };
+  campaignId: string;
+  variant: string;
+  contactedStageId: string | null;
+}): Promise<void> {
+  const { lead, campaignId, variant, contactedStageId } = args;
+  const promote = lead.status === "NOUVEAU";
+  const assignStage = promote && lead.pipelineStageId == null && contactedStageId != null;
+
+  await prisma.lead.update({
+    where: { id: lead.id },
+    data: {
+      lastActionAt: new Date(),
+      ...(promote ? { status: "CONTACTE" as const } : {}),
+      ...(assignStage ? { pipelineStageId: contactedStageId } : {}),
+    },
+  });
+
+  if (assignStage && contactedStageId) {
+    await prisma.leadPipeline.upsert({
+      where: { leadId: lead.id },
+      create: { leadId: lead.id, stageId: contactedStageId, position: 0, enteredAt: new Date() },
+      update: { stageId: contactedStageId, enteredAt: new Date() },
+    });
+  }
+
+  await prisma.leadHistory.create({
+    data: {
+      leadId: lead.id,
+      type: "campaign_email_sent",
+      payload: {
+        campaignId,
+        variant,
+        statusChanged: promote,
+        ...(promote ? { fromStatus: "NOUVEAU", toStatus: "CONTACTE" } : {}),
+        movedToPipeline: assignStage,
+      } as object,
+    },
+  });
+}
+
 export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
   const payload = (ctx.payload ?? {}) as { campaignId?: string; offset?: number };
   const campaignId = payload.campaignId;
@@ -173,6 +225,14 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
   const capCampaign = campaign.dailyLimit ?? smtpRow.dailyLimit;
   let remainingSmtp = Math.max(0, smtpRow.dailyLimit - smtpRow.sentToday);
   let effectiveCap = Math.min(remainingSmtp, capCampaign, capWarm);
+
+  // Étape pipeline "Contacté" résolue une seule fois (peut être absente si
+  // l'admin a renommé/supprimé l'étape standard → on ne place alors pas le lead).
+  const contactedStage = await prisma.pipelineStage.findFirst({
+    where: { name: STAGE_NAME_CONTACTED },
+    select: { id: true },
+  });
+  const contactedStageId = contactedStage?.id ?? null;
 
   let sent = 0;
   let failed = 0;
@@ -296,6 +356,22 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
       });
       sent++;
       effectiveCap--;
+
+      // PL ↔ emailing : fait entrer le lead dans le pipeline (best-effort,
+      // ne doit jamais faire échouer l'envoi ni re-compter le mail).
+      try {
+        await progressLeadAfterSend({
+          lead: { id: lead.id, status: lead.status, pipelineStageId: lead.pipelineStageId },
+          campaignId,
+          variant,
+          contactedStageId,
+        });
+      } catch (e) {
+        console.warn(
+          `[campaign-send] progression pipeline KO leadId=${lead.id}:`,
+          e instanceof Error ? e.message : e,
+        );
+      }
     } catch (e) {
       failed++;
       await prisma.emailEvent.create({

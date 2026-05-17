@@ -73,6 +73,17 @@ const STATUS_COLORS: Record<string, string> = {
   PERDU: "red",
 };
 
+// Repli statut → étape : un lead sans étape explicite est affiché dans la
+// colonne standard correspondant à son statut (sinon il serait invisible).
+const STAGE_NAMES_BY_STATUS: Record<string, string[]> = {
+  NOUVEAU: ["Nouveau"],
+  CONTACTE: ["Contacté", "Contacte"],
+  QUALIFIE: ["Qualifié", "Qualifie"],
+  EN_DISCUSSION: ["En discussion", "Négociation", "Negociation"],
+  CONVERTI: ["Gagné", "Gagne", "Converti"],
+  PERDU: ["Perdu"],
+};
+
 function initials(l: Lead): string {
   const parts = [l.firstName, l.lastName].filter(Boolean) as string[];
   if (parts.length > 0) return parts.map((p) => p[0]!.toUpperCase()).join("").slice(0, 2);
@@ -153,18 +164,36 @@ export default function PipelinePage() {
     return Array.from(set).sort();
   }, [leads]);
 
+  const effectiveStageId = useCallback(
+    (lead: Lead): string | null => {
+      if (lead.pipelineStageId && stages.some((s) => s.id === lead.pipelineStageId)) {
+        return lead.pipelineStageId;
+      }
+      for (const name of STAGE_NAMES_BY_STATUS[lead.status] ?? []) {
+        const found = stages.find(
+          (s) => s.name.trim().toLowerCase() === name.toLowerCase(),
+        );
+        if (found) return found.id;
+      }
+      return null;
+    },
+    [stages],
+  );
+
   const leadsByStage = useMemo(() => {
     const m = new Map<string, Lead[]>();
     for (const stage of stages) m.set(stage.id, []);
     for (const lead of leads) {
-      if (lead.pipelineStageId && m.has(lead.pipelineStageId)) {
-        m.get(lead.pipelineStageId)!.push(lead);
-      }
+      const sid = effectiveStageId(lead);
+      if (sid && m.has(sid)) m.get(sid)!.push(lead);
     }
     return m;
-  }, [stages, leads]);
+  }, [stages, leads, effectiveStageId]);
 
-  const unassignedCount = leads.filter((l) => !l.pipelineStageId).length;
+  const unassignedCount = useMemo(
+    () => leads.filter((l) => effectiveStageId(l) == null).length,
+    [leads, effectiveStageId],
+  );
 
   async function onDragEnd(result: DropResult) {
     const { destination, source, draggableId } = result;

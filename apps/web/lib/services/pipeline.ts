@@ -30,23 +30,62 @@ const STATUS_BY_STAGE_NAME: Record<string, LeadStatus> = {
   "Perdu": "PERDU",
 };
 
+/**
+ * Repli statut → étape. Un lead sans `pipelineStageId` explicite (importé,
+ * seed, créé hors pipeline…) est rattaché à l'étape standard correspondant à
+ * son statut, sinon il n'apparaîtrait jamais dans le Kanban / les métriques.
+ * Le `pipelineStageId` explicite (drag-drop) reste toujours prioritaire.
+ */
+const STAGE_NAMES_BY_STATUS: Record<LeadStatus, string[]> = {
+  NOUVEAU: ["Nouveau"],
+  CONTACTE: ["Contacté", "Contacte"],
+  QUALIFIE: ["Qualifié", "Qualifie"],
+  EN_DISCUSSION: ["En discussion", "Négociation", "Negociation"],
+  CONVERTI: ["Gagné", "Gagne", "Converti"],
+  PERDU: ["Perdu"],
+};
+
+function resolveEffectiveStageId(
+  lead: { status: LeadStatus; pipelineStageId: string | null },
+  stages: { id: string; name: string }[],
+): string | null {
+  if (lead.pipelineStageId && stages.some((s) => s.id === lead.pipelineStageId)) {
+    return lead.pipelineStageId;
+  }
+  for (const name of STAGE_NAMES_BY_STATUS[lead.status] ?? []) {
+    const found = stages.find(
+      (s) => s.name.trim().toLowerCase() === name.toLowerCase(),
+    );
+    if (found) return found.id;
+  }
+  return null;
+}
+
+async function effectiveCountByStage(
+  stages: { id: string; name: string }[],
+): Promise<Map<string, number>> {
+  const leads = await prisma.lead.findMany({
+    where: { deletedAt: null },
+    select: { status: true, pipelineStageId: true },
+  });
+  const countByStage = new Map<string, number>(stages.map((s) => [s.id, 0]));
+  for (const l of leads) {
+    const sid = resolveEffectiveStageId(l, stages);
+    if (sid != null && countByStage.has(sid)) {
+      countByStage.set(sid, (countByStage.get(sid) ?? 0) + 1);
+    }
+  }
+  return countByStage;
+}
+
 // ── Stages CRUD ──────────────────────────────────────────────────────────────
 
 export async function listStages(): Promise<PipelineStageItem[]> {
   const stages = await prisma.pipelineStage.findMany({
     orderBy: { order: "asc" },
   });
-  // Compte les leads par étape (non supprimés) en une requête groupBy.
-  const counts = await prisma.lead.groupBy({
-    by: ["pipelineStageId"],
-    where: { deletedAt: null, pipelineStageId: { not: null } },
-    _count: { _all: true },
-  });
-  const countByStage = new Map<string, number>(
-    counts
-      .filter((c): c is typeof c & { pipelineStageId: string } => c.pipelineStageId != null)
-      .map((c) => [c.pipelineStageId, c._count._all]),
-  );
+  // Compte par étape avec repli statut → étape (leads non supprimés).
+  const countByStage = await effectiveCountByStage(stages);
   return stages.map((s) => ({
     id: s.id,
     name: s.name,
@@ -208,17 +247,8 @@ export type PipelineMetrics = {
 export async function pipelineMetrics(): Promise<PipelineMetrics> {
   const stages = await prisma.pipelineStage.findMany({ orderBy: { order: "asc" } });
 
-  // Count par stage (leads non supprimés).
-  const counts = await prisma.lead.groupBy({
-    by: ["pipelineStageId"],
-    where: { deletedAt: null, pipelineStageId: { not: null } },
-    _count: { _all: true },
-  });
-  const countByStage = new Map<string, number>(
-    counts
-      .filter((c): c is typeof c & { pipelineStageId: string } => c.pipelineStageId != null)
-      .map((c) => [c.pipelineStageId, c._count._all]),
-  );
+  // Count par stage avec repli statut → étape (leads non supprimés).
+  const countByStage = await effectiveCountByStage(stages);
 
   // Durée moyenne dans chaque étape : moyenne de (now - LeadPipeline.enteredAt) pour les leads
   // actuellement présents dans cette étape (vue "santé du pipeline").
