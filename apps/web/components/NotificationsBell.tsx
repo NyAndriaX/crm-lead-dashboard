@@ -13,8 +13,8 @@ import {
   Badge, Button, Dropdown, Empty, List, Space, Tag, Tooltip, Typography,
 } from "antd";
 import {
-  BellOutlined, CheckOutlined, MailOutlined, ProjectOutlined, TeamOutlined,
-  UserSwitchOutlined,
+  BellOutlined, CheckOutlined, CloseCircleOutlined, MailOutlined, ProjectOutlined,
+  RadarChartOutlined, TeamOutlined, UserSwitchOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
 
@@ -35,6 +35,8 @@ const ICON_BY_TYPE: Record<string, React.ReactNode> = {
   lead_assigned: <UserSwitchOutlined style={{ color: "#1677ff" }} />,
   sequence_started: <ProjectOutlined style={{ color: "#722ed1" }} />,
   team_invite: <TeamOutlined style={{ color: "#fa8c16" }} />,
+  scraping_done: <RadarChartOutlined style={{ color: "#52c41a" }} />,
+  scraping_error: <CloseCircleOutlined style={{ color: "#ff4d4f" }} />,
 };
 
 function timeAgo(iso: string): string {
@@ -139,32 +141,57 @@ export function NotificationsBell({ borderColor, textColor }: { borderColor: str
             <List.Item
               onClick={() => void handleClick(n)}
               style={{
-                padding: "10px 16px", cursor: "pointer",
+                padding: "10px 16px",
+                cursor: n.link ? "pointer" : "default",
                 background: n.isRead ? "transparent" : "#e6f4ff",
                 borderBottom: "1px solid #f5f5f5",
+                transition: "background 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                if (n.link) (e.currentTarget as HTMLElement).style.background = n.isRead ? "#fafafa" : "#d6eaff";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.background = n.isRead ? "transparent" : "#e6f4ff";
               }}
             >
               <Space align="start" size={10} style={{ width: "100%" }}>
-                <div style={{ fontSize: 18, marginTop: 2 }}>
+                <div
+                  style={{
+                    fontSize: 20, marginTop: 2, width: 28, height: 28,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    borderRadius: 6,
+                    background: n.type === "scraping_done" ? "#f6ffed"
+                      : n.type === "scraping_error" ? "#fff2f0"
+                      : n.type === "reply_received" ? "#e6fffb"
+                      : "#f0f5ff",
+                  }}
+                >
                   {ICON_BY_TYPE[n.type] ?? <BellOutlined style={{ color: "#8c8c8c" }} />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                    <Text strong style={{ fontSize: 13 }}>{n.title}</Text>
-                    <Text type="secondary" style={{ fontSize: 11, whiteSpace: "nowrap" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
+                    <Text strong style={{ fontSize: 13, lineHeight: "18px" }}>{n.title}</Text>
+                    <Text type="secondary" style={{ fontSize: 11, whiteSpace: "nowrap", marginTop: 1 }}>
                       {timeAgo(n.createdAt)}
                     </Text>
                   </div>
                   {n.body && (
-                    <Text type="secondary" style={{ fontSize: 12, display: "block", marginTop: 2 }}>
+                    <Text type="secondary" style={{ fontSize: 12, display: "block", marginTop: 3, lineHeight: "17px" }}>
                       {n.body}
                     </Text>
                   )}
-                  {!n.isRead && (
-                    <Tag color="blue" style={{ fontSize: 10, lineHeight: "16px", marginTop: 4 }}>
-                      Non lu
-                    </Tag>
-                  )}
+                  <div style={{ display: "flex", gap: 6, marginTop: 5, alignItems: "center" }}>
+                    {!n.isRead && (
+                      <Tag color="blue" style={{ fontSize: 10, lineHeight: "16px", margin: 0 }}>
+                        Non lu
+                      </Tag>
+                    )}
+                    {n.link && (
+                      <Text style={{ fontSize: 11, color: "#1677ff" }}>
+                        Cliquer pour ouvrir →
+                      </Text>
+                    )}
+                  </div>
                 </div>
               </Space>
             </List.Item>

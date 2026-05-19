@@ -16,8 +16,13 @@
  * les deux dans un process parent — pratique en local, pas pour scaler.
  */
 import { spawn } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const mode = process.argv[2] === "prod" ? "prod" : "dev";
+const withScraper = process.argv.includes("--with-scraper");
+const repoRoot = path.resolve(fileURLToPath(new URL(".", import.meta.url)), "..");
+const scraperRun = path.resolve(repoRoot, "../CRM_LEAD_SCRAPER/run.sh");
 
 const procs =
   mode === "prod"
@@ -30,7 +35,16 @@ const procs =
         { name: "worker", cmd: "yarn", args: ["workspace", "@crm/worker", "dev"] },
       ];
 
-const COLOR = { web: "\x1b[36m", worker: "\x1b[35m", reset: "\x1b[0m" };
+if (withScraper) {
+  procs.unshift({ name: "scraper", cmd: "bash", args: [scraperRun] });
+}
+
+const COLOR = {
+  web: "\x1b[36m",
+  worker: "\x1b[35m",
+  scraper: "\x1b[33m",
+  reset: "\x1b[0m",
+};
 const children = [];
 let shuttingDown = false;
 
@@ -81,6 +95,5 @@ function shutdown(code) {
 process.on("SIGINT", () => shutdown(0));
 process.on("SIGTERM", () => shutdown(0));
 
-console.log(
-  `${COLOR.web}[web]${COLOR.reset} + ${COLOR.worker}[worker]${COLOR.reset} démarrés (mode ${mode}). Ctrl+C pour tout arrêter.`,
-);
+const parts = procs.map((p) => `${COLOR[p.name] ?? ""}[${p.name}]${COLOR.reset}`).join(" + ");
+console.log(`${parts} démarrés (mode ${mode}). Ctrl+C pour tout arrêter.`);

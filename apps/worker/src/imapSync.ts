@@ -365,6 +365,12 @@ async function syncOneAccount(row: ImapRow): Promise<{
     tls: { rejectUnauthorized: false },
   });
 
+  // Prevent unhandled 'error' EventEmitter events from crashing the worker process.
+  // Errors are already caught by the try/catch below via the thrown Promise rejection.
+  client.on("error", (err: Error) => {
+    console.error(`[imap-sync] account=${row.label} socket error:`, err.message ?? err);
+  });
+
   let fetched = 0;
   let saved = 0;
   let matched = 0;

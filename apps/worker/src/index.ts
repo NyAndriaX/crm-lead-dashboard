@@ -8,6 +8,7 @@
 import { prisma } from "@crm/db";
 import { createWorkerAgenda, registerWorkerJobHandlers } from "@crm/queue";
 import { handlers } from "./handlers";
+import { recoverStaleScrapingJobs } from "./scraping/recover";
 
 async function resolveAgendaTimezone(): Promise<string> {
   const fromEnv = process.env.AGENDA_TIMEZONE?.trim();
@@ -37,6 +38,13 @@ async function main() {
   console.log(`[worker] recurring: imap-sync every ${imapInterval}, sequence-tick every ${sequenceInterval}, scraping-scheduler every ${scrapingSchedInterval}`);
 
   await agenda.start();
+
+  const recovered = await recoverStaleScrapingJobs();
+  if (recovered.missions > 0 || recovered.agendaJobs > 0) {
+    console.log(
+      `[worker] scraping recovery: ${recovered.missions} mission(s), ${recovered.agendaJobs} job(s) Agenda`,
+    );
+  }
 
   const stop = async (signal: string) => {
     console.log(`[worker] ${signal} — arrêt Agenda…`);

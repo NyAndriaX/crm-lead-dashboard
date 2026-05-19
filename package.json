@@ -14,7 +14,9 @@
   "scripts": {
     "dev": "dotenv -e .env -- yarn workspace @crm/web dev",
     "worker": "dotenv -e .env -- yarn workspace @crm/worker dev",
+    "scraper": "bash ../CRM_LEAD_SCRAPER/run.sh",
     "dev:all": "dotenv -e .env -- node scripts/run-all.mjs dev",
+    "dev:full": "dotenv -e .env -- node scripts/run-all.mjs dev --with-scraper",
     "build": "yarn workspaces run build",
     "start": "dotenv -e .env -- yarn workspace @crm/web start",
     "start:prod": "dotenv -e .env -- node scripts/start-standalone.mjs",

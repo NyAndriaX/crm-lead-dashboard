@@ -8,6 +8,7 @@ import { prisma } from "@crm/db";
 import { handler, json, requirePermission, ApiError } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs";
+import { checkScraperReachable, isScrapingLiveEnabled } from "@/lib/scraping/scraperHealth";
 import { getMission } from "@/lib/services/scraping";
 
 export const dynamic = "force-dynamic";
@@ -21,8 +22,19 @@ export const POST = handler<Ctx>(async (req, { params }) => {
 
   const mission = await getMission(id);
   if (!mission) throw new ApiError(404, "Mission introuvable", "not_found");
-  if (mission.status === "running") {
+  if (mission.status === "running" || mission.status === "queued") {
     throw new ApiError(409, "Mission déjà en cours", "already_running");
+  }
+
+  if (isScrapingLiveEnabled()) {
+    const health = await checkScraperReachable();
+    if (!health.ok) {
+      throw new ApiError(
+        503,
+        `Scraper inaccessible sur ${health.url}. Lancez CRM_LEAD_SCRAPER : ./run.sh (port 8000). ${health.error ?? ""}`,
+        "scraper_unreachable",
+      );
+    }
   }
 
   await prisma.scrapingMission.update({
@@ -38,5 +50,12 @@ export const POST = handler<Ctx>(async (req, { params }) => {
     entityId: id,
     ip: clientIp(req),
   });
-  return json({ data: { queued: true, missionId: id } });
+  return json({
+    data: {
+      queued: true,
+      missionId: id,
+      message:
+        "Scraping lancé en arrière-plan. Vous recevrez une notification quand la récupération des leads sera terminée (cela peut prendre longtemps).",
+    },
+  });
 });

@@ -10,8 +10,21 @@
  * scrapers Playwright derrière le flag env SCRAPING_LIVE (cf.
  * apps/worker/src/scraping/).
  */
+import {
+  isIdentifiableLead,
+  normalizeMissionConfig,
+  parseScraperPayload,
+  passesEmailRequirement,
+  scheduleLabel,
+  type MissionConfig,
+  type MissionSchedulePlan,
+  type ScrapedLead,
+} from "@crm/db";
 import { prisma, type Prisma } from "@crm/db";
+import { enqueue } from "@/lib/jobs";
 import { encryptOrNull, emailHash } from "@/lib/crypto";
+import { isScrapedLeadDuplicateInCrm } from "@/lib/scraping/dedup";
+import { buildLeadCreateFromScraped } from "@/lib/scraping/leadPayload";
 import { enrichLeadById } from "@/lib/services/enrichment";
 import { generateLeadAiBrief } from "@/lib/services/aiBrief";
 
@@ -47,83 +60,57 @@ async function autoEnrichAndBrief(leadId: string): Promise<void> {
   }
 }
 
-export type ScrapingSource = "google_maps" | "directories" | "linkedin" | "website";
-
-export const SCRAPING_SOURCES: ScrapingSource[] = [
-  "google_maps", "directories", "linkedin", "website",
-];
-
-export const SOURCE_LABELS: Record<ScrapingSource, string> = {
-  google_maps: "Google Maps / Places",
-  directories: "Annuaires pro (Pages Jaunes, Kompass, Societe.com)",
-  linkedin: "LinkedIn (public / Sales Nav)",
-  website: "Sites web sectoriels",
-};
-
-/** Forme du champ ScrapingMission.config (Json libre côté Prisma). */
-export type MissionConfig = {
-  sources: ScrapingSource[];
-  keywords: string;
-  location: { city?: string | null; country?: string | null; radiusKm?: number | null };
-  companyType?: string | null;
-  companySize?: string | null;
-  language?: string | null;
-  limit: number;
-  /** S-06 — débit & proxy. */
-  rate: {
-    delayMs: number;
-    retries: number;
-    rotateUserAgent: boolean;
-    proxyUrl?: string | null;
-  };
-  /** A3 (F4) — scraping automatisé : quota/jour + pipeline auto. */
-  dailyQuota?: number | null;
-  autoPipeline?: {
-    enabled: boolean;
-    /** Inscrit les leads injectés dans cette séquence (relances IA si steps.aiPersonalize). */
-    sequenceId?: string | null;
-  };
-};
-
-export const DEFAULT_RATE: MissionConfig["rate"] = {
-  delayMs: 2000,
-  retries: 2,
-  rotateUserAgent: true,
-  proxyUrl: null,
-};
+export type { MissionConfig, MissionSchedulePlan };
 
 export type MissionDTO = {
   id: string;
   name: string;
   config: MissionConfig;
   schedule: string | null;
+  scheduleLabel: string;
   status: string;
   logs: string | null;
   createdAt: Date;
   bufferCounts: { pending: number; accepted: number; rejected: number };
 };
 
-function normalizeConfig(raw: unknown): MissionConfig {
-  const c = (raw ?? {}) as Partial<MissionConfig>;
-  return {
-    sources: Array.isArray(c.sources) && c.sources.length > 0 ? c.sources : ["google_maps"],
-    keywords: typeof c.keywords === "string" ? c.keywords : "",
-    location: {
-      city: c.location?.city ?? null,
-      country: c.location?.country ?? "France",
-      radiusKm: c.location?.radiusKm ?? null,
-    },
-    companyType: c.companyType ?? null,
-    companySize: c.companySize ?? null,
-    language: c.language ?? "fr",
-    limit: typeof c.limit === "number" && c.limit > 0 ? Math.min(c.limit, 500) : 50,
-    rate: { ...DEFAULT_RATE, ...(c.rate ?? {}) },
-    dailyQuota:
-      typeof c.dailyQuota === "number" && c.dailyQuota > 0 ? Math.min(c.dailyQuota, 1000) : null,
-    autoPipeline: c.autoPipeline?.enabled
-      ? { enabled: true, sequenceId: c.autoPipeline.sequenceId ?? null }
-      : { enabled: false, sequenceId: null },
-  };
+function legacyScheduleField(plan?: MissionSchedulePlan): string | null {
+  if (!plan || plan.mode === "manual") return null;
+  if (plan.mode === "once") return "once";
+  return plan.frequency ?? "daily";
+}
+
+async function enqueueScheduledRun(missionId: string, cfg: MissionConfig): Promise<void> {
+  const plan = cfg.schedulePlan;
+  if (!plan || plan.mode === "manual") return;
+
+  // Mode ponctuel : job Agenda direct à la date demandée.
+  if (plan.mode === "once" && plan.runAt) {
+    const runAt = new Date(plan.runAt);
+    if (runAt.getTime() > Date.now()) {
+      await enqueue("scraping-run", { missionId }, { runAt, priority: 2 });
+      await prisma.scrapingMission.update({
+        where: { id: missionId },
+        data: { status: "scheduled", logs: `Planifiée le ${runAt.toISOString()}` },
+      });
+    }
+    return;
+  }
+
+  // Mode récurrent : job Agenda direct pour la PREMIÈRE exécution (runAt ou immédiat).
+  // Les exécutions suivantes sont gérées par le cron scraping-scheduler.
+  if (plan.mode === "recurring") {
+    const anchor = plan.runAt ? new Date(plan.runAt) : new Date();
+    const runAt = anchor.getTime() <= Date.now() ? new Date() : anchor;
+    await enqueue("scraping-run", { missionId }, { runAt, priority: 2 });
+    await prisma.scrapingMission.update({
+      where: { id: missionId },
+      data: {
+        status: "scheduled",
+        logs: `Première exécution planifiée le ${runAt.toISOString()}`,
+      },
+    });
+  }
 }
 
 async function bufferCounts(missionId: string) {
@@ -140,11 +127,13 @@ export async function listMissions(): Promise<MissionDTO[]> {
   const missions = await prisma.scrapingMission.findMany({ orderBy: { createdAt: "desc" } });
   const out: MissionDTO[] = [];
   for (const m of missions) {
+    const config = normalizeMissionConfig(m.config);
     out.push({
       id: m.id,
       name: m.name,
-      config: normalizeConfig(m.config),
-      schedule: m.schedule,
+      config,
+      schedule: legacyScheduleField(config.schedulePlan) ?? m.schedule,
+      scheduleLabel: scheduleLabel(config.schedulePlan),
       status: m.status,
       logs: m.logs,
       createdAt: m.createdAt,
@@ -157,11 +146,13 @@ export async function listMissions(): Promise<MissionDTO[]> {
 export async function getMission(id: string): Promise<MissionDTO | null> {
   const m = await prisma.scrapingMission.findUnique({ where: { id } });
   if (!m) return null;
+  const config = normalizeMissionConfig(m.config);
   return {
     id: m.id,
     name: m.name,
-    config: normalizeConfig(m.config),
-    schedule: m.schedule,
+    config,
+    schedule: legacyScheduleField(config.schedulePlan) ?? m.schedule,
+    scheduleLabel: scheduleLabel(config.schedulePlan),
     status: m.status,
     logs: m.logs,
     createdAt: m.createdAt,
@@ -171,33 +162,37 @@ export async function getMission(id: string): Promise<MissionDTO | null> {
 
 export async function createMission(input: {
   name: string;
-  config: MissionConfig;
-  schedule?: string | null;
+  config: unknown;
 }): Promise<MissionDTO> {
+  const config = normalizeMissionConfig(input.config);
   const m = await prisma.scrapingMission.create({
     data: {
       name: input.name,
-      config: normalizeConfig(input.config) as object,
-      schedule: input.schedule ?? null,
+      config: config as object,
+      schedule: legacyScheduleField(config.schedulePlan),
       status: "pending",
     },
   });
-  return {
-    id: m.id, name: m.name, config: normalizeConfig(m.config), schedule: m.schedule,
-    status: m.status, logs: m.logs, createdAt: m.createdAt,
-    bufferCounts: { pending: 0, accepted: 0, rejected: 0 },
-  };
+  await enqueueScheduledRun(m.id, config);
+  const dto = await getMission(m.id);
+  return dto!;
 }
 
 export async function updateMission(
   id: string,
-  input: { name?: string; config?: MissionConfig; schedule?: string | null },
+  input: { name?: string; config?: unknown },
 ): Promise<void> {
   const data: Prisma.ScrapingMissionUpdateInput = {};
   if (input.name !== undefined) data.name = input.name;
-  if (input.config !== undefined) data.config = normalizeConfig(input.config) as object;
-  if (input.schedule !== undefined) data.schedule = input.schedule;
+  if (input.config !== undefined) {
+    const config = normalizeMissionConfig(input.config);
+    data.config = config as object;
+    data.schedule = legacyScheduleField(config.schedulePlan);
+  }
   await prisma.scrapingMission.update({ where: { id }, data });
+  if (input.config) {
+    await enqueueScheduledRun(id, normalizeMissionConfig(input.config));
+  }
 }
 
 export async function deleteMission(id: string): Promise<void> {
@@ -205,24 +200,18 @@ export async function deleteMission(id: string): Promise<void> {
   await prisma.scrapingMission.delete({ where: { id } });
 }
 
+export type BufferRaw = ScrapedLead & {
+  duplicate?: boolean;
+  duplicateReason?: string | null;
+  injectedLeadId?: string;
+  auto?: boolean;
+};
+
 export type BufferItem = {
   id: string;
   missionId: string;
   status: string;
-  raw: {
-    name?: string | null;
-    company?: string | null;
-    email?: string | null;
-    phone?: string | null;
-    website?: string | null;
-    address?: string | null;
-    city?: string | null;
-    sector?: string | null;
-    source?: string;
-    rating?: number | null;
-    duplicate?: boolean;
-    duplicateReason?: string | null;
-  };
+  raw: BufferRaw;
   createdAt: Date;
 };
 
@@ -253,6 +242,76 @@ export async function setBufferStatus(ids: string[], status: "accepted" | "rejec
 }
 
 /**
+ * Importe un payload crm-leads-scraper dans le buffer d'une mission
+ * (enveloppe `{ ok, results[] }` ou tableau brut).
+ */
+export async function importScraperPayloadToBuffer(
+  missionId: string,
+  payload: unknown,
+): Promise<{ inserted: number; duplicates: number; filteredNoEmail: number }> {
+  const mission = await prisma.scrapingMission.findUnique({ where: { id: missionId } });
+  const cfg = normalizeMissionConfig(mission?.config);
+  const { leads } = parseScraperPayload(payload);
+  let inserted = 0;
+  let duplicates = 0;
+  let filteredNoEmail = 0;
+  const seen = { placeId: new Set<string>(), email: new Set<string>(), companyCity: new Set<string>() };
+
+  for (const lead of leads) {
+    const email = lead.email?.trim().toLowerCase() || null;
+
+    if (!passesEmailRequirement(lead, cfg.requireEmail)) {
+      filteredNoEmail++;
+      continue;
+    }
+
+    let duplicate = false;
+    let reason: string | null = null;
+
+    const placeId = lead.place_id?.trim();
+    if (placeId) {
+      if (seen.placeId.has(placeId)) {
+        duplicate = true;
+        reason = "doublon interne (place_id)";
+      } else {
+        const { duplicate: inCrm, reason: crmReason } = await isScrapedLeadDuplicateInCrm(lead, emailHash);
+        if (inCrm) {
+          duplicate = true;
+          reason = crmReason;
+        }
+      }
+      seen.placeId.add(placeId);
+    } else if (email) {
+      if (seen.email.has(email)) {
+        duplicate = true;
+        reason = "doublon interne (email)";
+      } else {
+        const { duplicate: inCrm, reason: crmReason } = await isScrapedLeadDuplicateInCrm(lead, emailHash);
+        if (inCrm) {
+          duplicate = true;
+          reason = crmReason;
+        }
+      }
+      seen.email.add(email);
+    }
+
+    if (duplicate) duplicates++;
+    else inserted++;
+
+    await prisma.scrapedLeadBuffer.create({
+      data: {
+        missionId,
+        emailHash: email ? emailHash(email) : null,
+        status: duplicate ? "rejected" : "pending",
+        raw: { ...lead, duplicate, duplicateReason: reason } as object,
+      },
+    });
+  }
+
+  return { inserted, duplicates, filteredNoEmail };
+}
+
+/**
  * S-07 + S-10 — Injecte les leads "accepted" d'une mission dans le CRM.
  * Re-vérifie le dédoublonnage au moment de l'injection (un lead a pu être
  * créé entre le scraping et la validation).
@@ -271,67 +330,34 @@ export async function injectAcceptedLeads(missionId: string, actorId?: string): 
   let skippedInvalid = 0;
 
   for (const row of accepted) {
-    const raw = (row.raw ?? {}) as BufferItem["raw"];
-    const email = raw.email?.trim() || null;
-    const name = raw.name?.trim() || null;
-    const company = raw.company?.trim() || null;
+    const raw = (row.raw ?? {}) as BufferRaw;
 
-    if (!email && !name && !company) {
+    if (!isIdentifiableLead(raw)) {
       skippedInvalid++;
       continue;
     }
 
-    // Dédoublonnage final (S-07) : email exact, sinon nom+entreprise.
-    let dup = false;
-    if (email) {
-      const h = emailHash(email);
-      const exists = await prisma.lead.findFirst({
-        where: { emailHash: h, deletedAt: null },
-        select: { id: true },
-      });
-      if (exists) dup = true;
-    }
-    if (!dup && !email && name && company) {
-      const exists = await prisma.lead.findFirst({
-        where: {
-          deletedAt: null,
-          company: { equals: company, mode: "insensitive" },
-          OR: [
-            { firstName: { equals: name.split(" ")[0] ?? name, mode: "insensitive" } },
-            { lastName: { contains: name.split(" ").slice(1).join(" "), mode: "insensitive" } },
-          ],
-        },
-        select: { id: true },
-      });
-      if (exists) dup = true;
-    }
+    const email = raw.email?.trim().toLowerCase() || null;
+    const { duplicate: dup, reason: dupReason } = await isScrapedLeadDuplicateInCrm(raw, emailHash);
     if (dup) {
       skippedDuplicate++;
       await prisma.scrapedLeadBuffer.update({
         where: { id: row.id },
-        data: { status: "rejected", raw: { ...raw, duplicate: true, duplicateReason: "déjà en base" } as object },
+        data: {
+          status: "rejected",
+          raw: { ...raw, duplicate: true, duplicateReason: dupReason ?? "déjà en base" } as object,
+        },
       });
       continue;
     }
 
-    const [firstName, ...rest] = (name ?? "").split(" ");
+    const base = buildLeadCreateFromScraped(raw, `Scraping: ${raw.source ?? "mission"}`);
     const lead = await prisma.lead.create({
       data: {
+        ...base,
         emailEnc: encryptOrNull(email),
         emailHash: email ? emailHash(email) : null,
         phoneEnc: encryptOrNull(raw.phone ?? null),
-        firstName: firstName || null,
-        lastName: rest.join(" ") || null,
-        company,
-        website: raw.website ?? null,
-        sector: raw.sector ?? null,
-        city: raw.city ?? null,
-        country: "France",
-        source: `Scraping: ${raw.source ?? "mission"}`,
-        status: "NOUVEAU",
-        notes: raw.address ? `Adresse scrapée : ${raw.address}` : null,
-        lastActionAt: new Date(),
-        deletedAt: null,
       },
     });
     await prisma.leadHistory.create({

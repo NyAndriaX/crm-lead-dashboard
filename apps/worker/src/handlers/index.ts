@@ -256,7 +256,10 @@ export const handlers: Record<string, JobHandler> = {
 
   "sequence-tick": runSequenceTick,
 
-  "scraping-run": runScraping,
+  "scraping-run": async (ctx) => {
+    console.log("[worker] scraping-run — job reçu", ctx.payload);
+    return runScraping(ctx);
+  },
 
   "scraping-scheduler": async () => runScrapingScheduler(),
 };

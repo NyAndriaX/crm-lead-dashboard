@@ -17,3 +17,32 @@ if (process.env.NODE_ENV !== "production") {
 export * from "@prisma/client";
 export { LEAD_NOT_DELETED, buildLeadWhereFromSegmentFilters, type LeadSegmentFilters } from "./leadWhere";
 export { signEmailTrackToken, verifyEmailTrackToken, type EmailTrackKind, type EmailTrackPayload } from "./emailTrack";
+export {
+  parseScraperPayload,
+  resolveCompany,
+  resolveContactNames,
+  namesFromEmail,
+  isIdentifiableLead,
+  scraperEnrichment,
+  tagsFromScrapedLead,
+  placeIdTag,
+  type ScrapedLead,
+  type ScraperApiResponse,
+  type ScrapeSource,
+  type ScrapeConfig,
+  type ScrapedLeadEmailStatus,
+} from "./scraping";
+export {
+  normalizeMissionConfig,
+  toScraperRequestBody,
+  leadHasEmail,
+  passesEmailRequirement,
+  shouldRunScheduledMission,
+  scheduleLabel,
+  localeToScraper,
+  DEFAULT_MISSION_RATE,
+  type MissionConfig,
+  type MissionSchedulePlan,
+  type ScheduleMode,
+  type ScheduleFrequency,
+} from "./scrapingMission";

@@ -2,52 +2,49 @@
 
 /**
  * Page /scraping — module Scraping (S-01 → S-10).
- *
- * Onglets :
- *  - Missions : créer/configurer/lancer une mission (S-01, S-06, S-08, S-09)
- *  - Résultats : valider les leads scrapés avant injection CRM (S-07, S-10)
- *
- * Le scraping réel tourne côté worker (adapters sandbox par défaut).
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
-  Alert, Button, Card, Form, Input, InputNumber, Modal, Popconfirm, Select,
-  Space, Switch, Table, Tabs, Tag, Typography, message, Drawer, Statistic, Row, Col,
+  Alert, Badge, Button, Card, Col, DatePicker, Drawer, Form, Input, InputNumber,
+  Modal, Popconfirm, Progress, Result, Row, Select, Space, Spin, Statistic,
+  Switch, Table, Tag, Timeline, Tooltip, Typography, message,
 } from "antd";
+import dayjs, { type Dayjs } from "dayjs";
 import {
-  PlayCircleOutlined, PlusOutlined, ReloadOutlined, DeleteOutlined,
-  EditOutlined, RadarChartOutlined, CheckOutlined, CloseOutlined,
-  CloudDownloadOutlined, FileSearchOutlined,
+  CheckCircleOutlined, CheckOutlined, CloseCircleOutlined, CloseOutlined,
+  CloudDownloadOutlined, DatabaseOutlined, DeleteOutlined, EditOutlined,
+  FileSearchOutlined, FilterOutlined, PlayCircleOutlined, PlusOutlined,
+  RadarChartOutlined, ReloadOutlined, RocketOutlined, WarningOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
 
 const { Title, Text, Paragraph } = Typography;
 
-type Source = "google_maps" | "directories" | "linkedin" | "website";
-const SOURCE_LABELS: Record<Source, string> = {
-  google_maps: "Google Maps / Places",
-  directories: "Annuaires pro",
-  linkedin: "LinkedIn",
-  website: "Sites web sectoriels",
-};
+type InjectResult = { injected: number; skippedDuplicate: number; skippedInvalid: number };
 
 type Mission = {
   id: string;
   name: string;
   config: {
-    sources: Source[];
     keywords: string;
     location: { city?: string | null; country?: string | null; radiusKm?: number | null };
-    companyType?: string | null;
-    companySize?: string | null;
-    language?: string | null;
     limit: number;
-    rate: { delayMs: number; retries: number; rotateUserAgent: boolean; proxyUrl?: string | null };
+    detailed: boolean;
+    locale: string;
+    filter_country: boolean;
+    requireEmail: boolean;
     dailyQuota?: number | null;
     autoPipeline?: { enabled: boolean; sequenceId?: string | null };
+    schedulePlan?: {
+      mode: "manual" | "once" | "recurring";
+      runAt?: string | null;
+      frequency?: "daily" | "weekly" | "monthly" | null;
+    };
   };
   schedule: string | null;
+  scheduleLabel: string;
   status: string;
   logs: string | null;
   createdAt: string;
@@ -58,23 +55,50 @@ type BufferItem = {
   id: string;
   status: string;
   raw: {
-    name?: string | null; company?: string | null; email?: string | null;
-    phone?: string | null; website?: string | null; address?: string | null;
-    city?: string | null; sector?: string | null; source?: string;
-    rating?: number | null; duplicate?: boolean; duplicateReason?: string | null;
+    company?: string | null; name?: string | null; email?: string | null;
+    phone?: string | null; website?: string | null; city?: string | null;
+    sector?: string | null; source?: string; rating?: number | null;
+    reviews?: number | null; email_status?: string | null;
+    place_id?: string | null; duplicate?: boolean; duplicateReason?: string | null;
   };
   createdAt: string;
 };
 
+const EMAIL_STATUS_TAG: Record<string, { color: string; label: string }> = {
+  found: { color: "green", label: "email OK" },
+  found_legal: { color: "blue", label: "email légal" },
+  no_email: { color: "default", label: "sans email" },
+  no_website: { color: "orange", label: "sans site" },
+};
+
 const STATUS_TAG: Record<string, { color: string; label: string }> = {
   pending: { color: "default", label: "En attente" },
+  scheduled: { color: "purple", label: "Planifiée" },
   queued: { color: "blue", label: "En file" },
   running: { color: "processing", label: "En cours" },
   done: { color: "green", label: "Terminée" },
   error: { color: "red", label: "Erreur" },
 };
 
+function buildSchedulePlan(v: {
+  scheduleMode: string;
+  scheduleRunAt?: Dayjs | null;
+  scheduleFrequency?: string | null;
+}) {
+  const mode = v.scheduleMode as "manual" | "once" | "recurring";
+  if (mode === "manual") return { mode: "manual" as const };
+  return {
+    mode,
+    runAt: v.scheduleRunAt ? v.scheduleRunAt.toISOString() : null,
+    frequency: mode === "recurring" ? (v.scheduleFrequency as "daily" | "weekly" | "monthly") ?? "daily" : null,
+  };
+}
+
 export default function ScrapingPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const autoOpenRef = useRef<string | null>(searchParams.get("openResults"));
+
   const [missions, setMissions] = useState<Mission[]>([]);
   const [loading, setLoading] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -86,7 +110,8 @@ export default function ScrapingPage() {
   const [buffer, setBuffer] = useState<BufferItem[]>([]);
   const [bufferLoading, setBufferLoading] = useState(false);
   const [selectedBuf, setSelectedBuf] = useState<string[]>([]);
-  const [sequences, setSequences] = useState<{ id: string; name: string }[]>([]);
+  const [injecting, setInjecting] = useState(false);
+  const [injectResult, setInjectResult] = useState<InjectResult | null>(null);
 
   const fetchMissions = useCallback(async () => {
     setLoading(true);
@@ -102,11 +127,6 @@ export default function ScrapingPage() {
 
   useEffect(() => { void fetchMissions(); }, [fetchMissions]);
 
-  useEffect(() => {
-    api.get<{ data: { id: string; name: string }[] }>("/sequences")
-      .then((r) => setSequences(r.data.data ?? []))
-      .catch(() => setSequences([]));
-  }, []);
 
   // Auto-refresh tant qu'une mission tourne.
   useEffect(() => {
@@ -115,42 +135,55 @@ export default function ScrapingPage() {
     return () => clearInterval(t);
   }, [missions, fetchMissions]);
 
+  // Ouvre automatiquement le drawer résultats si ?openResults=<id> est présent (lien notif).
+  useEffect(() => {
+    const targetId = autoOpenRef.current;
+    if (!targetId || missions.length === 0) return;
+    const mission = missions.find((m) => m.id === targetId);
+    if (mission) {
+      autoOpenRef.current = null; // consomme le param une seule fois
+      openResults(mission);
+      // Nettoie l'URL sans recharger la page
+      const url = new URL(window.location.href);
+      url.searchParams.delete("openResults");
+      router.replace(url.pathname + (url.search ? url.search : ""), { scroll: false });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missions]);
+
   function openCreate() {
     setEditing(null);
     form.resetFields();
     form.setFieldsValue({
-      sources: ["google_maps"],
-      limit: 50,
-      language: "fr",
+      keywords: "Immobilier",
+      limit: 10,
+      locale: "fr-FR",
       country: "France",
-      delayMs: 2000,
-      retries: 2,
-      rotateUserAgent: true,
+      detailed: true,
+      filter_country: true,
+      requireEmail: true,
+      scheduleMode: "manual",
     });
     setFormOpen(true);
   }
 
   function openEdit(m: Mission) {
     setEditing(m);
+    const plan = m.config.schedulePlan ?? { mode: "manual" as const };
     form.setFieldsValue({
       name: m.name,
-      sources: m.config.sources,
       keywords: m.config.keywords,
       city: m.config.location.city,
       country: m.config.location.country,
-      radiusKm: m.config.location.radiusKm,
-      companyType: m.config.companyType,
-      companySize: m.config.companySize,
-      language: m.config.language,
       limit: m.config.limit,
-      delayMs: m.config.rate.delayMs,
-      retries: m.config.rate.retries,
-      rotateUserAgent: m.config.rate.rotateUserAgent,
-      proxyUrl: m.config.rate.proxyUrl,
-      schedule: m.schedule,
+      locale: m.config.locale ?? "fr-FR",
+      detailed: m.config.detailed ?? true,
+      filter_country: m.config.filter_country ?? true,
+      requireEmail: m.config.requireEmail !== false,
+      scheduleMode: plan.mode,
+      scheduleRunAt: plan.runAt ? dayjs(plan.runAt) : null,
+      scheduleFrequency: plan.frequency ?? "daily",
       dailyQuota: m.config.dailyQuota ?? null,
-      autoPipelineEnabled: m.config.autoPipeline?.enabled ?? false,
-      autoPipelineSequenceId: m.config.autoPipeline?.sequenceId ?? null,
     });
     setFormOpen(true);
   }
@@ -160,26 +193,16 @@ export default function ScrapingPage() {
     setSaving(true);
     const body = {
       name: v.name,
-      schedule: v.schedule || null,
       config: {
-        sources: v.sources,
         keywords: v.keywords ?? "",
-        location: { city: v.city || null, country: v.country || "France", radiusKm: v.radiusKm ?? null },
-        companyType: v.companyType || null,
-        companySize: v.companySize || null,
-        language: v.language || "fr",
-        limit: v.limit ?? 50,
-        rate: {
-          delayMs: v.delayMs ?? 2000,
-          retries: v.retries ?? 2,
-          rotateUserAgent: v.rotateUserAgent ?? true,
-          proxyUrl: v.proxyUrl || null,
-        },
+        location: { city: v.city || null, country: v.country || "France", radiusKm: null },
+        limit: v.limit ?? 10,
+        detailed: v.detailed ?? true,
+        locale: v.locale || "fr-FR",
+        filter_country: v.filter_country ?? true,
+        requireEmail: Boolean(v.requireEmail),
+        schedulePlan: buildSchedulePlan(v),
         dailyQuota: v.dailyQuota ?? null,
-        autoPipeline: {
-          enabled: Boolean(v.autoPipelineEnabled),
-          sequenceId: v.autoPipelineSequenceId || null,
-        },
       },
     };
     try {
@@ -201,8 +224,12 @@ export default function ScrapingPage() {
 
   async function runMission(m: Mission) {
     try {
-      await api.post(`/scraping/missions/${m.id}/run`);
-      message.success("Mission lancée — résultats sous peu");
+      const { data } = await api.post<{ data: { message?: string } }>(`/scraping/missions/${m.id}/run`);
+      message.success(
+        data.data.message ??
+          "Scraping lancé en arrière-plan — notification à la fin.",
+        8,
+      );
       void fetchMissions();
     } catch (e) {
       message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur");
@@ -251,16 +278,19 @@ export default function ScrapingPage() {
 
   async function injectAccepted() {
     if (!resultsTarget) return;
+    setInjecting(true);
+    setInjectResult(null);
     try {
-      const { data } = await api.post<{ data: { injected: number; skippedDuplicate: number; skippedInvalid: number } }>(
+      const { data } = await api.post<{ data: InjectResult }>(
         `/scraping/missions/${resultsTarget.id}/results`,
       );
-      const r = data.data;
-      message.success(`${r.injected} lead(s) injecté(s) · ${r.skippedDuplicate} doublon(s) · ${r.skippedInvalid} invalide(s)`);
+      setInjectResult(data.data);
       void loadBuffer(resultsTarget.id);
       void fetchMissions();
     } catch (e) {
       message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Injection impossible");
+    } finally {
+      setInjecting(false);
     }
   }
 
@@ -278,11 +308,13 @@ export default function ScrapingPage() {
       ),
     },
     {
-      title: "Sources",
-      key: "sources",
+      title: "Filtres",
+      key: "filters",
+      width: 120,
       render: (_, r) => (
         <Space size={2} wrap>
-          {r.config.sources.map((s) => <Tag key={s}>{SOURCE_LABELS[s]}</Tag>)}
+          {r.config.requireEmail && <Tag color="blue">email requis</Tag>}
+          {r.config.filter_country && <Tag>France</Tag>}
         </Space>
       ),
     },
@@ -297,81 +329,183 @@ export default function ScrapingPage() {
       },
     },
     {
-      title: "Résultats",
+      title: "Résultats buffer",
       key: "buffer",
-      width: 200,
-      render: (_, r) => (
-        <Space size={4}>
-          <Tag>{r.bufferCounts.pending} à valider</Tag>
-          <Tag color="green">{r.bufferCounts.accepted} ok</Tag>
-          <Tag color="red">{r.bufferCounts.rejected} rejet</Tag>
-        </Space>
-      ),
+      width: 220,
+      render: (_, r) => {
+        const total = r.bufferCounts.pending + r.bufferCounts.accepted + r.bufferCounts.rejected;
+        if (total === 0) return <Text type="secondary" style={{ fontSize: 12 }}>Aucun résultat</Text>;
+        return (
+          <Space size={4} wrap>
+            {r.bufferCounts.pending > 0 && (
+              <Badge count={r.bufferCounts.pending} color="#faad14" overflowCount={999}>
+                <Tag style={{ marginRight: 0 }}>à valider</Tag>
+              </Badge>
+            )}
+            {r.bufferCounts.accepted > 0 && <Tag color="success">{r.bufferCounts.accepted} ✓</Tag>}
+            {r.bufferCounts.rejected > 0 && <Tag color="error">{r.bufferCounts.rejected} ✗</Tag>}
+          </Space>
+        );
+      },
     },
     {
       title: "Planif.",
-      dataIndex: "schedule",
       key: "schedule",
-      width: 90,
-      render: (v) => v ? <Tag color="purple">{v}</Tag> : <Text type="secondary">—</Text>,
+      width: 160,
+      render: (_, r) =>
+        r.scheduleLabel && r.scheduleLabel !== "Manuel"
+          ? <Tag color="purple">{r.scheduleLabel}</Tag>
+          : <Text type="secondary">Manuel</Text>,
     },
     {
-      title: "",
+      title: "Actions",
       key: "actions",
-      width: 230,
-      render: (_, r) => (
-        <Space size={4}>
-          <Button
-            size="small"
-            type="primary"
-            icon={<PlayCircleOutlined />}
-            disabled={r.status === "running" || r.status === "queued"}
-            onClick={() => void runMission(r)}
-          >
-            Lancer
-          </Button>
-          <Button size="small" icon={<FileSearchOutlined />} onClick={() => openResults(r)}>
-            Résultats
-          </Button>
-          <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />
-          <Button size="small" onClick={() => setLogsTarget(r)}>Logs</Button>
-          <Popconfirm title={`Supprimer "${r.name}" ?`} onConfirm={() => void removeMission(r)} okText="Supprimer" okButtonProps={{ danger: true }}>
-            <Button size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
+      width: 240,
+      render: (_, r) => {
+        const isActive = r.status === "running" || r.status === "queued";
+        const hasPending = r.bufferCounts.pending > 0 || r.bufferCounts.accepted > 0;
+        return (
+          <Space size={4} wrap>
+            <Tooltip title={isActive ? "Mission en cours…" : "Lancer le scraping"}>
+              <Button
+                size="small"
+                type="primary"
+                icon={isActive ? <Spin size="small" /> : <PlayCircleOutlined />}
+                disabled={isActive}
+                onClick={() => void runMission(r)}
+              >
+                Lancer
+              </Button>
+            </Tooltip>
+            <Tooltip title={hasPending ? "Voir et valider les leads" : "Aucun lead à valider"}>
+              <Badge dot={r.bufferCounts.pending > 0} offset={[-4, 4]}>
+                <Button
+                  size="small"
+                  icon={<FileSearchOutlined />}
+                  onClick={() => openResults(r)}
+                >
+                  Résultats
+                </Button>
+              </Badge>
+            </Tooltip>
+            <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />
+            <Button size="small" onClick={() => setLogsTarget(r)}>Logs</Button>
+            <Popconfirm
+              title={`Supprimer "${r.name}" ?`}
+              description="Cette action est irréversible."
+              onConfirm={() => void removeMission(r)}
+              okText="Supprimer"
+              okButtonProps={{ danger: true }}
+            >
+              <Button size="small" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+          </Space>
+        );
+      },
     },
   ];
 
   const bufCols: ColumnsType<BufferItem> = [
-    { title: "Nom", key: "name", render: (_, r) => r.raw.name || <Text type="secondary">—</Text> },
-    { title: "Entreprise", key: "company", render: (_, r) => r.raw.company || "—" },
-    { title: "Email", key: "email", render: (_, r) => r.raw.email || <Text type="secondary">—</Text> },
-    { title: "Tél", key: "phone", render: (_, r) => r.raw.phone || "—" },
-    { title: "Ville", key: "city", render: (_, r) => r.raw.city || "—" },
-    { title: "Source", key: "source", width: 110, render: (_, r) => <Tag>{r.raw.source}</Tag> },
     {
-      title: "Statut", key: "status", width: 130,
-      render: (_, r) =>
-        r.raw.duplicate
-          ? <Tag color="orange">doublon</Tag>
-          : r.status === "accepted"
-            ? <Tag color="green">accepté</Tag>
-            : r.status === "rejected"
-              ? <Tag color="red">rejeté</Tag>
-              : <Tag>à valider</Tag>,
+      title: "Entreprise",
+      key: "company",
+      ellipsis: true,
+      render: (_, r) => (
+        <Space direction="vertical" size={0}>
+          <Text strong style={{ fontSize: 13 }}>{r.raw.company || "—"}</Text>
+          {r.raw.sector && <Text type="secondary" style={{ fontSize: 11 }}>{r.raw.sector}</Text>}
+        </Space>
+      ),
+    },
+    {
+      title: "Contact",
+      key: "email",
+      width: 200,
+      ellipsis: true,
+      render: (_, r) => (
+        <Space direction="vertical" size={0}>
+          {r.raw.email
+            ? <Text copyable style={{ fontSize: 12 }}>{r.raw.email}</Text>
+            : <Text type="secondary" style={{ fontSize: 12 }}>—</Text>}
+          {r.raw.phone && <Text type="secondary" style={{ fontSize: 11 }}>{r.raw.phone}</Text>}
+        </Space>
+      ),
+    },
+    {
+      title: "Qualif.",
+      key: "email_status",
+      width: 110,
+      render: (_, r) => {
+        const st = r.raw.email_status;
+        if (!st) return <Text type="secondary">—</Text>;
+        const t = EMAIL_STATUS_TAG[st] ?? { color: "default", label: st };
+        return <Tag color={t.color}>{t.label}</Tag>;
+      },
+    },
+    {
+      title: "Note / Ville",
+      key: "rating",
+      width: 130,
+      render: (_, r) => (
+        <Space direction="vertical" size={0}>
+          {r.raw.rating != null && (
+            <Text style={{ fontSize: 12 }}>
+              ★ {r.raw.rating}{r.raw.reviews != null ? ` (${r.raw.reviews})` : ""}
+            </Text>
+          )}
+          {r.raw.city && <Text type="secondary" style={{ fontSize: 11 }}>{r.raw.city}</Text>}
+        </Space>
+      ),
+    },
+    {
+      title: "Statut",
+      key: "status",
+      width: 145,
+      filters: [
+        { text: "À valider", value: "pending" },
+        { text: "Accepté", value: "accepted" },
+        { text: "Rejeté", value: "rejected" },
+      ],
+      onFilter: (v, r) => r.status === v,
+      render: (_, r) => {
+        if (r.raw.duplicate) {
+          return (
+            <Tooltip title={r.raw.duplicateReason ?? "Doublon"}>
+              <Tag icon={<WarningOutlined />} color="orange">Doublon</Tag>
+            </Tooltip>
+          );
+        }
+        if (r.status === "accepted") return <Tag icon={<CheckCircleOutlined />} color="success">Accepté</Tag>;
+        if (r.status === "rejected") return <Tag icon={<CloseCircleOutlined />} color="error">Rejeté</Tag>;
+        return <Tag color="default">À valider</Tag>;
+      },
     },
   ];
+
+  const pendingTotal = missions.reduce((s, m) => s + m.bufferCounts.pending, 0);
+  const runningCount = missions.filter((m) => m.status === "running" || m.status === "queued").length;
 
   return (
     <div style={{ padding: "16px 24px" }}>
       <Space align="center" style={{ width: "100%", justifyContent: "space-between", marginBottom: 16 }} wrap>
-        <Space>
-          <RadarChartOutlined style={{ fontSize: 24, color: "#1677ff" }} />
-          <Title level={3} style={{ margin: 0 }}>Scraping</Title>
+        <Space align="center">
+          <RadarChartOutlined style={{ fontSize: 26, color: "#1677ff" }} />
+          <Title level={3} style={{ margin: 0 }}>Scraping Google Maps</Title>
+          {runningCount > 0 && (
+            <Badge
+              count={`${runningCount} en cours`}
+              style={{ backgroundColor: "#1677ff", fontSize: 11 }}
+            />
+          )}
+          {pendingTotal > 0 && (
+            <Badge
+              count={`${pendingTotal} à valider`}
+              style={{ backgroundColor: "#faad14", fontSize: 11 }}
+            />
+          )}
         </Space>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={() => fetchMissions()}>Actualiser</Button>
+          <Button icon={<ReloadOutlined />} onClick={() => fetchMissions()} loading={loading}>Actualiser</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Nouvelle mission</Button>
         </Space>
       </Space>
@@ -379,9 +513,19 @@ export default function ScrapingPage() {
       <Alert
         type="info"
         showIcon
-        style={{ marginBottom: 16 }}
-        message="Mode sandbox actif par défaut"
-        description="Les adapters génèrent des résultats mock réalistes (testable sans risque). Le scraping réel (Playwright + proxies, conforme CGU/robots.txt) s'active via la variable d'env SCRAPING_LIVE=true côté worker."
+        icon={<RocketOutlined />}
+        style={{ marginBottom: 20, borderRadius: 8 }}
+        message={<Text strong>Démarrage requis : scraper Google Maps sur le port 8000</Text>}
+        description={
+          <Space direction="vertical" size={2}>
+            <Text style={{ fontSize: 12 }}>
+              1) Dans <Text code>CRM_LEAD_SCRAPER</Text> : <Text code>./run.sh</Text> — 2) Ici : <Text code>yarn dev:all</Text>
+            </Text>
+            <Text style={{ fontSize: 12 }} type="secondary">
+              Le scraping s'exécute en arrière-plan (sans timeout). Une notification apparaît dès que les leads sont prêts à valider.
+            </Text>
+          </Space>
+        }
       />
 
       <Table
@@ -407,102 +551,309 @@ export default function ScrapingPage() {
       >
         <Form form={form} layout="vertical" style={{ marginTop: 12 }}>
           <Form.Item name="name" label="Nom de la mission" rules={[{ required: true, max: 100 }]}>
-            <Input placeholder="ex. Restaurants Lyon Q2" />
+            <Input placeholder="ex. Immobilier France Q2" />
           </Form.Item>
-          <Form.Item name="sources" label="Sources" rules={[{ required: true, message: "Au moins une source" }]}>
-            <Select
-              mode="multiple"
-              options={(Object.keys(SOURCE_LABELS) as Source[]).map((s) => ({ value: s, label: SOURCE_LABELS[s] }))}
-            />
-          </Form.Item>
-          <Form.Item name="keywords" label="Mots-clés / secteur">
-            <Input placeholder="ex. restaurant, traiteur, boulangerie" />
-          </Form.Item>
-          <Row gutter={12}>
-            <Col span={8}><Form.Item name="city" label="Ville"><Input placeholder="Lyon" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="country" label="Pays"><Input /></Form.Item></Col>
-            <Col span={8}><Form.Item name="radiusKm" label="Rayon (km)"><InputNumber min={0} max={2000} style={{ width: "100%" }} /></Form.Item></Col>
-          </Row>
-          <Row gutter={12}>
-            <Col span={8}><Form.Item name="companyType" label="Type d'entreprise"><Input placeholder="PME, TPE…" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="companySize" label="Taille"><Input placeholder="10-50" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="limit" label="Limite résultats"><InputNumber min={1} max={500} style={{ width: "100%" }} /></Form.Item></Col>
-          </Row>
-          <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>Débit & proxy (S-06)</Paragraph>
-          <Row gutter={12}>
-            <Col span={6}><Form.Item name="delayMs" label="Délai (ms)"><InputNumber min={0} max={60000} style={{ width: "100%" }} /></Form.Item></Col>
-            <Col span={6}><Form.Item name="retries" label="Retries"><InputNumber min={0} max={10} style={{ width: "100%" }} /></Form.Item></Col>
-            <Col span={6}><Form.Item name="rotateUserAgent" label="Rotation UA" valuePropName="checked"><Switch /></Form.Item></Col>
-            <Col span={6}><Form.Item name="schedule" label="Planification"><Select allowClear placeholder="Aucune" options={[{ value: "daily", label: "Quotidien" }, { value: "weekly", label: "Hebdo" }, { value: "monthly", label: "Mensuel" }]} /></Form.Item></Col>
-          </Row>
-          <Form.Item name="proxyUrl" label="Proxy URL (optionnel)"><Input placeholder="http://user:pass@proxy:port" /></Form.Item>
-
           <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
-            Pipeline automatisé (F4) — scraping → injection → relances IA automatiques
+            Paramètres envoyés au scraper Google Maps (port 8000)
           </Paragraph>
-          <Row gutter={12} align="middle">
+          <Form.Item name="keywords" label="Mots-clés" rules={[{ required: true, message: "Requis" }]}>
+            <Input placeholder="ex. Immobilier" />
+          </Form.Item>
+          <Row gutter={12}>
+            <Col span={8}><Form.Item name="city" label="Ville (optionnel)"><Input placeholder="Lyon" /></Form.Item></Col>
+            <Col span={8}><Form.Item name="country" label="Pays"><Input /></Form.Item></Col>
             <Col span={8}>
-              <Form.Item name="dailyQuota" label="Quota / jour" tooltip="Plafond de leads scrapés par exécution (ex. 100/jour)">
-                <InputNumber min={1} max={1000} style={{ width: "100%" }} placeholder="ex. 100" />
+              <Form.Item name="limit" label="Limite" rules={[{ required: true }]}>
+                <InputNumber min={1} max={120} style={{ width: "100%" }} />
               </Form.Item>
             </Col>
-            <Col span={6}>
-              <Form.Item name="autoPipelineEnabled" label="Auto-pipeline" valuePropName="checked" tooltip="Injecte automatiquement les leads non-doublons (sans validation manuelle)">
+          </Row>
+          <Row gutter={12}>
+            <Col span={8}>
+              <Form.Item name="locale" label="Locale">
+                <Select options={[
+                  { value: "fr-FR", label: "fr-FR" },
+                  { value: "en-US", label: "en-US" },
+                ]} />
+              </Form.Item>
+            </Col>
+            <Col span={5}>
+              <Form.Item name="detailed" label="Emails sites" valuePropName="checked" tooltip="Visiter chaque site (detailed)">
                 <Switch />
               </Form.Item>
             </Col>
-            <Col span={10}>
-              <Form.Item name="autoPipelineSequenceId" label="Séquence de relance IA" tooltip="Les leads injectés sont enrôlés ; les étapes avec aiPersonalize envoient des messages uniques par destinataire">
-                <Select
-                  allowClear
-                  placeholder="Aucune (injection seule)"
-                  options={sequences.map((s) => ({ value: s.id, label: s.name }))}
-                />
+            <Col span={5}>
+              <Form.Item name="filter_country" label="Filtre pays" valuePropName="checked">
+                <Switch />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="requireEmail" label="Email requis" valuePropName="checked" tooltip="Les fiches sans email ne sont pas enregistrées dans les résultats" initialValue={true}>
+                <Switch />
               </Form.Item>
             </Col>
           </Row>
+
+          <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>Planification</Paragraph>
+          <Row gutter={12}>
+            <Col span={8}>
+              <Form.Item name="scheduleMode" label="Mode">
+                <Select options={[
+                  { value: "manual", label: "Manuel (bouton Lancer)" },
+                  { value: "once", label: "Ponctuelle" },
+                  { value: "recurring", label: "Récurrente" },
+                ]} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item noStyle shouldUpdate={(p, c) => p.scheduleMode !== c.scheduleMode}>
+                {() => {
+                  const mode = form.getFieldValue("scheduleMode");
+                  if (mode === "manual") return null;
+                  return (
+                    <Form.Item name="scheduleRunAt" label={mode === "once" ? "Date & heure" : "Première exécution"}>
+                      <DatePicker showTime format="DD/MM/YYYY HH:mm" style={{ width: "100%" }} />
+                    </Form.Item>
+                  );
+                }}
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item noStyle shouldUpdate={(p, c) => p.scheduleMode !== c.scheduleMode}>
+                {() =>
+                  form.getFieldValue("scheduleMode") === "recurring" ? (
+                    <Form.Item name="scheduleFrequency" label="Fréquence">
+                      <Select options={[
+                        { value: "daily", label: "Quotidien" },
+                        { value: "weekly", label: "Hebdomadaire" },
+                        { value: "monthly", label: "Mensuel" },
+                      ]} />
+                    </Form.Item>
+                  ) : null
+                }
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item name="dailyQuota" label="Quota / exécution" tooltip="Plafond de leads scrapés par exécution (optionnel)">
+            <InputNumber min={1} max={1000} style={{ width: "100%" }} placeholder="ex. 100 (illimité si vide)" />
+          </Form.Item>
         </Form>
       </Modal>
 
       {/* Logs */}
-      <Drawer title={`Logs — ${logsTarget?.name}`} open={!!logsTarget} onClose={() => setLogsTarget(null)} width={560}>
-        <pre style={{ background: "#f5f5f5", padding: 12, borderRadius: 6, fontSize: 12, whiteSpace: "pre-wrap", maxHeight: "70vh", overflow: "auto" }}>
-          {logsTarget?.logs || "(aucun log)"}
-        </pre>
+      <Drawer
+        title={
+          <Space>
+            <FilterOutlined />
+            <span>Logs — {logsTarget?.name}</span>
+          </Space>
+        }
+        open={!!logsTarget}
+        onClose={() => setLogsTarget(null)}
+        width={580}
+      >
+        {logsTarget?.logs ? (
+          <Timeline
+            style={{ padding: "8px 0" }}
+            items={logsTarget.logs.split("\n").filter(Boolean).map((line, i) => ({
+              key: i,
+              color: line.toLowerCase().includes("erreur") || line.toLowerCase().includes("error")
+                ? "red"
+                : line.toLowerCase().includes("✓") || line.toLowerCase().includes("terminé")
+                  ? "green"
+                  : "blue",
+              children: <Text style={{ fontSize: 12 }}>{line}</Text>,
+            }))}
+          />
+        ) : (
+          <div style={{ textAlign: "center", padding: 40 }}>
+            <Text type="secondary">Aucun log disponible</Text>
+          </div>
+        )}
       </Drawer>
 
       {/* Résultats / validation (S-10) */}
       <Drawer
-        title={<Space><FileSearchOutlined /> Résultats — {resultsTarget?.name}</Space>}
+        title={
+          <Space>
+            <FileSearchOutlined style={{ color: "#1677ff" }} />
+            <span>Résultats — <Text strong>{resultsTarget?.name}</Text></span>
+          </Space>
+        }
         open={!!resultsTarget}
-        onClose={() => setResultsTarget(null)}
-        width={920}
+        onClose={() => {
+          setResultsTarget(null);
+          setInjectResult(null);
+          setSelectedBuf([]);
+        }}
+        width={1000}
         extra={
           <Space>
-            <Button icon={<CheckOutlined />} disabled={selectedBuf.length === 0} onClick={() => void reviewSelected("accepted")}>
+            <Button
+              icon={<CheckOutlined />}
+              disabled={selectedBuf.length === 0}
+              onClick={() => void reviewSelected("accepted")}
+            >
               Accepter ({selectedBuf.length})
             </Button>
-            <Button icon={<CloseOutlined />} danger disabled={selectedBuf.length === 0} onClick={() => void reviewSelected("rejected")}>
-              Rejeter
+            <Button
+              icon={<CloseOutlined />}
+              danger
+              disabled={selectedBuf.length === 0}
+              onClick={() => void reviewSelected("rejected")}
+            >
+              Rejeter ({selectedBuf.length})
             </Button>
             <Popconfirm
-              title="Injecter les leads acceptés dans le CRM ?"
-              description="Re-dédoublonnage automatique avant insertion."
+              title={<Text strong>Injecter dans le CRM ?</Text>}
+              description={
+                <Space direction="vertical" size={2}>
+                  <Text style={{ fontSize: 12 }}>
+                    {resultsTarget?.bufferCounts.accepted ?? 0} lead(s) accepté(s) seront ajoutés au CRM.
+                  </Text>
+                  <Text style={{ fontSize: 12 }} type="secondary">
+                    Un re-dédoublonnage est effectué automatiquement avant insertion.
+                  </Text>
+                </Space>
+              }
               onConfirm={() => void injectAccepted()}
-              okText="Injecter"
+              okText={injecting ? "Injection…" : "Confirmer l'injection"}
+              okButtonProps={{ icon: <DatabaseOutlined />, loading: injecting, disabled: injecting }}
+              icon={<DatabaseOutlined style={{ color: "#1677ff" }} />}
             >
-              <Button type="primary" icon={<CloudDownloadOutlined />}>Injecter dans le CRM</Button>
+              <Button
+                type="primary"
+                icon={injecting ? <Spin size="small" /> : <CloudDownloadOutlined />}
+                loading={injecting}
+                disabled={(resultsTarget?.bufferCounts.accepted ?? 0) === 0}
+              >
+                Injecter dans le CRM
+              </Button>
             </Popconfirm>
           </Space>
         }
       >
+        {/* Résumé statistiques */}
         {resultsTarget && (
-          <Row gutter={16} style={{ marginBottom: 16 }}>
-            <Col span={8}><Statistic title="À valider" value={resultsTarget.bufferCounts.pending} /></Col>
-            <Col span={8}><Statistic title="Acceptés" value={resultsTarget.bufferCounts.accepted} valueStyle={{ color: "#52c41a" }} /></Col>
-            <Col span={8}><Statistic title="Rejetés" value={resultsTarget.bufferCounts.rejected} valueStyle={{ color: "#ff4d4f" }} /></Col>
+          <Row gutter={16} style={{ marginBottom: 20 }}>
+            <Col span={6}>
+              <Card size="small" styles={{ body: { padding: "12px 16px" } }}>
+                <Statistic
+                  title="À valider"
+                  value={resultsTarget.bufferCounts.pending}
+                  valueStyle={{ color: "#faad14", fontSize: 24 }}
+                  suffix={<Text type="secondary" style={{ fontSize: 12 }}> leads</Text>}
+                />
+              </Card>
+            </Col>
+            <Col span={6}>
+              <Card size="small" styles={{ body: { padding: "12px 16px" } }}>
+                <Statistic
+                  title="Acceptés"
+                  value={resultsTarget.bufferCounts.accepted}
+                  valueStyle={{ color: "#52c41a", fontSize: 24 }}
+                  prefix={<CheckCircleOutlined />}
+                />
+              </Card>
+            </Col>
+            <Col span={6}>
+              <Card size="small" styles={{ body: { padding: "12px 16px" } }}>
+                <Statistic
+                  title="Rejetés / doublons"
+                  value={resultsTarget.bufferCounts.rejected}
+                  valueStyle={{ color: "#ff4d4f", fontSize: 24 }}
+                  prefix={<CloseCircleOutlined />}
+                />
+              </Card>
+            </Col>
+            <Col span={6}>
+              <Card size="small" styles={{ body: { padding: "12px 16px" } }}>
+                <Statistic
+                  title="Total buffer"
+                  value={
+                    resultsTarget.bufferCounts.pending +
+                    resultsTarget.bufferCounts.accepted +
+                    resultsTarget.bufferCounts.rejected
+                  }
+                  valueStyle={{ fontSize: 24 }}
+                />
+              </Card>
+            </Col>
           </Row>
         )}
+
+        {/* Résultat injection */}
+        {injecting && (
+          <Card style={{ marginBottom: 16, borderColor: "#1677ff", background: "#f0f7ff" }}>
+            <Space align="center" style={{ width: "100%", justifyContent: "center" }} direction="vertical">
+              <Spin size="large" />
+              <Text strong>Injection en cours…</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Re-dédoublonnage et création des leads dans le CRM. Veuillez patienter.
+              </Text>
+              <Progress percent={99} status="active" showInfo={false} style={{ width: 300 }} />
+            </Space>
+          </Card>
+        )}
+
+        {injectResult && !injecting && (
+          <Card
+            style={{ marginBottom: 16, borderColor: "#52c41a", background: "#f6ffed" }}
+            styles={{ body: { padding: 16 } }}
+          >
+            <Result
+              status="success"
+              icon={<CheckCircleOutlined style={{ color: "#52c41a", fontSize: 36 }} />}
+              title={
+                <Text strong style={{ fontSize: 16 }}>
+                  {injectResult.injected} lead{injectResult.injected > 1 ? "s" : ""} injecté{injectResult.injected > 1 ? "s" : ""} dans le CRM
+                </Text>
+              }
+              subTitle={
+                <Space size="large" style={{ marginTop: 4 }}>
+                  {injectResult.skippedDuplicate > 0 && (
+                    <Space size={4}>
+                      <WarningOutlined style={{ color: "#faad14" }} />
+                      <Text style={{ fontSize: 12 }}>{injectResult.skippedDuplicate} doublon(s) ignoré(s)</Text>
+                    </Space>
+                  )}
+                  {injectResult.skippedInvalid > 0 && (
+                    <Space size={4}>
+                      <CloseCircleOutlined style={{ color: "#ff4d4f" }} />
+                      <Text style={{ fontSize: 12 }}>{injectResult.skippedInvalid} invalide(s)</Text>
+                    </Space>
+                  )}
+                  {injectResult.skippedDuplicate === 0 && injectResult.skippedInvalid === 0 && (
+                    <Text style={{ fontSize: 12 }} type="secondary">Aucun doublon détecté</Text>
+                  )}
+                </Space>
+              }
+              style={{ padding: "8px 0" }}
+            />
+          </Card>
+        )}
+
+        {/* Barre de sélection */}
+        {selectedBuf.length > 0 && (
+          <Alert
+            style={{ marginBottom: 12, borderRadius: 6 }}
+            type="info"
+            showIcon
+            message={
+              <Space>
+                <Text>{selectedBuf.length} ligne(s) sélectionnée(s)</Text>
+                <Button size="small" icon={<CheckOutlined />} onClick={() => void reviewSelected("accepted")}>
+                  Accepter la sélection
+                </Button>
+                <Button size="small" danger icon={<CloseOutlined />} onClick={() => void reviewSelected("rejected")}>
+                  Rejeter la sélection
+                </Button>
+              </Space>
+            }
+          />
+        )}
+
         <Table
           rowKey="id"
           columns={bufCols}
@@ -510,8 +861,16 @@ export default function ScrapingPage() {
           loading={bufferLoading}
           size="small"
           scroll={{ x: 900 }}
-          rowSelection={{ selectedRowKeys: selectedBuf, onChange: (k) => setSelectedBuf(k as string[]) }}
-          pagination={{ pageSize: 20, showTotal: (t) => `${t} ligne(s)` }}
+          rowSelection={{
+            selectedRowKeys: selectedBuf,
+            onChange: (k) => setSelectedBuf(k as string[]),
+            getCheckboxProps: (r) => ({ disabled: r.raw.duplicate === true }),
+          }}
+          pagination={{
+            pageSize: 25,
+            showTotal: (t, range) => `${range[0]}–${range[1]} sur ${t} lead(s)`,
+            showSizeChanger: false,
+          }}
         />
       </Drawer>
     </div>

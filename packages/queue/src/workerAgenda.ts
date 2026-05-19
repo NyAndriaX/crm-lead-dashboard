@@ -8,7 +8,7 @@ const LOCK_MS: Record<string, number> = {
   "import-process": 25 * 60 * 1000,
   "imap-sync": 15 * 60 * 1000,
   "sequence-tick": 10 * 60 * 1000,
-  "scraping-run": 30 * 60 * 1000,
+  "scraping-run": Number(process.env.SCRAPING_JOB_LOCK_MS ?? 4 * 60 * 60 * 1000),
   "scraping-scheduler": 5 * 60 * 1000,
 };
 
