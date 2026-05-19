@@ -9,6 +9,7 @@ COPY package.json yarn.lock ./
 COPY apps/web/package.json apps/web/
 COPY apps/worker/package.json apps/worker/
 COPY packages/db/package.json packages/db/
+COPY packages/queue/package.json packages/queue/
 RUN yarn install --frozen-lockfile
 
 # --- build ---

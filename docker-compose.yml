@@ -1,75 +1,46 @@
-# Docker Compose — CRM Lead Dashboard (dev/preprod)
-# Services : nextjs · worker · mongo (replica set 1 nœud) · nginx
-# Pas de Redis : la file de tâches asynchrone est **@hokify/agenda** (MongoDB,
-# collection `crmAgendaJobs` par défaut) consommée par le worker.
-# Le service `scraper` (Python) sera ajouté ultérieurement.
+# Docker Compose — CRM Lead Dashboard
+# MongoDB externe (Atlas, VPS…) — DATABASE_URL dans .env
 #
-# Démarrer l'infra seule :   docker compose up -d mongo
-# Tout le stack :            docker compose up --build
+# docker compose up --build -d
+# docker compose logs -f
+
+networks:
+  crm:
+    driver: bridge
 
 services:
-  nextjs:
+
+  web:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
     env_file: .env
     environment:
-      DATABASE_URL: "mongodb://mongo:27017/crm?replicaSet=rs0"
-    depends_on:
-      mongo:
-        condition: service_healthy
-    networks: [crm-network]
+      NODE_ENV: production
+      SCRAPER_API_URL: "http://host.docker.internal:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [crm]
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
       interval: 30s
-      timeout: 5s
-      retries: 3
+      timeout: 10s
+      retries: 5
+      start_period: 20s
 
   worker:
     build:
       context: .
       dockerfile: apps/worker/Dockerfile
+    restart: unless-stopped
     env_file: .env
     environment:
-      DATABASE_URL: "mongodb://mongo:27017/crm?replicaSet=rs0"
+      NODE_ENV: production
+      SCRAPER_API_URL: "http://host.docker.internal:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [crm]
     depends_on:
-      mongo:
+      web:
         condition: service_healthy
-    networks: [crm-network]
-
-  mongo:
-    image: mongo:7
-    command: ["--replSet", "rs0", "--bind_ip_all"]
-    volumes:
-      - mongo-data:/data/db
-    networks: [crm-network]
-    healthcheck:
-      # Initialise le replica set au premier démarrage puis vérifie qu'il répond
-      test: >
-        mongosh --quiet --eval "
-          try { rs.status().ok } catch (e) {
-            rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}).ok
-          }
-        " | grep 1
-      interval: 10s
-      timeout: 10s
-      retries: 10
-      start_period: 20s
-
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      # - "443:443"   # activer avec les certificats en pré-prod
-    volumes:
-      - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      - nextjs
-    networks: [crm-network]
-
-networks:
-  crm-network:
-    driver: bridge
-
-volumes:
-  mongo-data:
