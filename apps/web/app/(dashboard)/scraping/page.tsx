@@ -3,7 +3,7 @@
 /**
  * Page /scraping — module Scraping (S-01 → S-10).
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   Alert, Badge, Button, Card, Col, DatePicker, Drawer, Form, Input, InputNumber,
@@ -94,7 +94,7 @@ function buildSchedulePlan(v: {
   };
 }
 
-export default function ScrapingPage() {
+function ScrapingPageInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const autoOpenRef = useRef<string | null>(searchParams.get("openResults"));
@@ -874,5 +874,13 @@ export default function ScrapingPage() {
         />
       </Drawer>
     </div>
+  );
+}
+
+export default function ScrapingPage() {
+  return (
+    <Suspense fallback={null}>
+      <ScrapingPageInner />
+    </Suspense>
   );
 }
