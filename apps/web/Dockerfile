@@ -17,6 +17,12 @@ FROM deps AS build
 COPY . .
 RUN yarn workspace @crm/db generate \
  && yarn workspace @crm/web build
+RUN apt-get update -y && \
+    apt-get install -y curl && \
+    curl -fsSL http://security.debian.org/debian-security/pool/updates/main/o/openssl/libssl1.1_1.1.1w-0+deb11u1_amd64.deb \
+    -o /tmp/libssl1.1.deb && \
+    dpkg -i /tmp/libssl1.1.deb && \
+    rm /tmp/libssl1.1.deb
 
 # --- runtime (sortie standalone de Next.js) ---
 FROM base AS runtime
@@ -25,11 +31,5 @@ ENV PORT=3000
 COPY --from=build /app/apps/web/.next/standalone ./
 COPY --from=build /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build /app/apps/web/public ./apps/web/public
-RUN apt-get update -y && \
-    apt-get install -y curl && \
-    curl -fsSL http://security.debian.org/debian-security/pool/updates/main/o/openssl/libssl1.1_1.1.1w-0+deb11u1_amd64.deb \
-    -o /tmp/libssl1.1.deb && \
-    dpkg -i /tmp/libssl1.1.deb && \
-    rm /tmp/libssl1.1.deb
 EXPOSE 3000
 CMD ["node", "apps/web/server.js"]
