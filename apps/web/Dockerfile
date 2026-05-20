@@ -14,6 +14,7 @@ RUN yarn install --frozen-lockfile
 
 # --- build ---
 FROM deps AS build
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 COPY . .
 RUN yarn workspace @crm/db generate \
  && yarn workspace @crm/web build
@@ -22,6 +23,7 @@ RUN yarn workspace @crm/db generate \
 FROM base AS runtime
 ENV NODE_ENV=production
 ENV PORT=3000
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/apps/web/.next/standalone ./
 COPY --from=build /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build /app/apps/web/public ./apps/web/public
