@@ -1,0 +1,607 @@
+// CRM Lead Dashboard — schéma Prisma (provider MongoDB)
+// Réf. ticket CRM-003. Dérogation T-01 actée (MongoDB au lieu de PostgreSQL).
+//
+// Conventions :
+//  - PII des prospects (email, téléphone) + credentials SMTP/IMAP + secret TOTP
+//    stockés chiffrés AES-256-GCM dans des champs `Bytes` suffixés `Enc`
+//    (IV + tag inclus, voir lib/crypto.ts).
+//  - `emailHash` = HMAC-SHA256 de l'email normalisé → recherche / dédoublonnage.
+//  - Soft delete via `deletedAt` sur `leads`. Hard delete RGPD via transaction (CRM-072).
+//  - Index : voir le bloc d'index en fin de fichier + packages/db/prisma/manual-indexes.md (CRM-004).
+//  - Pas de Redis : la file de tâches asynchrones est la collection `jobs` (model Job),
+//    consommée par le worker en polling (apps/worker).
+//
+// NOTE périmètre : les collections `ScrapingMission` / `ScrapedLeadBuffer` sont
+// définies pour rester conformes au CDC, mais NON exploitées dans la phase
+// "site web + dashboard" en cours (module scraper Python livré ultérieurement).
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextIndex"]
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Enums
+// ──────────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  MANAGER
+  COMMERCIAL
+  LECTEUR
+}
+
+enum LeadStatus {
+  NOUVEAU
+  CONTACTE
+  QUALIFIE
+  EN_DISCUSSION
+  CONVERTI
+  PERDU
+}
+
+enum EmailStatus {
+  UNKNOWN
+  VALID
+  SOFT_BOUNCE
+  HARD_BOUNCE
+  UNSUBSCRIBED
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  PAUSED
+  DONE
+  CANCELLED
+}
+
+enum EmailEventType {
+  SENT
+  DELIVERED
+  OPEN
+  CLICK
+  BOUNCE
+  COMPLAINT
+  UNSUBSCRIBE
+  REPLIED
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+// ──────────────────────────────────────────────────────────────
+// Utilisateurs / sécurité
+// ──────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  email         String    @unique // email de connexion (compte interne, pas de la PII prospect)
+  passwordHash  String // bcrypt cost 12
+  name          String
+  role          Role      @default(LECTEUR)
+  teamId        String?   @db.ObjectId
+  totpSecretEnc Bytes? // secret TOTP chiffré AES-256-GCM
+  twoFactorOn   Boolean   @default(false)
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  invitedAt     DateTime?
+  inviteToken   String?
+  tokenVersion  Int       @default(0) // incrémenté au logout forcé → invalide les refresh tokens
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  team          Team?          @relation(fields: [teamId], references: [id])
+  assignedLeads Lead[]         @relation("LeadAssignee")
+  leadViews     LeadView[]
+  importJobs    ImportJob[]
+  notifications Notification[]
+  templateBlocks TemplateBlock[]
+
+  @@map("users")
+}
+
+model Team {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  createdAt DateTime @default(now())
+
+  members User[]
+
+  @@map("teams")
+}
+
+model AuditLog {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String?  @db.ObjectId
+  action     String // ex: "lead.update", "campaign.send"
+  entityType String?
+  entityId   String?
+  ip         String?
+  diff       Json?
+  createdAt  DateTime @default(now()) // TTL index 12 mois (cf. bloc index)
+
+  @@index([entityType, entityId])
+  @@index([userId, createdAt])
+  @@map("auditLogs")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Leads
+// ──────────────────────────────────────────────────────────────
+
+model Lead {
+  id          String      @id @default(auto()) @map("_id") @db.ObjectId
+  emailEnc    Bytes?
+  emailHash   String? // HMAC-SHA256 — unicité gérée applicativement (null autorisés)
+  phoneEnc    Bytes?
+  firstName   String?
+  lastName    String?
+  company     String?
+  website     String?
+  sector      String?
+  city        String?
+  country     String?
+  source      String?
+  status      LeadStatus  @default(NOUVEAU)
+  emailStatus EmailStatus @default(UNKNOWN)
+  score       Int         @default(0)
+  tags        String[]    @default([])
+  notes       String?
+  assignedToId String?    @db.ObjectId
+  pipelineStageId String? @db.ObjectId
+  enrichment  Json? // firmographie / réseaux / actu — alimenté plus tard
+  lastActionAt DateTime?
+  lastReplyAt DateTime?
+  customFields Json?
+  deletedAt   DateTime? // soft delete
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  assignedTo     User?            @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  pipelineStage  PipelineStage?   @relation(fields: [pipelineStageId], references: [id])
+  history        LeadHistory[]
+  pipeline       LeadPipeline?
+  inboxMessages  InboxMessage[]
+  emailEvents    EmailEvent[]
+  sequenceLeads  SequenceLead[]
+
+  @@index([status, createdAt])
+  @@index([assignedToId, status])
+  @@index([score(sort: Desc)])
+  @@fulltext([firstName, lastName, company, notes])
+  @@map("leads")
+}
+
+model LeadHistory {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  leadId    String   @db.ObjectId
+  userId    String?  @db.ObjectId
+  type      String // "status_change" | "note" | "email_sent" | "assigned" | ...
+  payload   Json?
+  createdAt DateTime @default(now()) // TTL index 12 mois
+
+  lead Lead @relation(fields: [leadId], references: [id])
+
+  @@index([leadId, createdAt])
+  @@map("leadHistory")
+}
+
+model LeadView {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  name      String
+  filters   Json
+  columns   Json
+  shared    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("leadViews")
+}
+
+model Tag {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String   @unique
+  color     String?
+  createdAt DateTime @default(now())
+
+  @@map("tags")
+}
+
+model Blacklist {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  emailHash String   @unique
+  reason    String? // "unsubscribe" | "hard_bounce" | "manual" | "complaint"
+  createdAt DateTime @default(now())
+
+  @@map("blacklist")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Pipeline / Kanban
+// ──────────────────────────────────────────────────────────────
+
+model PipelineStage {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  order     Int
+  color     String?
+  createdAt DateTime @default(now())
+
+  leads        Lead[]
+  leadPipeline LeadPipeline[]
+
+  @@map("pipelineStages")
+}
+
+model LeadPipeline {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  leadId    String   @unique @db.ObjectId
+  stageId   String   @db.ObjectId
+  position  Int      @default(0)
+  enteredAt DateTime @default(now())
+
+  lead  Lead          @relation(fields: [leadId], references: [id])
+  stage PipelineStage @relation(fields: [stageId], references: [id])
+
+  @@index([stageId, position])
+  @@map("leadPipeline")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Emailing / campagnes
+// ──────────────────────────────────────────────────────────────
+
+model SmtpConfig {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  label       String
+  host        String
+  port        Int
+  loginEnc    Bytes
+  passwordEnc Bytes
+  fromName    String?
+  fromEmail   String?
+  dailyLimit  Int      @default(200)
+  sentToday   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  campaigns Campaign[]
+
+  @@map("smtpConfigs")
+}
+
+model ImapConfig {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  label       String
+  host        String
+  port        Int
+  loginEnc    Bytes
+  passwordEnc Bytes
+  isActive    Boolean  @default(true)
+  lastSyncAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  @@map("imapConfigs")
+}
+
+model Template {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  category  String?
+  subject   String
+  bodyHtml  String
+  variables String[] @default([])
+  isPreset  Boolean  @default(false)
+  isPublic  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campaigns Campaign[]
+
+  @@map("templates")
+}
+
+model TemplateBlock {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  category    String   // header, footer, cta, content, signature, etc.
+  description String?
+  htmlContent String
+  variables   String[] @default([])
+  isPublic    Boolean  @default(true) // visible par tous les utilisateurs
+  createdById String?  @db.ObjectId
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User? @relation(fields: [createdById], references: [id])
+
+  @@map("templateBlocks")
+}
+
+model Segment {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  filters   Json
+  createdAt DateTime @default(now())
+
+  campaigns Campaign[]
+
+  @@map("segments")
+}
+
+model Campaign {
+  id          String         @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  status      CampaignStatus @default(DRAFT)
+  templateId  String?        @db.ObjectId
+  segmentId   String?        @db.ObjectId
+  smtpConfigId String?       @db.ObjectId
+  subject     String?
+  scheduledAt DateTime?
+  dailyLimit  Int?
+  stats       Json? // compteurs dénormalisés (sent/open/click/...)
+  /// Options M-06→M-14 : throttleMinDelayMs, bodyHtmlOverride, ab{...}, warmup{...}, sendOffset, etc.
+  config      Json?
+  createdById String?        @db.ObjectId
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  template   Template?    @relation(fields: [templateId], references: [id])
+  segment    Segment?     @relation(fields: [segmentId], references: [id])
+  smtpConfig SmtpConfig?  @relation(fields: [smtpConfigId], references: [id])
+  emailEvents EmailEvent[]
+
+  @@map("campaigns")
+}
+
+model EmailEvent {
+  id         String         @id @default(auto()) @map("_id") @db.ObjectId
+  campaignId String?        @db.ObjectId
+  leadId     String?        @db.ObjectId
+  sequenceId String?        @db.ObjectId
+  eventType  EmailEventType
+  token      String? // token de tracking (pixel / clic / unsubscribe)
+  url        String? // URL cliquée (eventType=CLICK)
+  meta       Json?
+  occurredAt DateTime       @default(now())
+
+  campaign Campaign? @relation(fields: [campaignId], references: [id])
+  lead     Lead?     @relation(fields: [leadId], references: [id])
+
+  @@index([campaignId, eventType, occurredAt])
+  @@index([leadId, occurredAt])
+  @@map("emailEvents")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Réponses / inbox
+// ──────────────────────────────────────────────────────────────
+
+model InboxMessage {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  leadId      String?  @db.ObjectId
+  messageId   String // Message-ID SMTP (threading)
+  inReplyTo   String?
+  direction   String // "inbound" | "outbound"
+  fromEnc     Bytes
+  toEnc       Bytes
+  subject     String?
+  bodyText    String?
+  bodyHtml    String?
+  category    String? // "interesse" | "pas_interesse" | "hors_sujet" | "rappel" | "auto_reply"
+  isAutoReply Boolean  @default(false)
+  isRead      Boolean  @default(false)
+  receivedAt  DateTime @default(now())
+
+  lead Lead? @relation(fields: [leadId], references: [id])
+
+  @@index([leadId, receivedAt])
+  @@index([messageId])
+  @@map("inboxMessages")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Relances / séquences
+// ──────────────────────────────────────────────────────────────
+
+model Sequence {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  steps     Json // [{ delayDays, templateId, stopOnReply }]
+  maxSteps  Int?
+  isPaused  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sequenceLeads SequenceLead[]
+
+  @@map("sequences")
+}
+
+model SequenceLead {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  sequenceId   String    @db.ObjectId
+  leadId       String    @db.ObjectId
+  currentStep  Int       @default(0)
+  nextSendAt   DateTime?
+  sentCount    Int       @default(0)
+  status       String    @default("active") // "active" | "paused" | "stopped" | "completed"
+  stoppedReason String?
+  createdAt    DateTime  @default(now())
+
+  sequence Sequence @relation(fields: [sequenceId], references: [id])
+  lead     Lead     @relation(fields: [leadId], references: [id])
+
+  @@index([nextSendAt, status])
+  @@index([sequenceId, status])
+  @@map("sequenceLeads")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Import
+// ──────────────────────────────────────────────────────────────
+
+model ImportJob {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String   @db.ObjectId
+  fileName      String
+  filePath      String?
+  mapping       Json?
+  totalRows     Int      @default(0)
+  importedRows  Int      @default(0)
+  duplicateRows Int      @default(0)
+  errorRows     Int      @default(0)
+  status        String   @default("pending") // pending | running | done | failed
+  errorReport   String? // chemin du CSV d'erreurs
+  createdAt     DateTime @default(now()) // rétention 90 jours (TTL index)
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("importJobs")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Intégrations / divers
+// ──────────────────────────────────────────────────────────────
+
+model WebhookOut {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  url       String
+  events    String[] // newLead | leadReplied | leadStatusChanged | campaignDone | unsubscribe
+  secret    String // secret HMAC
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@map("webhooksOut")
+}
+
+model ApiCredit {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  provider  String   @unique // hunter | apollo | pappers | clearbit | googlePlaces ...
+  used      Int      @default(0)
+  quota     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@map("apiCredits")
+}
+
+model Notification {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  type      String
+  title     String
+  body      String?
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, isRead, createdAt])
+  @@map("notifications")
+}
+
+// Ancienne file Prisma `jobs` (polling manuel). Les nouveaux envois passent par **@hokify/agenda**
+// (collection `AGENDA_COLLECTION`, défaut `crmAgendaJobs`). Ce modèle reste pour l’historique / migrations.
+model Job {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  type        String // "email-send" | "imap-sync" | "import-process" | "scoring" | "notification" | ...
+  payload     Json?
+  status      JobStatus @default(PENDING)
+  priority    Int       @default(0)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  runAt       DateTime  @default(now()) // planification / backoff
+  lockedAt    DateTime? // pris par un worker
+  lockedBy    String? // identifiant du worker
+  result      Json?
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, runAt, priority])
+  @@map("jobs")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Configuration (singleton par type)
+// ──────────────────────────────────────────────────────────────
+
+// Document singleton (id = "default") stockant les poids de scoring configurés via l'UI admin.
+// Si absent, le scoring utilise les DEFAULT_WEIGHTS hardcodés dans lib/scoring.ts.
+model ScoringConfig {
+  id        String   @id @map("_id") // valeur fixe : "default"
+  weights   Json
+  updatedBy String?  @db.ObjectId
+  updatedAt DateTime @updatedAt
+
+  @@map("scoringConfig")
+}
+
+// Réglages du worker / file Agenda (singleton id = "default").
+model WorkerConfig {
+  id               String   @id @map("_id") // "default"
+  agendaTimezone   String   @default("UTC") // IANA, ex. Europe/Paris — tâches cron Agenda & logs worker
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("workerConfig")
+}
+
+// T-02 — Multi-tenant (optionnel). Scaffold "single-tenant par défaut" :
+// l'organisation `default` représente l'instance courante. La vraie
+// isolation par tenant (organizationId sur Lead/Campaign/…) est une
+// évolution phase 2 documentée dans docs/architecture/multi-tenant.md ;
+// on pose ici le modèle + le helper pour ne pas bloquer cette évolution.
+model Organization {
+  id        String   @id @map("_id") // "default" tant que single-tenant
+  name      String
+  plan      String   @default("standard") // standard | pro | enterprise
+  isActive  Boolean  @default(true)
+  settings  Json? // overrides éventuels (limites, branding…)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("organizations")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Scraper (hors périmètre courant — défini pour conformité CDC)
+// ──────────────────────────────────────────────────────────────
+
+model ScrapingMission {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  config    Json // mots-clés, localisation, sources, taille, langue...
+  schedule  String? // cron (planification récurrente)
+  status    String   @default("pending")
+  logs      String?
+  createdAt DateTime @default(now())
+
+  @@map("scrapingMissions")
+}
+
+model ScrapedLeadBuffer {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  missionId String   @db.ObjectId
+  emailHash String?
+  raw       Json
+  status    String   @default("pending") // pending | accepted | rejected
+  createdAt DateTime @default(now())
+
+  @@index([missionId, status])
+  @@map("scrapedLeadsBuffer")
+}

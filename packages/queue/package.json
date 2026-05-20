@@ -1,0 +1,20 @@
+{
+  "name": "@crm/queue",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "build": "echo \"(@crm/queue est consommé en TS directement, pas d'étape de build)\"",
+    "lint": "echo \"(no lint for @crm/queue)\"",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"(no tests for @crm/queue)\""
+  },
+  "dependencies": {
+    "@hokify/agenda": "^6.3.0",
+    "mongodb": "^7.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

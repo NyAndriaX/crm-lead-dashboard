@@ -1,0 +1,139 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+#__next,
+body {
+  min-height: 100vh;
+}
+
+.page-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.page-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.page-toolbar-actions .ant-btn,
+.page-toolbar-actions .ant-select {
+  flex: 1 1 auto;
+}
+
+.page-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.page-filters .ant-input-search,
+.page-filters .ant-select,
+.page-filters .ant-input-number,
+.page-filters .ant-input {
+  width: 100% !important;
+  max-width: 100%;
+}
+
+.page-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.page-hero {
+  border-radius: 16px;
+  padding: 20px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.page-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+
+.page-hero-actions .ant-btn {
+  flex: 1 1 auto;
+}
+
+.page-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+}
+
+.page-stack-between {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+@media (min-width: 576px) {
+  .page-hero {
+    padding: 24px 24px;
+  }
+
+  .page-hero-actions {
+    width: auto;
+    justify-content: flex-end;
+  }
+
+  .page-hero-actions .ant-btn {
+    flex: 0 0 auto;
+  }
+
+  .page-toolbar-actions {
+    width: auto;
+    justify-content: flex-end;
+  }
+
+  .page-toolbar-actions .ant-btn,
+  .page-toolbar-actions .ant-select {
+    flex: 0 0 auto;
+  }
+
+  .page-filters .ant-input-search {
+    flex: 1 1 280px;
+    max-width: 360px;
+  }
+
+  .page-filters .ant-select {
+    flex: 0 1 180px;
+    max-width: 220px;
+  }
+
+  .page-filters .ant-input {
+    flex: 0 1 160px;
+    max-width: 200px;
+  }
+
+  .page-filters .ant-input-number {
+    flex: 0 1 120px;
+    max-width: 140px;
+  }
+}
+
+@media (min-width: 768px) {
+  .page-hero {
+    padding: 28px 32px;
+    align-items: center;
+  }
+}
