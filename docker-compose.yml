@@ -13,6 +13,22 @@ networks:
 
 services:
 
+  # One-shot : génère le client Prisma puis initialise la base prod
+  # (admin + étapes pipeline + worker config). Idempotent — rejouable.
+  # Exige ADMIN_EMAIL et ADMIN_PASSWORD (>=10 car.) dans .env, sinon exit 1.
+  db-init:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    restart: "no"
+    env_file: .env
+    environment:
+      NODE_ENV: production
+    networks: [crm]
+    command: >
+      sh -c "yarn workspace @crm/db generate
+             && yarn workspace @crm/db init-prod"
+
   web:
     build:
       context: .
@@ -22,6 +38,9 @@ services:
     environment:
       NODE_ENV: production
     networks: [crm]
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
       interval: 30s
@@ -39,5 +58,7 @@ services:
       NODE_ENV: production
     networks: [crm]
     depends_on:
+      db-init:
+        condition: service_completed_successfully
       web:
         condition: service_healthy
