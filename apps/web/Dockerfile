@@ -16,8 +16,12 @@ RUN yarn install --frozen-lockfile
 FROM deps AS build
 RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 COPY . .
+ARG DATABASE_URL
+ENV DATABASE_URL=$DATABASE_URL
 RUN yarn workspace @crm/db generate \
+ && yarn workspace @crm/db init-prod \
  && yarn workspace @crm/web build
+
 
 # --- runtime (sortie standalone de Next.js) ---
 FROM base AS runtime
