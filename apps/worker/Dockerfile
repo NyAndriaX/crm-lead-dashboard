@@ -13,11 +13,8 @@ RUN yarn install --frozen-lockfile
 
 FROM deps AS build
 COPY . .
-ARG DATABASE_URL
-ENV DATABASE_URL=$DATABASE_URL
-RUN yarn workspace @crm/db generate \
- && yarn workspace @crm/db init-prod
+RUN yarn workspace @crm/db generate
 
 FROM build AS runtime
 ENV NODE_ENV=production
-CMD ["yarn", "workspace", "@crm/worker", "start"]
+CMD ["sh", "-c", "yarn workspace @crm/db init-prod && yarn workspace @crm/worker start"]

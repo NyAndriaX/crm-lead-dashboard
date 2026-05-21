@@ -16,12 +16,8 @@ RUN yarn install --frozen-lockfile
 FROM deps AS build
 RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 COPY . .
-ARG DATABASE_URL
-ENV DATABASE_URL=$DATABASE_URL
 RUN yarn workspace @crm/db generate \
- && yarn workspace @crm/db init-prod \
  && yarn workspace @crm/web build
-
 
 # --- runtime (sortie standalone de Next.js) ---
 FROM base AS runtime
@@ -31,5 +27,9 @@ RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists
 COPY --from=build /app/apps/web/.next/standalone ./
 COPY --from=build /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build /app/apps/web/public ./apps/web/public
+# Fichiers nécessaires pour init-prod au démarrage (connexion DB requise)
+COPY --from=build /app/packages/db/prisma ./packages/db/prisma
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build /app/node_modules/bcryptjs ./node_modules/bcryptjs
 EXPOSE 3000
-CMD ["node", "apps/web/server.js"]
+CMD ["sh", "-c", "node packages/db/prisma/init-prod.mjs && node apps/web/server.js"]
