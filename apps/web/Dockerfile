@@ -27,9 +27,9 @@ RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists
 COPY --from=build /app/apps/web/.next/standalone ./
 COPY --from=build /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build /app/apps/web/public ./apps/web/public
+# node_modules complets du build (superset du standalone, couvre mongodb + bcryptjs + deps)
+COPY --from=build /app/node_modules ./node_modules
 # Fichiers nécessaires pour init-prod au démarrage (connexion DB requise)
 COPY --from=build /app/packages/db/prisma ./packages/db/prisma
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build /app/node_modules/bcryptjs ./node_modules/bcryptjs
 EXPOSE 3000
 CMD ["sh", "-c", "node packages/db/prisma/init-prod.mjs && node apps/web/server.js"]
