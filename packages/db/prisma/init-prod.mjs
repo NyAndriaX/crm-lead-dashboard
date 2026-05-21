@@ -42,18 +42,26 @@ if (adminPassword.length < 10) {
 async function main() {
   const passwordHash = await bcrypt.hash(adminPassword, 12);
 
-  const admin = await prisma.user.upsert({
-    where: { email: adminEmail },
-    update: { name: adminName, role: "ADMIN", isActive: true },
-    create: {
-      email: adminEmail,
-      passwordHash,
-      name: adminName,
-      role: "ADMIN",
-      isActive: true,
-    },
-    select: { id: true, email: true },
-  });
+  const existingAdmin = await prisma.user.findUnique({ where: { email: adminEmail } });
+  let admin;
+  if (existingAdmin) {
+    admin = await prisma.user.update({
+      where: { email: adminEmail },
+      data: { name: adminName, role: "ADMIN", isActive: true },
+      select: { id: true, email: true },
+    });
+  } else {
+    admin = await prisma.user.create({
+      data: {
+        email: adminEmail,
+        passwordHash,
+        name: adminName,
+        role: "ADMIN",
+        isActive: true,
+      },
+      select: { id: true, email: true },
+    });
+  }
 
   for (let i = 0; i < PIPELINE_STAGES.length; i++) {
     const stage = PIPELINE_STAGES[i];
