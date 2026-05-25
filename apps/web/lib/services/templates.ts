@@ -124,7 +124,7 @@ export async function duplicateTemplate(sourceId: string) {
       category: src.category,
       subject: src.subject,
       bodyHtml: src.bodyHtml,
-      variables: [...src.variables],
+      variables: Array.isArray(src.variables) ? [...src.variables] : [],
       isPreset: false,
       isPublic: true,
     },

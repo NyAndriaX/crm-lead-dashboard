@@ -105,7 +105,7 @@ export async function duplicateTemplateBlock(sourceId: string, createdById?: str
       category: src.category,
       description: src.description,
       htmlContent: src.htmlContent,
-      variables: [...src.variables],
+      variables: Array.isArray(src.variables) ? [...src.variables] : [],
       isPublic: src.isPublic,
       createdById,
     },

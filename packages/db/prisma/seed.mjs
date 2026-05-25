@@ -236,9 +236,6 @@ async function seedLeads(users) {
       lastReplyAt,
       createdAt,
       updatedAt: lastActionAt,
-      // Force le champ à `null` (et non absent) pour que les requêtes
-      // `where: { deletedAt: null }` fonctionnent en MongoDB sans avoir
-      // à utiliser `{ isSet: false }` partout. Cf. lib/notDeleted.ts
       deletedAt: null,
     };
 

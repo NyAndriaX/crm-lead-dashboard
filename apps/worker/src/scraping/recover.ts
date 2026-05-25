@@ -1,18 +1,14 @@
 /**
- * Au démarrage du worker : nettoie les missions bloquées et **annule** les jobs
- * Agenda `scraping-run` incomplets (ne pas les relancer automatiquement).
+ * Au démarrage du worker : nettoie les missions bloquées et annule les jobs
+ * scraping-run incomplets (ne pas les relancer automatiquement).
  */
 import { prisma } from "@crm/db";
-import { agendaCollectionName } from "@crm/queue";
-import { MongoClient } from "mongodb";
 
-/** Ne pas interrompre un scraping long (défaut 4 h). */
 const STALE_MS = Number(process.env.SCRAPING_STALE_MS ?? 4 * 60 * 60 * 1000);
 
-export async function recoverStaleScrapingJobs(): Promise<{ missions: number; agendaJobs: number }> {
+export async function recoverStaleScrapingJobs(): Promise<number> {
   const cutoff = new Date(Date.now() - STALE_MS);
-  let missions = 0;
-  let agendaJobs = 0;
+  let recovered = 0;
 
   const stuck = await prisma.scrapingMission.findMany({
     where: { status: { in: ["running", "queued"] } },
@@ -20,8 +16,7 @@ export async function recoverStaleScrapingJobs(): Promise<{ missions: number; ag
   });
 
   for (const m of stuck) {
-    const ref = m.createdAt;
-    if (ref > cutoff) continue;
+    if (m.createdAt > cutoff) continue;
     await prisma.scrapingMission.update({
       where: { id: m.id },
       data: {
@@ -29,33 +24,23 @@ export async function recoverStaleScrapingJobs(): Promise<{ missions: number; ag
         logs: `${m.logs ?? ""}\n[recovery] Interrompu (redémarrage worker). Cliquez « Lancer » pour réessayer.`,
       },
     });
-    missions++;
+    recovered++;
     console.warn(`[worker] [scraping] mission récupérée (stale): ${m.id} « ${m.name} »`);
   }
 
-  const uri = process.env.DATABASE_URL?.trim();
-  if (uri) {
-    const client = new MongoClient(uri);
-    try {
-      await client.connect();
-      const col = client.db().collection(agendaCollectionName());
-      // Jobs verrouillés sans fin = crash worker — on les supprime (pas de relance auto).
-      const delLocked = await col.deleteMany({
-        name: "scraping-run",
-        lockedAt: { $exists: true, $ne: null },
-        $or: [{ lastFinishedAt: null }, { lastFinishedAt: { $exists: false } }],
-        lastRunAt: { $lt: cutoff },
-      });
-      agendaJobs += delLocked.deletedCount;
-      if (delLocked.deletedCount > 0) {
-        console.warn(
-          `[worker] [scraping] ${delLocked.deletedCount} job(s) Agenda incomplet(s) annulé(s) (pas de relance auto)`,
-        );
-      }
-    } finally {
-      await client.close();
-    }
+  const staleJobs = await prisma.job.updateMany({
+    where: {
+      type: "scraping-run",
+      status: "RUNNING",
+      lockedAt: { lt: cutoff },
+    },
+    data: { status: "FAILED", lastError: "Stale job recovered at worker startup", lockedAt: null, lockedBy: null },
+  });
+
+  if (staleJobs.count > 0) {
+    console.warn(`[worker] [scraping] ${staleJobs.count} job(s) incomplet(s) annulé(s)`);
+    recovered += staleJobs.count;
   }
 
-  return { missions, agendaJobs };
+  return recovered;
 }

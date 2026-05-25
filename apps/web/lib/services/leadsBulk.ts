@@ -101,8 +101,9 @@ export async function bulkAddTags(ids: string[], tags: string[]): Promise<BulkRe
   });
   let succeeded = 0;
   for (const lead of leads) {
-    const next = Array.from(new Set([...(lead.tags ?? []), ...cleaned]));
-    if (next.length === (lead.tags ?? []).length) {
+    const currentTags = Array.isArray(lead.tags) ? (lead.tags as string[]) : [];
+    const next = Array.from(new Set([...currentTags, ...cleaned]));
+    if (next.length === currentTags.length) {
       succeeded++;
       continue;
     }
@@ -135,8 +136,9 @@ export async function bulkRemoveTags(ids: string[], tags: string[]): Promise<Bul
   });
   let succeeded = 0;
   for (const lead of leads) {
-    const next = (lead.tags ?? []).filter((t) => !toRemove.has(t));
-    if (next.length === (lead.tags ?? []).length) {
+    const currentTags = Array.isArray(lead.tags) ? (lead.tags as string[]) : [];
+    const next = currentTags.filter((t) => !toRemove.has(t));
+    if (next.length === currentTags.length) {
       succeeded++;
       continue;
     }

@@ -11,7 +11,7 @@
  * (substring) + debounce 300 ms côté client. Le text index Mongo (`@@fulltext`) reste
  * disponible pour un `findRaw({ $text })` ranké si besoin ultérieur.
  */
-import { Prisma, prisma, type Lead, buildLeadWhereFromSegmentFilters, LEAD_NOT_DELETED } from "@crm/db";
+import { Prisma, prisma, type Lead, buildLeadWhereFromSegmentFilters, LEAD_NOT_DELETED, asStringArray } from "@crm/db";
 import { decryptOrNull, emailHash, encryptOrNull, normalizeEmail } from "../crypto";
 import type {
   AssignLeadInput, ChangeStatusInput, CreateLeadInput, LeadFilters, ListLeadsQuery,
@@ -69,7 +69,7 @@ export function toDTO(l: Lead): LeadDTO {
     status: l.status,
     emailStatus: l.emailStatus,
     score: l.score,
-    tags: l.tags,
+    tags: asStringArray(l.tags),
     notes: l.notes,
     assignedToId: l.assignedToId,
     pipelineStageId: l.pipelineStageId,

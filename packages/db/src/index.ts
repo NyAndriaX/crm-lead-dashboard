@@ -15,6 +15,11 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 export * from "@prisma/client";
+
+/** Cast sûr d'un champ Prisma Json (ex. tags, variables, events) vers string[]. */
+export function asStringArray(val: unknown): string[] {
+  return Array.isArray(val) ? (val as string[]) : [];
+}
 export { LEAD_NOT_DELETED, buildLeadWhereFromSegmentFilters, type LeadSegmentFilters } from "./leadWhere";
 export { signEmailTrackToken, verifyEmailTrackToken, type EmailTrackKind, type EmailTrackPayload } from "./emailTrack";
 export {

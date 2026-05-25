@@ -1,26 +1,34 @@
-import type { Agenda } from "@hokify/agenda";
+import { prisma } from "@crm/db";
+import type { EnqueueOneOffOptions } from "./types";
 
-export type EnqueueOneOffOptions = {
-  runAt?: Date;
-  /** Valeur Agenda (souvent chaîne : "highest", "high", "normal", "low", "lowest" ou nombre). */
-  priority?: number | string;
-};
+function parsePriority(p: number | string | undefined): number {
+  if (p === undefined) return 0;
+  if (typeof p === "number") return p;
+  const map: Record<string, number> = {
+    lowest: -20,
+    low: -10,
+    normal: 0,
+    high: 10,
+    highest: 20,
+  };
+  return map[p.toLowerCase()] ?? 0;
+}
 
-/**
- * Crée un job unique planifié (sans démarrer le processeur Agenda — usage côté Next.js ou worker).
- */
+export type { EnqueueOneOffOptions };
+
 export async function enqueueOneOff(
-  agenda: Agenda,
+  _queueRef: unknown,
   name: string,
   data: unknown,
   opts: EnqueueOneOffOptions = {},
 ): Promise<void> {
-  await agenda.ready;
-  const job = agenda.create(name, (data ?? {}) as object);
-  job.schedule(opts.runAt ?? new Date());
-  if (opts.priority !== undefined) {
-    // parsePriority gère les nombres ; les libellés Agenda : lowest | low | normal | high | highest
-    job.priority(opts.priority as never);
-  }
-  await job.save();
+  await prisma.job.create({
+    data: {
+      type: name,
+      payload: (data ?? {}) as object,
+      status: "PENDING",
+      priority: parsePriority(opts.priority),
+      runAt: opts.runAt ?? new Date(),
+    },
+  });
 }

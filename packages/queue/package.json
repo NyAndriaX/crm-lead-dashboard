@@ -11,8 +11,7 @@
     "test": "echo \"(no tests for @crm/queue)\""
   },
   "dependencies": {
-    "@hokify/agenda": "^6.3.0",
-    "mongodb": "^7.2.0"
+    "@crm/db": "*"
   },
   "devDependencies": {
     "typescript": "^5.6.3"

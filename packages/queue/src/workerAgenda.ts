@@ -1,9 +1,8 @@
-import { Agenda } from "@hokify/agenda";
-import { agendaCollectionName } from "./collection";
+import { prisma } from "@crm/db";
 import { setWorkerAgenda } from "./workerAgendaRef";
 import type { WorkerJobHandler } from "./types";
 
-const LOCK_MS: Record<string, number> = {
+const LOCK_LIFETIME_MS: Record<string, number> = {
   "campaign-send": 35 * 60 * 1000,
   "import-process": 25 * 60 * 1000,
   "imap-sync": 15 * 60 * 1000,
@@ -25,35 +24,204 @@ const CONCURRENCY: Record<string, number> = {
   "scraping-scheduler": 1,
 };
 
-export async function createWorkerAgenda(): Promise<Agenda> {
-  const uri = process.env.DATABASE_URL?.trim();
-  if (!uri) throw new Error("DATABASE_URL manquant pour le worker Agenda.");
-  const processEvery = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 3000);
-  const maxConcurrency = Number(process.env.WORKER_CONCURRENCY ?? 5);
-  const agenda = new Agenda({
-    name: "crm-worker",
-    processEvery,
-    maxConcurrency,
-    defaultConcurrency: 3,
-    defaultLockLifetime: 10 * 60 * 1000,
-  });
-  await agenda.database(uri, agendaCollectionName());
-  await agenda.ready;
-  return agenda;
+export interface QueueWorker {
+  start(): void;
+  stop(): Promise<void>;
+  every(interval: string, jobName: string): Promise<void>;
 }
 
-export function registerWorkerJobHandlers(agenda: Agenda, handlers: Record<string, WorkerJobHandler>): void {
-  setWorkerAgenda(agenda);
-  for (const [name, fn] of Object.entries(handlers)) {
-    agenda.define(
-      name,
-      async (job) => {
-        await fn({ payload: job.attrs.data });
+const running = new Map<string, number>();
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+let handlers: Record<string, WorkerJobHandler> = {};
+let workerId = `worker-${process.pid}-${Date.now()}`;
+let stopping = false;
+
+function parseIntervalMs(interval: string): number {
+  const match = interval.match(/^(\d+)\s*(ms|milliseconds?|s|seconds?|m|minutes?|h|hours?)$/i);
+  if (!match) return 60_000;
+  const val = Number(match[1]);
+  const unit = (match[2] ?? "ms").toLowerCase();
+  if (unit.startsWith("ms") || unit.startsWith("millisecond")) return val;
+  if (unit.startsWith("s")) return val * 1000;
+  if (unit.startsWith("m")) return val * 60 * 1000;
+  if (unit.startsWith("h")) return val * 3600 * 1000;
+  return val;
+}
+
+async function processJob(jobId: string, type: string, payload: unknown): Promise<void> {
+  const handler = handlers[type];
+  if (!handler) {
+    await prisma.job.update({
+      where: { id: jobId },
+      data: { status: "FAILED", lastError: `No handler for job type: ${type}` },
+    });
+    return;
+  }
+
+  try {
+    const result = await handler({ payload });
+    await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: "DONE",
+        result: result !== undefined ? (result as object) : undefined,
+        lockedAt: null,
+        lockedBy: null,
       },
-      {
-        concurrency: CONCURRENCY[name] ?? 3,
-        lockLifetime: LOCK_MS[name] ?? 10 * 60 * 1000,
-      },
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const job = await prisma.job.findUnique({ where: { id: jobId } });
+    if (job && job.attempts + 1 >= job.maxAttempts) {
+      await prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: "FAILED",
+          lastError: msg,
+          attempts: { increment: 1 },
+          lockedAt: null,
+          lockedBy: null,
+        },
+      });
+    } else {
+      const backoffMs = Math.min(30_000 * Math.pow(2, (job?.attempts ?? 0)), 600_000);
+      await prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: "PENDING",
+          lastError: msg,
+          attempts: { increment: 1 },
+          runAt: new Date(Date.now() + backoffMs),
+          lockedAt: null,
+          lockedBy: null,
+        },
+      });
+    }
+  } finally {
+    const count = running.get(type) ?? 1;
+    if (count <= 1) running.delete(type);
+    else running.set(type, count - 1);
+  }
+}
+
+async function poll(): Promise<void> {
+  if (stopping) return;
+
+  const maxConcurrency = Number(process.env.WORKER_CONCURRENCY ?? 5);
+  let totalRunning = 0;
+  for (const c of running.values()) totalRunning += c;
+  if (totalRunning >= maxConcurrency) return;
+
+  const available = maxConcurrency - totalRunning;
+
+  const staleThreshold = new Date(Date.now() - 10 * 60 * 1000);
+  await prisma.job.updateMany({
+    where: {
+      status: "RUNNING",
+      lockedAt: { lt: staleThreshold },
+    },
+    data: {
+      status: "PENDING",
+      lockedAt: null,
+      lockedBy: null,
+    },
+  });
+
+  const pendingJobs = await prisma.job.findMany({
+    where: {
+      status: "PENDING",
+      runAt: { lte: new Date() },
+    },
+    orderBy: [{ priority: "desc" }, { runAt: "asc" }],
+    take: available,
+  });
+
+  for (const job of pendingJobs) {
+    const typeMax = CONCURRENCY[job.type] ?? 3;
+    const typeRunning = running.get(job.type) ?? 0;
+    if (typeRunning >= typeMax) continue;
+
+    const updated = await prisma.job.updateMany({
+      where: { id: job.id, status: "PENDING" },
+      data: { status: "RUNNING", lockedAt: new Date(), lockedBy: workerId },
+    });
+    if (updated.count === 0) continue;
+
+    running.set(job.type, typeRunning + 1);
+    processJob(job.id, job.type, job.payload).catch((e) =>
+      console.error(`[queue] unhandled error in job ${job.id}:`, e),
     );
   }
+}
+
+export async function createWorkerAgenda(): Promise<QueueWorker> {
+  const processEvery = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 3000);
+
+  const worker: QueueWorker = {
+    start() {
+      stopping = false;
+      pollTimer = setInterval(() => {
+        poll().catch((e) => console.error("[queue] poll error:", e));
+      }, processEvery);
+      poll().catch((e) => console.error("[queue] initial poll error:", e));
+    },
+
+    async stop() {
+      stopping = true;
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+      let retries = 0;
+      while (running.size > 0 && retries < 30) {
+        await new Promise((r) => setTimeout(r, 1000));
+        retries++;
+      }
+    },
+
+    async every(interval: string, jobName: string) {
+      const intervalMs = parseIntervalMs(interval);
+      const existing = await prisma.job.findFirst({
+        where: { type: jobName, status: { in: ["PENDING", "RUNNING"] } },
+      });
+      if (!existing) {
+        await prisma.job.create({
+          data: {
+            type: jobName,
+            payload: { recurring: true, intervalMs },
+            status: "PENDING",
+            runAt: new Date(),
+          },
+        });
+      }
+
+      const originalHandler = handlers[jobName];
+      if (originalHandler) {
+        handlers[jobName] = async (ctx) => {
+          try {
+            return await originalHandler(ctx);
+          } finally {
+            await prisma.job.create({
+              data: {
+                type: jobName,
+                payload: { recurring: true, intervalMs },
+                status: "PENDING",
+                runAt: new Date(Date.now() + intervalMs),
+              },
+            });
+          }
+        };
+      }
+    },
+  };
+
+  return worker;
+}
+
+export function registerWorkerJobHandlers(
+  worker: QueueWorker,
+  handlerMap: Record<string, WorkerJobHandler>,
+): void {
+  handlers = { ...handlerMap };
+  setWorkerAgenda(worker);
 }

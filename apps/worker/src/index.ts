@@ -1,9 +1,8 @@
 /**
  * CRM worker — process Node.js standalone (hors Next.js).
  *
- * File de tâches : **@hokify/agenda** sur MongoDB (collection `AGENDA_COLLECTION`, défaut `crmAgendaJobs`).
- * Fuseau horaire : `AGENDA_TIMEZONE` (env) ou document `workerConfig` (id `default`), appliqué via `process.env.TZ`
- * pour les libs Node et les futurs jobs Agenda en expression cron avec `timezone`.
+ * File de tâches : polling MySQL via Prisma (table `Job`).
+ * Fuseau horaire : `AGENDA_TIMEZONE` (env) ou document `workerConfig` (id `default`), appliqué via `process.env.TZ`.
  */
 import { prisma } from "@crm/db";
 import { createWorkerAgenda, registerWorkerJobHandlers } from "@crm/queue";
@@ -21,37 +20,33 @@ async function main() {
   const agendaTz = await resolveAgendaTimezone();
   process.env.TZ = agendaTz;
 
-  const agenda = await createWorkerAgenda();
-  registerWorkerJobHandlers(agenda, handlers);
+  const worker = await createWorkerAgenda();
+  registerWorkerJobHandlers(worker, handlers);
 
-  console.log(`[worker] Agenda @hokify — fuseau TZ=${agendaTz}, collection=${process.env.AGENDA_COLLECTION ?? "crmAgendaJobs"}`);
+  console.log(`[worker] MySQL queue — fuseau TZ=${agendaTz}`);
   console.log(`[worker] handlers: ${Object.keys(handlers).join(", ")}`);
 
-  // Jobs récurrents (R-01 collecte des réponses IMAP, RL-02 tick séquences).
-  // `every()` upsert atomiquement le job récurrent — sûr en redémarrage à chaud.
   const imapInterval = process.env.IMAP_SYNC_INTERVAL ?? "5 minutes";
   const sequenceInterval = process.env.SEQUENCE_TICK_INTERVAL ?? "1 minute";
   const scrapingSchedInterval = process.env.SCRAPING_SCHEDULER_INTERVAL ?? "1 hour";
-  await agenda.every(imapInterval, "imap-sync");
-  await agenda.every(sequenceInterval, "sequence-tick");
-  await agenda.every(scrapingSchedInterval, "scraping-scheduler");
+  await worker.every(imapInterval, "imap-sync");
+  await worker.every(sequenceInterval, "sequence-tick");
+  await worker.every(scrapingSchedInterval, "scraping-scheduler");
   console.log(`[worker] recurring: imap-sync every ${imapInterval}, sequence-tick every ${sequenceInterval}, scraping-scheduler every ${scrapingSchedInterval}`);
 
-  await agenda.start();
+  worker.start();
 
   const recovered = await recoverStaleScrapingJobs();
-  if (recovered.missions > 0 || recovered.agendaJobs > 0) {
-    console.log(
-      `[worker] scraping recovery: ${recovered.missions} mission(s), ${recovered.agendaJobs} job(s) Agenda`,
-    );
+  if (recovered > 0) {
+    console.log(`[worker] scraping recovery: ${recovered} mission(s)`);
   }
 
   const stop = async (signal: string) => {
-    console.log(`[worker] ${signal} — arrêt Agenda…`);
+    console.log(`[worker] ${signal} — arrêt worker…`);
     try {
-      await agenda.stop();
+      await worker.stop();
     } catch (e) {
-      console.error("[worker] erreur agenda.stop:", e);
+      console.error("[worker] erreur worker.stop:", e);
     }
     await prisma.$disconnect();
     process.exit(0);

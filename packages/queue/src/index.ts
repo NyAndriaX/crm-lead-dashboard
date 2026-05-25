@@ -1,11 +1,10 @@
-export type { WorkerJobContext, WorkerJobHandler } from "./types";
-export { agendaCollectionName } from "./collection";
+export type { WorkerJobContext, WorkerJobHandler, EnqueueOneOffOptions } from "./types";
 export { setWorkerAgenda, getWorkerAgenda } from "./workerAgendaRef";
-export { enqueueOneOff, type EnqueueOneOffOptions } from "./enqueueOneOff";
+export { enqueueOneOff } from "./enqueueOneOff";
 export { getEnqueueAgenda, enqueueFromWeb } from "./enqueueSingleton";
 export { createWorkerAgenda, registerWorkerJobHandlers } from "./workerAgenda";
+export type { QueueWorker } from "./workerAgenda";
 
-/** Valide un identifiant IANA de fuseau horaire (ex. Europe/Paris). */
 export function isValidIanaTimeZone(tz: string): boolean {
   const t = tz.trim();
   if (!t) return false;

@@ -1,14 +1,14 @@
-import type { Agenda } from "@hokify/agenda";
+import type { QueueWorker } from "./workerAgenda";
 
-let workerAgenda: Agenda | null = null;
+let workerRef: QueueWorker | null = null;
 
-export function setWorkerAgenda(agenda: Agenda): void {
-  workerAgenda = agenda;
+export function setWorkerAgenda(worker: QueueWorker): void {
+  workerRef = worker;
 }
 
-export function getWorkerAgenda(): Agenda {
-  if (!workerAgenda) {
-    throw new Error("Agenda worker non initialisé — appeler setWorkerAgenda avant les handlers.");
+export function getWorkerAgenda(): QueueWorker {
+  if (!workerRef) {
+    throw new Error("Queue worker non initialisé — appeler setWorkerAgenda avant les handlers.");
   }
-  return workerAgenda;
+  return workerRef;
 }

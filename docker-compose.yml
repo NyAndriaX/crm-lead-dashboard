@@ -1,5 +1,5 @@
 # Docker Compose — CRM Lead Dashboard
-# MongoDB externe (Atlas, VPS…) — DATABASE_URL dans .env
+# MySQL/MariaDB — DATABASE_URL dans .env
 # ⚠️  Dans .env de prod, mettre SCRAPER_API_URL avec l'IP réelle du serveur
 #     (pas 127.0.0.1 qui pointe sur le container lui-même) :
 #     SCRAPER_API_URL="http://<IP_DU_SERVEUR>:8000"

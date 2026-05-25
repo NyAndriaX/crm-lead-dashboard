@@ -39,7 +39,7 @@ export const EVENT_LABELS: Record<WebhookEvent, string> = {
 export type WebhookItem = {
   id: string;
   url: string;
-  events: string[];
+  events: unknown;
   isActive: boolean;
   createdAt: Date;
 };
@@ -104,7 +104,7 @@ export async function emitWebhookEvent(
   payload: unknown,
 ): Promise<{ dispatched: number; failed: number }> {
   const targets = await prisma.webhookOut.findMany({
-    where: { isActive: true, events: { has: event } },
+    where: { isActive: true, events: { array_contains: event } },
     select: { id: true, url: true, secret: true },
   });
   if (targets.length === 0) return { dispatched: 0, failed: 0 };

@@ -44,7 +44,7 @@ export async function listAuditLogs(filter: AuditLogFilter): Promise<{
 
   const where: Prisma.AuditLogWhereInput = {};
   if (filter.userId) where.userId = filter.userId;
-  if (filter.action) where.action = { contains: filter.action, mode: "insensitive" };
+  if (filter.action) where.action = { contains: filter.action };
   if (filter.entityType) where.entityType = filter.entityType;
   if (filter.entityId) where.entityId = filter.entityId;
   if (filter.from || filter.to) {
@@ -56,7 +56,7 @@ export async function listAuditLogs(filter: AuditLogFilter): Promise<{
     const search = filter.search.trim();
     if (search) {
       where.OR = [
-        { action: { contains: search, mode: "insensitive" } },
+        { action: { contains: search } },
         { ip: { contains: search } },
         { entityId: { contains: search } },
       ];

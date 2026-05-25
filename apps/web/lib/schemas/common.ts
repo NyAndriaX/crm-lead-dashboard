@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, "ObjectId invalide");
+export const objectId = z.string().min(1, "ID invalide");
 
 export const paginationQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),

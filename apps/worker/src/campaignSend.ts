@@ -11,7 +11,7 @@ import {
   signEmailTrackToken,
   type LeadSegmentFilters,
 } from "@crm/db";
-import { getWorkerAgenda, enqueueOneOff, type WorkerJobContext } from "@crm/queue";
+import { enqueueOneOff, type WorkerJobContext } from "@crm/queue";
 import { aiPersonalizeEmail } from "./ai";
 
 const ALGO = "aes-256-gcm";
@@ -108,7 +108,7 @@ function pickVariant(leadId: string, cfg: CampaignCfg | null): "A" | "B" {
 }
 
 async function enqueueNext(type: string, payload: object, runAt: Date) {
-  await enqueueOneOff(getWorkerAgenda(), type, payload, { runAt, priority: 1 });
+  await enqueueOneOff(null, type, payload, { runAt, priority: 1 });
 }
 
 /** Nom standard de l'étape pipeline "premier contact" (cf. PIPELINE_STAGES seed). */

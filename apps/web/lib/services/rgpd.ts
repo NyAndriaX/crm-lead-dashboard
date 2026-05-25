@@ -123,7 +123,7 @@ export async function exportLead(leadId: string): Promise<LeadExport | null> {
       status: lead.status,
       emailStatus: lead.emailStatus,
       score: lead.score,
-      tags: lead.tags,
+      tags: lead.tags as string[],
       notes: lead.notes,
       assignedToId: lead.assignedToId,
       enrichment: lead.enrichment,

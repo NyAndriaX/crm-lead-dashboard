@@ -11,7 +11,7 @@ export async function leadExistsByPlaceId(placeId: string): Promise<boolean> {
   const found = await prisma.lead.findFirst({
     where: {
       deletedAt: null,
-      tags: { has: placeIdTag(placeId) },
+      tags: { array_contains: placeIdTag(placeId) },
     },
     select: { id: true },
   });
