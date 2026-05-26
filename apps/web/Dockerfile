@@ -38,4 +38,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --retries=5 --start-period=20s \
   CMD wget -qO- http://localhost:3000/api/health || exit 1
 
-CMD ["sh", "-c", "node packages/db/prisma/init-prod.mjs && node apps/web/server.js"]
+CMD ["sh", "-c", "npx prisma db push --schema=packages/db/prisma/schema.prisma --skip-generate && node packages/db/prisma/init-prod.mjs && node apps/web/server.js"]
