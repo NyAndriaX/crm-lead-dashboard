@@ -3,9 +3,74 @@
  * garde d'authentification + RBAC, gestion d'erreurs centralisée.
  */
 import { NextResponse } from "next/server";
+import { Prisma } from "@crm/db";
 import { ZodError, type ZodTypeAny, type z } from "zod";
 import { getSession, type AccessClaims } from "./auth";
 import { can, type Permission } from "./rbac";
+
+/** Erreurs Prisma / config fréquentes → message exploitable côté client (sans fuite de secrets). */
+function tryMapInfrastructureError(e: unknown): Response | null {
+  if (e instanceof Prisma.PrismaClientInitializationError) {
+    return NextResponse.json(
+      {
+        error: "database_unavailable",
+        message:
+          "Impossible de joindre la base de données. Vérifiez que le serveur SQL est démarré et que DATABASE_URL est correct (hôte accessible depuis l'application, port, identifiants).",
+      },
+      { status: 503 },
+    );
+  }
+  if (e instanceof Prisma.PrismaClientKnownRequestError) {
+    if (["P1001", "P1002", "P1003", "P1017"].includes(e.code)) {
+      return NextResponse.json(
+        {
+          error: "database_unavailable",
+          message:
+            "La base de données est injoignable ou la base n'existe pas. Vérifiez DATABASE_URL et l'état du serveur SQL.",
+        },
+        { status: 503 },
+      );
+    }
+  }
+  if (e instanceof Prisma.PrismaClientUnknownRequestError || e instanceof Prisma.PrismaClientRustPanicError) {
+    return NextResponse.json(
+      {
+        error: "database_error",
+        message: "Erreur du moteur de base de données. Réessayez dans quelques instants ou contactez l'administrateur.",
+      },
+      { status: 503 },
+    );
+  }
+  if (e instanceof Prisma.PrismaClientValidationError) {
+    return NextResponse.json(
+      { error: "database_validation_error", message: "Requête base de données invalide." },
+      { status: 400 },
+    );
+  }
+  if (e instanceof Error) {
+    if (e.message.startsWith("Configuration d'environnement invalide")) {
+      return NextResponse.json(
+        {
+          error: "misconfigured",
+          message:
+            "Le serveur est mal configuré : variables d'environnement manquantes ou invalides. Consultez les logs serveur pour le détail.",
+        },
+        { status: 503 },
+      );
+    }
+    if (e.message.includes("Démarrage PRODUCTION bloqué")) {
+      return NextResponse.json(
+        {
+          error: "misconfigured",
+          message:
+            "Démarrage refusé : secrets d'exemple ou non sécurisés détectés en production. Corrigez la configuration puis redémarrez.",
+        },
+        { status: 503 },
+      );
+    }
+  }
+  return null;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -59,8 +124,26 @@ export function handler<Ctx = unknown>(
           { status: 422 },
         );
       }
+      const infra = tryMapInfrastructureError(e);
+      if (infra) return infra;
+
       console.error("[api] unhandled error:", e);
-      return NextResponse.json({ error: "internal_error", message: "Erreur interne" }, { status: 500 });
+      const isDev = process.env.NODE_ENV === "development";
+      const verbose =
+        process.env.VERBOSE_INTERNAL_API_ERRORS === "true" || process.env.VERBOSE_INTERNAL_API_ERRORS === "1";
+      const err = e instanceof Error ? e : null;
+      const exposeMessage = (isDev || verbose) && Boolean(err?.message);
+      const message = exposeMessage
+        ? err!.message
+        : "Une erreur inattendue s'est produite. Si le problème persiste, contactez l'administrateur.";
+      return NextResponse.json(
+        {
+          error: "internal_error",
+          message,
+          ...((isDev || verbose) && err?.stack ? { details: { stack: err.stack } } : {}),
+        },
+        { status: 500 },
+      );
     }
   };
 }

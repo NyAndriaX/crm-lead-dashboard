@@ -4,7 +4,7 @@ Copier `.env.example` → `.env`. Ne jamais committer `.env`. En production, les
 
 | Variable | Obligatoire | Description |
 |---|---|---|
-| `DATABASE_URL` | ✅ | URI MongoDB. **Replica set requis** par Prisma (`?replicaSet=rs0`). |
+| `DATABASE_URL` | ✅ | URI MySQL / MariaDB pour Prisma (ex. `mysql://user:pass@host:3306/db`). |
 | `AUTH_JWT_SECRET` | ✅ | Secret de signature des JWT (access + refresh). `openssl rand -base64 48`. |
 | `JWT_ACCESS_TTL` | — | Durée de vie de l'access token (s). Défaut 900 (15 min). |
 | `JWT_REFRESH_TTL` | — | Durée de vie du refresh token (s). Défaut 604800 (7 j). |
@@ -13,6 +13,7 @@ Copier `.env.example` → `.env`. Ne jamais committer `.env`. En production, les
 | `NODE_ENV` | — | `development` / `test` / `production`. |
 | `APP_BASE_URL` | ✅ | Base URL publique (liens tracking, désabonnement, OpenAPI servers…). |
 | `INTERNAL_API_TOKEN` | — | Bearer pour les callbacks internes (ex. futur `/api/scraping/results`). |
+| `VERBOSE_INTERNAL_API_ERRORS` | — | Si `true` ou `1` : les réponses `internal_error` exposent le message (et la stack) d’exception. Réservé au dépannage (Docker, staging) ; **désactivé** en production publique. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | — | SMTP par défaut. En dev : Mailpit / Mailtrap. |
 | `WORKER_POLL_INTERVAL_MS` | — | Fréquence de scan Agenda côté worker (ms). Défaut **3000**. |
 | `WORKER_CONCURRENCY` | — | Nombre max de jobs Agenda exécutés en parallèle (global). Défaut **5**. |

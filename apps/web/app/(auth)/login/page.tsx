@@ -51,13 +51,28 @@ function LoginPageInner() {
       router.replace(params.get("next") || "/dashboard");
       router.refresh();
     } catch (e) {
-      const code = (e as AxiosError<{ error?: string; message?: string }>).response?.data?.error;
-      const msg = (e as AxiosError<{ message?: string }>).response?.data?.message;
-      if (code === "totp_required") {
-        setNeedTotp(true);
-        setError("Saisissez votre code 2FA.");
+      const ax = e as AxiosError<{ error?: string; message?: string }>;
+      const res = ax.response;
+      if (res == null) {
+        setError(
+          ax.message === "Network Error"
+            ? "Impossible de joindre le serveur (réseau). Vérifiez l'URL de l'application et que le service est démarré."
+            : "Aucune réponse du serveur. Réessayez ou contactez l'administrateur.",
+        );
       } else {
-        setError(msg ?? "Connexion impossible. Vérifiez vos identifiants.");
+        const code = res.data?.error;
+        const msg = res.data?.message;
+        if (code === "totp_required") {
+          setNeedTotp(true);
+          setError(msg ?? "Saisissez votre code 2FA.");
+        } else {
+          setError(
+            msg ??
+              (res.status === 503
+                ? "Service temporairement indisponible. Réessayez dans quelques instants."
+                : "Connexion impossible. Vérifiez vos identifiants."),
+          );
+        }
       }
     } finally {
       setLoading(false);
