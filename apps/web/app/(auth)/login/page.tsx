@@ -252,7 +252,7 @@ function LoginPageInner() {
               borderRadius: 16,
               background: isMobile ? "transparent" : "#fff",
             }}
-            bodyStyle={{ padding: isMobile ? 0 : 32 }}
+            styles={{ body: { padding: isMobile ? 0 : 32 } }}
           >
             <div style={{ marginBottom: 24 }}>
               <Title level={3} style={{ marginBottom: 4 }}>Bon retour parmi nous</Title>

@@ -68,7 +68,7 @@ function KpiCard({
   return (
     <Card
       style={{ borderTop: `3px solid ${color}`, height: "100%" }}
-      bodyStyle={{ padding: "20px 24px" }}
+      styles={{ body: { padding: "20px 24px" } }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>

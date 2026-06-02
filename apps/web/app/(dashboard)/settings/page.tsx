@@ -464,7 +464,7 @@ function OverviewTab() {
           { label: "Utilisateurs actifs", value: stats.users.active, color: "#52c41a", icon: <UserOutlined />, sub: `/ ${stats.users.total} comptes` },
         ].map(({ label, value, color, icon, sub }) => (
           <Col xs={24} sm={12} xl={6} key={label}>
-            <Card bodyStyle={{ padding: "16px 18px" }} style={{ borderTop: `3px solid ${color}` }}>
+            <Card styles={{ body: { padding: "16px 18px" } }} style={{ borderTop: `3px solid ${color}` }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div>
                   <Text type="secondary" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>{label}</Text>
@@ -854,7 +854,7 @@ function UsersTab() {
           { label: "Inactifs", value: users.length - activeCount, color: "#ff4d4f" },
         ].map(({ label, value, color }) => (
           <Col key={label}>
-            <Card size="small" bodyStyle={{ padding: "12px 20px" }}>
+            <Card size="small" styles={{ body: { padding: "12px 20px" } }}>
               <Statistic title={<Text style={{ fontSize: 12 }}>{label}</Text>} value={value} valueStyle={{ fontSize: 20, color }} />
             </Card>
           </Col>
