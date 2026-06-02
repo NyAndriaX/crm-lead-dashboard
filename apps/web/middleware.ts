@@ -29,7 +29,15 @@ function isPublic(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
 
+/** Journalise chaque requête en NODE_ENV=development (image runtime Dokploy / debug). */
+function logRequest(req: NextRequest) {
+  if (process.env.NODE_ENV !== "development") return;
+  const { pathname, search } = req.nextUrl;
+  console.log(`[http] ${req.method} ${pathname}${search}`);
+}
+
 export function middleware(req: NextRequest) {
+  logRequest(req);
   const { pathname } = req.nextUrl;
   if (isPublic(pathname)) return NextResponse.next();
 
