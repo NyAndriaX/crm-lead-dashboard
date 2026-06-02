@@ -76,7 +76,7 @@ export async function sendTransactionalEmail(args: {
   //    invitations / emails système sans config UI préalable.
   const envHost = process.env.SMTP_HOST?.trim();
   const envUser = process.env.SMTP_USER?.trim();
-  const envPass = process.env.SMTP_PASS;
+  const envPass = process.env.SMTP_PASS?.replace(/\s/g, "");
   if (envHost && envUser && envPass) {
     const port = Number(process.env.SMTP_PORT ?? 587) || 587;
     const transporter = nodemailer.createTransport({
