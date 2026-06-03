@@ -5,18 +5,29 @@
 import { prisma } from "@crm/db";
 
 const STALE_MS = Number(process.env.SCRAPING_STALE_MS ?? 4 * 60 * 60 * 1000);
+/** Missions en `running` sans fin (défaut 45 min — avant le stale global de 4 h). */
+const RUNNING_STALE_MS = Number(
+  process.env.SCRAPING_RUNNING_STALE_MS ?? 45 * 60 * 1000,
+);
 
 export async function recoverStaleScrapingJobs(): Promise<number> {
-  const cutoff = new Date(Date.now() - STALE_MS);
+  const cutoffQueued = new Date(Date.now() - STALE_MS);
+  const cutoffRunning = new Date(Date.now() - RUNNING_STALE_MS);
   let recovered = 0;
 
   const stuck = await prisma.scrapingMission.findMany({
     where: { status: { in: ["running", "queued"] } },
-    select: { id: true, name: true, logs: true, createdAt: true },
+    select: { id: true, name: true, logs: true, createdAt: true, status: true, config: true },
   });
 
   for (const m of stuck) {
-    if (m.createdAt > cutoff) continue;
+    if (m.status === "running") {
+      const cfg = m.config as { _runStartedAt?: string } | null;
+      const started = cfg?._runStartedAt ? new Date(cfg._runStartedAt) : m.createdAt;
+      if (started > cutoffRunning) continue;
+    } else if (m.createdAt > cutoffQueued) {
+      continue;
+    }
     await prisma.scrapingMission.update({
       where: { id: m.id },
       data: {

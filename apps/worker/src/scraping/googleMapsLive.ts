@@ -5,6 +5,7 @@ import {
   type MissionConfig,
   type ScrapedLead,
 } from "@crm/db";
+import { cleanEnvValue } from "../envUtil";
 import { scraperApiUrl, scraperFetchTimeoutMs } from "./env";
 
 /**
@@ -18,10 +19,10 @@ export async function fetchGoogleMapsScraper(cfg: MissionConfig): Promise<Scrape
   const body = toScraperRequestBody(normalized);
 
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  const apiKey = process.env.SCRAPER_API_KEY;
+  const apiKey = cleanEnvValue(process.env.SCRAPER_API_KEY);
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
-  const endpoint = process.env.SCRAPER_API_PATH?.trim() || "/scrape";
+  const endpoint = cleanEnvValue(process.env.SCRAPER_API_PATH) || "/scrape";
   const url = `${base}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
 
   const timeoutLabel =

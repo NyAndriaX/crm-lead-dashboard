@@ -76,16 +76,22 @@ export async function runScraping(ctx: WorkerJobContext): Promise<unknown> {
     void flushLogs().catch((e) => console.warn("[worker] flush logs:", e));
   };
 
+  const cfg = normalizeMissionConfig(mission.config);
+  const configWithRun = {
+    ...(mission.config as object),
+    _runStartedAt: new Date().toISOString(),
+  };
+
   await prisma.scrapingMission.update({
     where: { id: missionId },
     data: {
       status: "running",
       logs: "Démarrage en arrière-plan — vous serez notifié à la fin du scraping.",
+      config: configWithRun,
     },
   });
 
   try {
-    const cfg = normalizeMissionConfig(mission.config);
     const live = process.env.SCRAPING_LIVE ?? "(unset)";
     const api = process.env.SCRAPER_API_URL ?? "http://127.0.0.1:8000";
     log(`SCRAPING_LIVE=${live} · API=${api}`);

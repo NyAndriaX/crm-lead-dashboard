@@ -22,6 +22,16 @@ Copier `.env.example` → `.env`. Ne jamais committer `.env`. En production, les
 | `AGENDA_TIMEZONE` | — | Fuseau IANA (ex. `Europe/Paris`) : prioritaire sur `workerConfig.agendaTimezone`. Appliqué au processus worker via `TZ`. |
 | `SCORING_WEIGHTS` | — | JSON optionnel pour surcharger les poids du lead scoring (CRM-019). Par défaut : voir `apps/web/lib/scoring.ts` (`DEFAULT_WEIGHTS`). |
 | _(OpenAI)_ | — | **Par utilisateur** : clé API chiffrée en base, configurable dans **Mon compte → Intégration IA** (`/account`). Plus de `OPENAI_API_KEY` dans l'environnement. |
+| `SCRAPING_LIVE` | — | `true` = le worker appelle le service Python `CRM_LEAD_SCRAPER` (sinon sandbox). |
+| `SCRAPER_API_URL` | si LIVE | URL de base du scraper **sans** slash final. En prod Docker : URL publique, **pas** `127.0.0.1`. |
+| `SCRAPER_API_PATH` | — | Chemin POST, défaut `/scrape`. |
+| `SCRAPER_API_KEY` | — | Bearer si le scraper a `SCRAPER_API_KEY` dans son `.env`. |
+| `SCRAPER_HEALTH_TIMEOUT_MS` | — | Timeout du `GET /health` avant lancement (défaut **15000** ms côté web). |
+| `SCRAPER_TIMEOUT_MS` | — | Timeout HTTP du `POST /scrape` côté worker ; prod Dokploy : **660000** ; `0` = illimité. |
+| `SCRAPING_RUNNING_STALE_MS` | — | Mission `running` sans fin depuis ce délai → erreur au redémarrage worker (défaut 45 min). |
+| `SCRAPING_JOB_LOCK_MS` | — | Verrou Agenda du job `scraping-run` (défaut 4 h). |
+| `SCRAPING_STALE_MS` | — | Repasse les missions `running` bloquées en erreur après ce délai. |
+| `SCRAPING_SCHEDULER_INTERVAL` | — | Fréquence du cron planificateur (ex. `5 minutes`). |
 
 > Pas de `REDIS_URL` : la file asynchrone est **@hokify/agenda** sur MongoDB (collection `AGENDA_COLLECTION`, défaut `crmAgendaJobs`), consommée par `apps/worker`. L’API web planifie les jobs via le même connecteur sans lancer le processeur côté Next.js.
 >
