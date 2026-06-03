@@ -92,6 +92,10 @@ model User {
   invitedAt     DateTime?
   inviteToken   String?
   tokenVersion  Int       @default(0)
+  // Clé API OpenAI personnelle (AES-256-GCM), jamais exposée au client
+  openAiApiKeyEnc Bytes?
+  openAiModel     String?   @default("gpt-4o-mini")
+  openAiEnabled   Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

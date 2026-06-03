@@ -40,12 +40,21 @@ async function autoEnrichAndBrief(leadId: string): Promise<void> {
     await enrichLeadById(leadId, ["email", "emailVerify", "company", "news"]);
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
-      select: { firstName: true, lastName: true, company: true, sector: true, city: true, enrichment: true },
+      select: {
+        firstName: true,
+        lastName: true,
+        company: true,
+        sector: true,
+        city: true,
+        enrichment: true,
+        assignedToId: true,
+      },
     });
     if (!lead) return;
     const brief = await generateLeadAiBrief(
       { firstName: lead.firstName, lastName: lead.lastName, company: lead.company, sector: lead.sector, city: lead.city },
       lead.enrichment,
+      lead.assignedToId,
     );
     const enr = (lead.enrichment ?? {}) as Record<string, unknown>;
     await prisma.lead.update({

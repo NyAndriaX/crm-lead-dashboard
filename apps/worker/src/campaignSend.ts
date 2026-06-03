@@ -280,6 +280,7 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
     let finalSubject = subject;
     if (cfg?.aiPersonalize) {
       const ai = await aiPersonalizeEmail({
+        userId: campaign.createdById,
         subject,
         html: body,
         lead: {

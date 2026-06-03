@@ -17,16 +17,21 @@ const bodySchema = z.object({
 });
 
 export const POST = handler<Ctx>(async (req, { params }) => {
-  await requirePermission("inbox:reply");
+  const session = await requirePermission("inbox:reply");
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
   const input = await parseBody(req, bodySchema).catch(() => ({ category: undefined }));
 
-  const msg = await prisma.inboxMessage.findUnique({ where: { id } });
+  const msg = await prisma.inboxMessage.findUnique({
+    where: { id },
+    include: { lead: { select: { assignedToId: true } } },
+  });
   if (!msg) throw new ApiError(404, "Message introuvable", "not_found");
   if (msg.direction !== "inbound") {
     throw new ApiError(400, "Seuls les messages entrants peuvent être catégorisés", "not_inbound");
   }
+
+  const openAiUserId = msg.lead?.assignedToId ?? session.sub;
 
   let category: ReplyCategory;
   let source: "ai" | "heuristic" | "manual" = "manual";
@@ -34,6 +39,7 @@ export const POST = handler<Ctx>(async (req, { params }) => {
     category = input.category;
   } else {
     const result = await categorizeReply({
+      userId: openAiUserId,
       subject: msg.subject,
       bodyText: msg.bodyText,
       bodyHtml: msg.bodyHtml,

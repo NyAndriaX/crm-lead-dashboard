@@ -1,14 +1,8 @@
 /**
  * Brief de qualification IA d'un lead (A1 / feature F1).
- *
- * À partir des données du lead + de son enrichissement, produit :
- *  - summary : 2-3 phrases qui qualifient/"chauffent" le lead
- *  - angle   : l'angle d'approche commercial recommandé
- *  - score   : 0-100 (potentiel estimé)
- *
- * OpenAI si OPENAI_API_KEY, sinon fallback déterministe (toujours testable).
- * Ne jette jamais : en cas d'échec, retourne le fallback.
+ * Utilise la clé OpenAI de l'utilisateur fourni.
  */
+import { openAiChatCompletion, resolveOpenAiCredentials } from "@crm/db";
 
 export type LeadAiBrief = {
   summary: string;
@@ -55,11 +49,12 @@ function fallbackBrief(lead: LeadCtx, enrichment: unknown): Omit<LeadAiBrief, "s
 export async function generateLeadAiBrief(
   lead: LeadCtx,
   enrichment: unknown,
+  userId?: string | null,
 ): Promise<LeadAiBrief> {
   const at = new Date().toISOString();
   const fb = fallbackBrief(lead, enrichment);
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) return { ...fb, source: "fallback", at };
+  const credentials = await resolveOpenAiCredentials(userId);
+  if (!credentials) return { ...fb, source: "fallback", at };
 
   const e = (enrichment ?? {}) as Record<string, unknown>;
   const news = (e.news as { items?: { title: string }[] } | undefined)?.items ?? [];
@@ -74,30 +69,25 @@ export async function generateLeadAiBrief(
   ].filter(Boolean).join("\n");
 
   try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: process.env.OPENAI_AUTOPILOT_MODEL ?? "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content:
-              "Tu es un SDR B2B. À partir des infos d'un lead, renvoie UNIQUEMENT un JSON " +
-              '{"summary": string (2-3 phrases qui qualifient et chauffent le lead, en français), ' +
-              '"angle": string (angle d\'approche commercial concret), "score": number (0-100, potentiel)}. ' +
-              "Pas de markdown.",
-          },
-          { role: "user", content: ctx },
-        ],
-        temperature: 0.5,
-        max_tokens: 300,
-        response_format: { type: "json_object" },
-      }),
+    const res = await openAiChatCompletion({
+      credentials,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Tu es un SDR B2B. À partir des infos d'un lead, renvoie UNIQUEMENT un JSON " +
+            '{"summary": string (2-3 phrases qui qualifient et chauffent le lead, en français), ' +
+            '"angle": string (angle d\'approche commercial concret), "score": number (0-100, potentiel)}. ' +
+            "Pas de markdown.",
+        },
+        { role: "user", content: ctx },
+      ],
+      temperature: 0.5,
+      maxTokens: 300,
+      json: true,
     });
     if (!res.ok) return { ...fb, source: "fallback", at };
-    const j = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    const parsed = JSON.parse(j.choices?.[0]?.message?.content ?? "{}") as Partial<LeadAiBrief>;
+    const parsed = JSON.parse(res.content) as Partial<LeadAiBrief>;
     if (!parsed.summary) return { ...fb, source: "fallback", at };
     return {
       summary: String(parsed.summary).slice(0, 800),

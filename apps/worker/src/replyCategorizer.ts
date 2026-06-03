@@ -1,17 +1,8 @@
 /**
  * Catégorisation automatique des réponses entrantes (R-04).
- *
- * Stratégie :
- *  1. Si `OPENAI_API_KEY` est défini → appel GPT-4o-mini (réponse JSON courte).
- *  2. Sinon → fallback heuristique sur mots-clés FR/EN.
- *
- * Catégories possibles (alignées sur InboxMessage.category) :
- *  - "interesse"       : signal d'achat / questions sur le produit / RDV demandé
- *  - "pas_interesse"   : refus explicite
- *  - "hors_sujet"      : question administrative / mauvaise adresse
- *  - "rappel"          : demande de recontact ultérieur
- *  - "auto_reply"      : auto-reply (déjà détecté par headers, ici en redondance)
+ * Utilise la clé OpenAI de l'utilisateur assigné au lead (si fourni).
  */
+import { openAiChatCompletion, resolveOpenAiCredentials } from "@crm/db";
 
 export type ReplyCategory =
   | "interesse"
@@ -55,6 +46,7 @@ function heuristic(subject: string | null, body: string | null): ReplyCategory {
 }
 
 export async function categorizeReply(args: {
+  userId?: string | null;
   subject: string | null;
   bodyText: string | null;
   bodyHtml: string | null;
@@ -65,49 +57,37 @@ export async function categorizeReply(args: {
   const stripped = args.bodyText
     ?? (args.bodyHtml ? args.bodyHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : null)
     ?? "";
-  // Clip pour la requête IA (et pour les logs)
   const body = stripped.slice(0, 2000);
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
+  const credentials = await resolveOpenAiCredentials(args.userId);
+  if (!credentials) {
     return { category: heuristic(args.subject, body), source: "heuristic" };
   }
 
   try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_REPLY_CATEGORIZER_MODEL ?? "gpt-4o-mini",
-        messages: [
-          { role: "system", content: PROMPT_SYSTEM },
-          {
-            role: "user",
-            content: `Sujet : ${args.subject ?? "(sans sujet)"}\n\nCorps :\n${body || "(vide)"}`,
-          },
-        ],
-        temperature: 0,
-        max_tokens: 30,
-        response_format: { type: "json_object" },
-      }),
+    const res = await openAiChatCompletion({
+      credentials,
+      messages: [
+        { role: "system", content: PROMPT_SYSTEM },
+        {
+          role: "user",
+          content: `Sujet : ${args.subject ?? "(sans sujet)"}\n\nCorps :\n${body || "(vide)"}`,
+        },
+      ],
+      temperature: 0,
+      maxTokens: 30,
+      json: true,
     });
     if (!res.ok) {
-      console.warn(`[categorizer] OpenAI HTTP ${res.status}`);
+      console.warn(`[categorizer] OpenAI ${res.status ?? ""}`);
       return { category: heuristic(args.subject, body), source: "heuristic" };
     }
-    const json = await res.json() as {
-      choices?: { message?: { content?: string } }[];
-    };
-    const content = json.choices?.[0]?.message?.content ?? "";
-    const parsed = JSON.parse(content) as { category?: string };
+    const parsed = JSON.parse(res.content) as { category?: string };
     const cat = parsed.category as ReplyCategory | undefined;
     if (cat && VALID.has(cat)) {
       return { category: cat, source: "ai" };
     }
-    console.warn(`[categorizer] OpenAI réponse invalide :`, content);
+    console.warn(`[categorizer] OpenAI réponse invalide :`, res.content);
     return { category: heuristic(args.subject, body), source: "heuristic" };
   } catch (e) {
     console.warn(`[categorizer] erreur IA, fallback heuristique :`, e instanceof Error ? e.message : e);

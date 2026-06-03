@@ -1,0 +1,184 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import {
+  Alert, Button, Card, Form, Input, Select, Space, Switch, Typography, message,
+} from "antd";
+import { ApiOutlined, CheckCircleOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { api } from "@/lib/client";
+
+const { Title, Text, Paragraph } = Typography;
+
+type ConfigState = {
+  enabled: boolean;
+  configured: boolean;
+  model: string;
+};
+
+const MODEL_OPTIONS = [
+  { value: "gpt-4o-mini", label: "gpt-4o-mini (recommandé)" },
+  { value: "gpt-4o", label: "gpt-4o" },
+  { value: "gpt-4.1-mini", label: "gpt-4.1-mini" },
+  { value: "gpt-4.1", label: "gpt-4.1" },
+];
+
+export function OpenAiSection() {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [config, setConfig] = useState<ConfigState | null>(null);
+  const [form] = Form.useForm();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get<{ data: ConfigState }>("/me/openai-config");
+      setConfig(data.data);
+      form.setFieldsValue({
+        enabled: data.data.enabled,
+        model: data.data.model,
+        apiKey: "",
+      });
+    } catch {
+      message.error("Impossible de charger la configuration OpenAI.");
+    } finally {
+      setLoading(false);
+    }
+  }, [form]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function save() {
+    const values = await form.validateFields();
+    setSaving(true);
+    try {
+      const { data } = await api.put<{ data: ConfigState }>("/me/openai-config", {
+        enabled: values.enabled,
+        model: values.model,
+        ...(values.apiKey?.trim() ? { apiKey: values.apiKey.trim() } : {}),
+      });
+      setConfig(data.data);
+      form.setFieldValue("apiKey", "");
+      message.success("Configuration OpenAI enregistrée.");
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message;
+      message.error(msg ?? "Échec de l'enregistrement.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function clearKey() {
+    setSaving(true);
+    try {
+      const { data } = await api.put<{ data: ConfigState }>("/me/openai-config", { clearApiKey: true });
+      setConfig(data.data);
+      form.setFieldsValue({ enabled: false, apiKey: "" });
+      message.success("Clé OpenAI supprimée.");
+    } catch {
+      message.error("Échec de la suppression.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function testConnection() {
+    setTesting(true);
+    try {
+      await save();
+      const { data } = await api.post<{ data: { ok: boolean; message: string } }>("/me/openai-config/test");
+      if (data.data.ok) {
+        message.success(data.data.message);
+      } else {
+        message.warning(data.data.message);
+      }
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message;
+      message.error(msg ?? "Test impossible.");
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  return (
+    <Card loading={loading} style={{ borderRadius: 12, boxShadow: "0 1px 2px rgba(15,23,42,0.06)" }}>
+      <Space align="start" size={16} style={{ width: "100%", marginBottom: 16 }}>
+        <ThunderboltOutlined style={{ fontSize: 32, color: "#722ed1" }} />
+        <div>
+          <Title level={4} style={{ margin: 0 }}>Intégration OpenAI</Title>
+          <Text type="secondary">
+            Chaque utilisateur utilise sa propre clé API. Elle est chiffrée en base et n&apos;est jamais affichée après enregistrement.
+          </Text>
+        </div>
+      </Space>
+
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+        message="Fonctionnalités concernées"
+        description={
+          <span>
+            Variantes IA dans les templates, brief de qualification des leads, personnalisation des campagnes et relances,
+            catégorisation des réponses et auto-répondeur — pour les actions que vous lancez ou dont vous êtes le créateur / assigné.
+          </span>
+        }
+      />
+
+      {config?.configured ? (
+        <Alert
+          type="success"
+          showIcon
+          icon={<CheckCircleOutlined />}
+          style={{ marginBottom: 16 }}
+          message="Clé enregistrée"
+          description={`Modèle actif : ${config.model}. Laissez le champ clé vide pour conserver la clé existante.`}
+        />
+      ) : (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Aucune clé configurée"
+          description="Sans clé, les fonctionnalités IA utilisent un mode de repli (texte par variables ou heuristiques)."
+        />
+      )}
+
+      <Form form={form} layout="vertical" initialValues={{ enabled: false, model: "gpt-4o-mini" }}>
+        <Form.Item name="enabled" label="Activer l'IA pour mon compte" valuePropName="checked">
+          <Switch checkedChildren="Oui" unCheckedChildren="Non" />
+        </Form.Item>
+        <Form.Item
+          name="apiKey"
+          label="Clé API OpenAI"
+          extra="Format sk-… — obtenez-la sur platform.openai.com. Ne partagez jamais cette clé."
+        >
+          <Input.Password
+            placeholder={config?.configured ? "•••••••• (laisser vide pour ne pas modifier)" : "sk-…"}
+            autoComplete="new-password"
+          />
+        </Form.Item>
+        <Form.Item name="model" label="Modèle">
+          <Select options={MODEL_OPTIONS} />
+        </Form.Item>
+        <Space wrap>
+          <Button type="primary" icon={<ApiOutlined />} loading={saving} onClick={() => void save()}>
+            Enregistrer
+          </Button>
+          <Button loading={testing} onClick={() => void testConnection()}>
+            Tester la connexion
+          </Button>
+          {config?.configured ? (
+            <Button danger loading={saving} onClick={() => void clearKey()}>
+              Supprimer la clé
+            </Button>
+          ) : null}
+        </Space>
+      </Form>
+
+      <Paragraph type="secondary" style={{ marginTop: 16, marginBottom: 0, fontSize: 12 }}>
+        La clé n&apos;est plus lue depuis les variables d&apos;environnement du serveur : chaque collaborateur configure la sienne ici.
+      </Paragraph>
+    </Card>
+  );
+}

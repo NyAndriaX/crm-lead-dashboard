@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ApiError, handler, json, parseBody, requirePermission } from "@/lib/api";
+import { ApiError, handler, json, parseBody, requireSession } from "@/lib/api";
 import { generateEmailAiVariants } from "@/lib/services/emailAiVariants";
 
 export const dynamic = "force-dynamic";
@@ -21,14 +21,15 @@ const bodySchema = z.object({
   leadContext: leadContextSchema.optional(),
 });
 
-/** POST /api/emailing/ai-variants — variantes personnalisées (OpenAI, OPENAI_API_KEY). */
+/** POST /api/emailing/ai-variants — variantes personnalisées (clé OpenAI du user courant). */
 export const POST = handler(async (req) => {
-  await requirePermission("settings:manage");
+  const session = await requireSession();
   const body = await parseBody(req, bodySchema);
   if (body.mode === "template" && (!body.subject || !body.subject.trim())) {
     throw new ApiError(422, "Sujet requis pour le mode template.", "subject_required");
   }
   const data = await generateEmailAiVariants({
+    userId: session.sub,
     mode: body.mode,
     subject: body.subject,
     bodyHtml: body.bodyHtml,

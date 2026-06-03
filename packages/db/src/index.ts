@@ -1,20 +1,14 @@
-import { PrismaClient } from "@prisma/client";
-
-// Client Prisma partagé (web + worker). Singleton en dev pour éviter
-// l'épuisement des connexions lors du hot-reload.
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
-  });
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
-
+export { prisma } from "./client";
 export * from "@prisma/client";
+export {
+  DEFAULT_OPENAI_MODEL,
+  getOpenAiConfigPublic,
+  resolveOpenAiCredentials,
+  type OpenAiConfigPublic,
+  type OpenAiCredentials,
+} from "./openaiConfig";
+export { openAiChatCompletion, type OpenAiMessage } from "./openaiChat";
+export { encrypt, decrypt, encryptOrNull, decryptOrNull } from "./piiCrypto";
 
 /** Cast sûr d'un champ Prisma Json (ex. tags, variables, events) vers string[]. */
 export function asStringArray(val: unknown): string[] {

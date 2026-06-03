@@ -1,53 +1,36 @@
 /**
  * Helper IA partagé (worker) — couche "AI autopilot".
  *
- * Stratégie commune à A1 (brief qualification), A2 (personnalisation
- * message) et A4 (auto-réponse) :
- *   - Si OPENAI_API_KEY défini → appel Chat Completions (gpt-4o-mini).
- *   - Sinon → fallback déterministe (toujours testable, jamais bloquant).
- *
- * Ne jette jamais : en cas d'erreur réseau/API, on retombe sur le fallback.
+ * Utilise la clé OpenAI de l'utilisateur propriétaire de l'action (créateur
+ * de campagne, assigné du lead, etc.). Sans clé → fallback déterministe.
  */
+import { openAiChatCompletion, resolveOpenAiCredentials } from "@crm/db";
 
 export type AiMessage = { role: "system" | "user"; content: string };
 
 export async function aiComplete(args: {
+  userId?: string | null;
   messages: AiMessage[];
   maxTokens?: number;
   temperature?: number;
   json?: boolean;
   fallback: () => string;
 }): Promise<{ text: string; source: "ai" | "fallback" }> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) return { text: args.fallback(), source: "fallback" };
+  const credentials = await resolveOpenAiCredentials(args.userId);
+  if (!credentials) return { text: args.fallback(), source: "fallback" };
 
-  try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_AUTOPILOT_MODEL ?? "gpt-4o-mini",
-        messages: args.messages,
-        temperature: args.temperature ?? 0.6,
-        max_tokens: args.maxTokens ?? 600,
-        ...(args.json ? { response_format: { type: "json_object" } } : {}),
-      }),
-    });
-    if (!res.ok) {
-      console.warn(`[ai] OpenAI HTTP ${res.status} — fallback`);
-      return { text: args.fallback(), source: "fallback" };
-    }
-    const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    const content = json.choices?.[0]?.message?.content?.trim();
-    if (!content) return { text: args.fallback(), source: "fallback" };
-    return { text: content, source: "ai" };
-  } catch (e) {
-    console.warn(`[ai] erreur, fallback :`, e instanceof Error ? e.message : e);
+  const res = await openAiChatCompletion({
+    credentials,
+    messages: args.messages,
+    maxTokens: args.maxTokens,
+    temperature: args.temperature,
+    json: args.json,
+  });
+  if (!res.ok) {
+    console.warn(`[ai] OpenAI ${res.status ?? ""} — fallback`);
     return { text: args.fallback(), source: "fallback" };
   }
+  return { text: res.content, source: "ai" };
 }
 
 export type LeadLite = {
@@ -62,18 +45,13 @@ export type LeadLite = {
 /**
  * A2 (F2/F3/F6) — réécrit un email pour le rendre unique et adapté au
  * destinataire à partir de son contexte (lead + enrichment + aiBrief).
- *
- * Conserve les variables déjà substituées (le HTML reçu est déjà passé
- * par `personalize()`), les liens et la structure ; ne réécrit que le
- * texte rédactionnel. Fallback : retourne le HTML inchangé (= comportement
- * historique à base de variables).
  */
 export async function aiPersonalizeEmail(args: {
+  userId?: string | null;
   subject: string;
   html: string;
   lead: LeadLite;
   enrichment: unknown;
-  /** "email" = 1er contact, "relance" = étape de séquence. */
   kind: "email" | "relance";
   stepIndex?: number;
 }): Promise<{ subject: string; html: string; source: "ai" | "fallback" }> {
@@ -84,6 +62,7 @@ export async function aiPersonalizeEmail(args: {
   const fallback = () => JSON.stringify({ subject: args.subject, html: args.html });
 
   const { text, source } = await aiComplete({
+    userId: args.userId,
     maxTokens: 900,
     temperature: 0.7,
     json: true,

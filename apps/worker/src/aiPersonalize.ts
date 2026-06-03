@@ -6,8 +6,7 @@
  * Utilisé par campaignSend (1er email) ET sequenceTick (relances) pour que
  * CHAQUE message envoyé soit singulier.
  *
- * Sans OPENAI_API_KEY → fallback = remplacement de variables (comportement
- * historique inchangé). Ne jette jamais.
+ * Sans clé OpenAI utilisateur → fallback = remplacement de variables. Ne jette jamais.
  */
 import { aiComplete, enrichmentSummary, type LeadLite } from "./ai";
 
@@ -30,6 +29,7 @@ function applyVars(
  * du sujet possible via personalizeSubject ci-dessous si besoin).
  */
 export async function aiPersonalizeBody(args: {
+  userId?: string | null;
   subject: string;
   bodyHtml: string;
   lead: LeadLite;
@@ -44,13 +44,10 @@ export async function aiPersonalizeBody(args: {
   });
 
   const ctx = enrichmentSummary(args.enrichment);
-  // Pas de contexte exploitable → on évite un appel IA inutile.
-  if (!process.env.OPENAI_API_KEY?.trim()) {
-    return { html: baseVars, source: "fallback" };
-  }
 
   const who = [args.lead.firstName, args.lead.lastName].filter(Boolean).join(" ") || "le prospect";
   const { text, source } = await aiComplete({
+    userId: args.userId,
     maxTokens: 800,
     temperature: 0.7,
     fallback: () => baseVars,

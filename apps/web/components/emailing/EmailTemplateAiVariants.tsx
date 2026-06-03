@@ -98,7 +98,7 @@ export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mo
       const code = ax.response?.data?.error;
       const msg = ax.response?.data?.message;
       if (code === "ai_disabled") {
-        message.error(msg ?? "OPENAI_API_KEY non configurée sur le serveur.");
+        message.error(msg ?? "Configurez votre clé OpenAI dans Mon compte → Intégration IA.");
       } else {
         message.error(msg ?? "Échec de la génération IA.");
       }
@@ -139,10 +139,10 @@ export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mo
               <Alert
                 type="info"
                 showIcon
-                message="Optionnel — clé OpenAI côté serveur"
+                message="Optionnel — votre clé OpenAI"
                 description={
                   <Paragraph style={{ marginBottom: 0 }} type="secondary">
-                    Configurez <Text code>OPENAI_API_KEY</Text> sur l’environnement du serveur Next.js. Sans clé, le
+                    Configurez votre clé dans <a href="/account">Mon compte → Intégration IA</a>. Sans clé active, le
                     bouton renvoie une erreur explicite. Les variables <Text code>{"{{prenom}}"}</Text> etc. doivent
                     rester présentes dans le texte généré ; relisez toujours avant envoi.
                   </Paragraph>

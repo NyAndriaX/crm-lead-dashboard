@@ -102,7 +102,18 @@ export async function maybeAutoRespond(args: {
   }
 
   try {
-    const lead = await prisma.lead.findUnique({ where: { id: args.leadId } });
+    const lead = await prisma.lead.findUnique({
+      where: { id: args.leadId },
+      select: {
+        id: true,
+        deletedAt: true,
+        emailEnc: true,
+        firstName: true,
+        lastName: true,
+        company: true,
+        assignedToId: true,
+      },
+    });
     if (!lead || lead.deletedAt) return { acted: false, mode: m, reason: "lead_missing" };
     const email = decryptOrNull(lead.emailEnc);
     if (!email) return { acted: false, mode: m, reason: "no_email" };
@@ -112,6 +123,7 @@ export async function maybeAutoRespond(args: {
 
     // Rédaction IA (fallback = template déterministe ci-dessus).
     const ai = await aiComplete({
+      userId: lead.assignedToId,
       maxTokens: 500,
       temperature: 0.6,
       json: true,

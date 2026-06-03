@@ -1,91 +1,71 @@
+/**
+ * Suggestion de variantes (sujet + corps ou corps seul) via OpenAI.
+ * Utilise la clé OpenAI de l'utilisateur courant.
+ */
 import { z } from "zod";
+import { openAiChatCompletion, resolveOpenAiCredentials } from "@crm/db";
 import { ApiError } from "@/lib/api";
 
-const variantsOutputSchema = z.object({
-  variants: z
-    .array(
-      z.object({
-        label: z.string().min(1).max(120),
-        subject: z.string().min(1).max(300).optional(),
-        bodyHtml: z.string().min(1),
-      }),
-    )
-    .min(1)
-    .max(4),
-});
-
-export type EmailAiMode = "template" | "block";
-
-export type LeadContextForAi = {
-  prenom?: string;
-  entreprise?: string;
-  secteur?: string;
-  titre?: string;
-  actu?: string;
-  consigne?: string;
-};
-
 export type GenerateEmailAiVariantsInput = {
-  mode: EmailAiMode;
+  userId: string;
+  mode: "template" | "block";
   subject?: string;
   bodyHtml: string;
   variables: string[];
-  leadContext?: LeadContextForAi;
+  leadContext?: {
+    prenom?: string;
+    entreprise?: string;
+    secteur?: string;
+    titre?: string;
+    actu?: string;
+    consigne?: string;
+  };
 };
 
+const variantSchema = z.object({
+  label: z.string(),
+  subject: z.string().optional(),
+  bodyHtml: z.string(),
+});
+
+const variantsOutputSchema = z.object({
+  variants: z.array(variantSchema).min(1).max(5),
+});
+
 function buildUserPayload(input: GenerateEmailAiVariantsInput): string {
-  const vars = input.variables.length ? input.variables.join(", ") : "(aucune liste — utilisez {{prenom}}, {{entreprise}}, {{actu}}, {{custom}} si pertinent)";
+  const vars = input.variables.length ? input.variables.join(", ") : "(aucune)";
   const ctx = input.leadContext;
   const ctxLines = ctx
     ? [
-        ctx.prenom && `Prénom exemple : ${ctx.prenom}`,
-        ctx.entreprise && `Entreprise : ${ctx.entreprise}`,
-        ctx.secteur && `Secteur : ${ctx.secteur}`,
-        ctx.titre && `Titre / fonction : ${ctx.titre}`,
-        ctx.actu && `Actualité / contexte : ${ctx.actu}`,
-        ctx.consigne && `Consigne rédactionnelle : ${ctx.consigne}`,
-      ]
-        .filter(Boolean)
-        .join("\n")
+        ctx.prenom ? `Prénom : ${ctx.prenom}` : "",
+        ctx.entreprise ? `Entreprise : ${ctx.entreprise}` : "",
+        ctx.secteur ? `Secteur : ${ctx.secteur}` : "",
+        ctx.titre ? `Titre : ${ctx.titre}` : "",
+        ctx.actu ? `Actualité : ${ctx.actu}` : "",
+        ctx.consigne ? `Consigne : ${ctx.consigne}` : "",
+      ].filter(Boolean).join("\n")
     : "";
-  if (input.mode === "template") {
-    return [
-      `Mode : template email complet (sujet + corps HTML).`,
-      `Sujet actuel : ${input.subject?.trim() || "(vide)"}`,
-      `Variables connues : ${vars}`,
-      ctxLines && `Contexte lead (pour personnaliser le ton, sans inventer de faits) :\n${ctxLines}`,
-      `Corps HTML actuel :\n${input.bodyHtml}`,
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-  }
   return [
-    `Mode : bloc HTML réutilisable (pas de ligne d'objet email). Ne renvoie pas de subject, ou renvoie une chaîne vide pour subject.`,
-    `Variables : ${vars}`,
-    ctxLines && `Contexte :\n${ctxLines}`,
-    `HTML actuel :\n${input.bodyHtml}`,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+    `Mode : ${input.mode}`,
+    input.mode === "template" ? `Sujet actuel : ${input.subject ?? ""}` : "",
+    `Variables de fusion à conserver : ${vars}`,
+    ctxLines ? `Contexte lead :\n${ctxLines}` : "",
+    `Brouillon HTML :\n${input.bodyHtml.slice(0, 12_000)}`,
+  ].filter(Boolean).join("\n\n");
 }
 
-/**
- * Suggestion de variantes (sujet + corps ou corps seul) via OpenAI.
- * Nécessite OPENAI_API_KEY. Les merge tags {{...}} doivent être conservés.
- */
 export async function generateEmailAiVariants(
   input: GenerateEmailAiVariantsInput,
 ): Promise<z.infer<typeof variantsOutputSchema>> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) {
+  const credentials = await resolveOpenAiCredentials(input.userId);
+  if (!credentials) {
     throw new ApiError(
       503,
-      "Personnalisation IA indisponible : définissez OPENAI_API_KEY sur le serveur.",
+      "Personnalisation IA indisponible : configurez votre clé OpenAI dans Mon compte → Intégration IA.",
       "ai_disabled",
     );
   }
 
-  const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
   const system = [
     "Vous aidez à rédiger des emails B2B en français.",
     'Répondez UNIQUEMENT avec un JSON valide au format : {"variants":[{"label":"...","subject":"...","bodyHtml":"..."}]}',
@@ -97,63 +77,39 @@ export async function generateEmailAiVariants(
       : "Chaque variante doit inclure un subject non vide et un bodyHtml non vide.",
   ].join(" ");
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.7,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: buildUserPayload(input) },
-      ],
-    }),
+  const res = await openAiChatCompletion({
+    credentials,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: buildUserPayload(input) },
+    ],
+    temperature: 0.7,
+    maxTokens: 2500,
+    json: true,
   });
 
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
+    const errText = res.error ?? "";
+    if (res.status === 401) {
+      throw new ApiError(502, "Clé OpenAI refusée — vérifiez votre configuration.", "openai_auth");
+    }
     throw new ApiError(
       502,
-      `Fournisseur IA indisponible (${res.status}).`,
-      "ai_upstream_error",
-      errText.slice(0, 500),
+      `OpenAI a renvoyé une erreur${res.status ? ` (${res.status})` : ""}. ${errText.slice(0, 200)}`,
+      "openai_error",
     );
   }
 
-  const raw = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-  const content = raw.choices?.[0]?.message?.content;
-  if (!content) throw new ApiError(502, "Réponse IA vide.", "ai_empty");
-
   let parsed: unknown;
   try {
-    parsed = JSON.parse(content) as unknown;
+    parsed = JSON.parse(res.content);
   } catch {
-    throw new ApiError(502, "Réponse IA non JSON.", "ai_parse_error");
+    throw new ApiError(502, "Réponse OpenAI illisible (JSON invalide).", "openai_parse");
   }
 
-  const checked = variantsOutputSchema.safeParse(parsed);
-  if (!checked.success) {
-    throw new ApiError(502, "Format de réponse IA inattendu.", "ai_schema_error", checked.error.flatten());
+  const out = variantsOutputSchema.safeParse(parsed);
+  if (!out.success) {
+    throw new ApiError(502, "Format de variantes IA inattendu.", "openai_format", out.error.flatten());
   }
-
-  if (input.mode === "block") {
-    return {
-      variants: checked.data.variants.map((v) => ({
-        ...v,
-        subject: undefined,
-      })),
-    };
-  }
-
-  for (const v of checked.data.variants) {
-    if (!v.subject?.trim()) {
-      throw new ApiError(502, "Une variante template sans sujet a été renvoyée.", "ai_invalid_variant");
-    }
-  }
-
-  return checked.data;
+  return out.data;
 }

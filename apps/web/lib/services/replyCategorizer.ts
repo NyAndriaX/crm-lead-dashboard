@@ -1,8 +1,7 @@
 /**
- * Catégoriseur de réponses (R-04) — version web, miroir de
- * apps/worker/src/replyCategorizer.ts. Pas de dépendance Prisma : fonction
- * pure utilisable depuis une route API (re-catégorisation manuelle).
+ * Catégoriseur de réponses (R-04) — version web.
  */
+import { openAiChatCompletion, resolveOpenAiCredentials } from "@crm/db";
 
 export type ReplyCategory =
   | "interesse"
@@ -46,6 +45,7 @@ function heuristic(subject: string | null, body: string | null): ReplyCategory {
 }
 
 export async function categorizeReply(args: {
+  userId?: string | null;
   subject: string | null;
   bodyText: string | null;
   bodyHtml: string | null;
@@ -58,34 +58,25 @@ export async function categorizeReply(args: {
     ?? "";
   const body = stripped.slice(0, 2000);
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return { category: heuristic(args.subject, body), source: "heuristic" };
+  const credentials = await resolveOpenAiCredentials(args.userId);
+  if (!credentials) return { category: heuristic(args.subject, body), source: "heuristic" };
 
   try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_REPLY_CATEGORIZER_MODEL ?? "gpt-4o-mini",
-        messages: [
-          { role: "system", content: PROMPT_SYSTEM },
-          {
-            role: "user",
-            content: `Sujet : ${args.subject ?? "(sans sujet)"}\n\nCorps :\n${body || "(vide)"}`,
-          },
-        ],
-        temperature: 0,
-        max_tokens: 30,
-        response_format: { type: "json_object" },
-      }),
+    const res = await openAiChatCompletion({
+      credentials,
+      messages: [
+        { role: "system", content: PROMPT_SYSTEM },
+        {
+          role: "user",
+          content: `Sujet : ${args.subject ?? "(sans sujet)"}\n\nCorps :\n${body || "(vide)"}`,
+        },
+      ],
+      temperature: 0,
+      maxTokens: 30,
+      json: true,
     });
     if (!res.ok) return { category: heuristic(args.subject, body), source: "heuristic" };
-    const json = await res.json() as { choices?: { message?: { content?: string } }[] };
-    const content = json.choices?.[0]?.message?.content ?? "";
-    const parsed = JSON.parse(content) as { category?: string };
+    const parsed = JSON.parse(res.content) as { category?: string };
     const cat = parsed.category as ReplyCategory | undefined;
     if (cat && VALID.has(cat)) return { category: cat, source: "ai" };
     return { category: heuristic(args.subject, body), source: "heuristic" };

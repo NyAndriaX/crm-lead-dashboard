@@ -10,7 +10,7 @@ import {
   DashboardOutlined, TeamOutlined, ImportOutlined, MailOutlined, MessageOutlined,
   RetweetOutlined, ProjectOutlined, BarChartOutlined, SettingOutlined,
   UserOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
-  HomeOutlined, RadarChartOutlined,
+  HomeOutlined, RadarChartOutlined, ThunderboltOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
 import { useBreakpoint, useIsMobile } from "@/lib/responsive";
@@ -57,6 +57,8 @@ function buildNav(role: ShellUser["role"], collapsed: boolean): MenuProps["items
     ...(collapsed ? [] : [{ type: "group" as const, label: <span style={{ fontSize: 10, letterSpacing: 1, textTransform: "uppercase", opacity: 0.5 }}>Gestion</span>, children: [] }]),
     { key: "/pipeline", icon: <ProjectOutlined />, label: <Link href="/pipeline">Pipeline</Link> },
     { key: "/analytics", icon: <BarChartOutlined />, label: <Link href="/analytics">Analytics</Link> },
+    { type: "divider" as const },
+    { key: "/account", icon: <ThunderboltOutlined />, label: <Link href="/account">Intégration IA</Link> },
     ...(isManager ? [
       { type: "divider" as const },
       ...(collapsed ? [] : [{ type: "group" as const, label: <span style={{ fontSize: 10, letterSpacing: 1, textTransform: "uppercase", opacity: 0.5 }}>Administration</span>, children: [] }]),
@@ -100,6 +102,7 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
   const isMobile = useIsMobile();
 
   const selectedKey = (
+    pathname.startsWith("/account") ? "/account" :
     pathname.startsWith("/settings") ? "/settings" :
     pathname.startsWith("/leads") ? "/leads" :
     pathname.startsWith("/import") ? "/import" :
@@ -298,6 +301,11 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
                     disabled: true,
                   },
                   { type: "divider" },
+                  {
+                    key: "openai",
+                    icon: <ThunderboltOutlined />,
+                    label: <Link href="/account">Intégration OpenAI</Link>,
+                  },
                   { key: "logout", icon: <LogoutOutlined />, label: "Déconnexion", danger: true, onClick: logout },
                 ],
               }}

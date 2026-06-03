@@ -173,6 +173,7 @@ async function sendStep(args: {
   // A2 (F6) — réécriture IA unique par destinataire pour la relance.
   if (step.aiPersonalize) {
     const ai = await aiPersonalizeEmail({
+      userId: lead.assignedToId,
       subject,
       html: bodyHtml,
       lead: {

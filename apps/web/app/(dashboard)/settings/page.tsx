@@ -1623,7 +1623,7 @@ function EmailingTab() {
           <Text type="secondary">
             Éditeur double onglet (visuel / HTML), variables de fusion <Text code>{"{{prenom}}"}</Text>, aperçu bureau et mobile.
             {" "}
-            Optionnel : dans les modales de création ou d’édition, la section « Suggestions IA » propose des variantes de ton via OpenAI lorsque <Text code>OPENAI_API_KEY</Text> est définie sur le serveur.
+            Optionnel : dans les modales de création ou d’édition, la section « Suggestions IA » propose des variantes de ton via OpenAI lorsque <a href="/account">Mon compte → Intégration IA</a> est configurée par chaque utilisateur.
           </Text>
         </Space>
         <Table

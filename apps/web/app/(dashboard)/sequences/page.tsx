@@ -349,7 +349,7 @@ export default function SequencesPage() {
                           name={[field.name, "aiPersonalize"]}
                           label="Personnalisation IA"
                           valuePropName="checked"
-                          tooltip="Réécrit ce message de relance, unique par destinataire (enrichissement + brief IA). Fallback variables sans OPENAI_API_KEY."
+                          tooltip="Réécrit ce message de relance, unique par destinataire (enrichissement + brief IA). Nécessite votre clé OpenAI (Mon compte → Intégration IA) sur le lead assigné."
                           style={{ marginBottom: 0 }}
                         >
                           <Switch />

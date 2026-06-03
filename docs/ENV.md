@@ -21,8 +21,7 @@ Copier `.env.example` → `.env`. Ne jamais committer `.env`. En production, les
 | `AGENDA_COLLECTION` | — | Nom de la collection MongoDB pour @hokify/agenda. Défaut **`crmAgendaJobs`**. |
 | `AGENDA_TIMEZONE` | — | Fuseau IANA (ex. `Europe/Paris`) : prioritaire sur `workerConfig.agendaTimezone`. Appliqué au processus worker via `TZ`. |
 | `SCORING_WEIGHTS` | — | JSON optionnel pour surcharger les poids du lead scoring (CRM-019). Par défaut : voir `apps/web/lib/scoring.ts` (`DEFAULT_WEIGHTS`). |
-| `OPENAI_API_KEY` | — | Optionnel (M-05). Active la génération de variantes d’email dans **Paramètres → Emailing** (templates / blocs). Sans clé, l’API renvoie une erreur explicite. Ne jamais exposer au client. |
-| `OPENAI_MODEL` | — | Modèle OpenAI pour M-05. Défaut : `gpt-4o-mini`. |
+| _(OpenAI)_ | — | **Par utilisateur** : clé API chiffrée en base, configurable dans **Mon compte → Intégration IA** (`/account`). Plus de `OPENAI_API_KEY` dans l'environnement. |
 
 > Pas de `REDIS_URL` : la file asynchrone est **@hokify/agenda** sur MongoDB (collection `AGENDA_COLLECTION`, défaut `crmAgendaJobs`), consommée par `apps/worker`. L’API web planifie les jobs via le même connecteur sans lancer le processeur côté Next.js.
 >

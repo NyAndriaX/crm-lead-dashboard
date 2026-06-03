@@ -307,8 +307,18 @@ async function ingestParsedMessage(parsed: ParsedMail): Promise<{
   const refIds = extractRefIds(parsed);
   const inReplyTo = refIds[0] ?? null;
 
+  let openAiUserId: string | null = null;
+  if (leadId) {
+    const leadRow = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { assignedToId: true },
+    });
+    openAiUserId = leadRow?.assignedToId ?? null;
+  }
+
   // R-04 : catégorisation IA ou heuristique (avant l'écriture pour persister la catégorie).
   const { category, source: catSource } = await categorizeReply({
+    userId: openAiUserId,
     subject, bodyText, bodyHtml, isAutoReply: auto,
   });
 
