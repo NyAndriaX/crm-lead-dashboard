@@ -24,6 +24,7 @@ RUN yarn workspace @crm/db generate \
 FROM base AS runtime
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
 RUN apt-get update -y && apt-get install -y openssl wget && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/apps/web/.next/standalone ./
@@ -37,4 +38,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --retries=5 --start-period=20s \
   CMD wget -qO- http://localhost:3000/api/health || exit 1
 
-CMD ["sh", "-c", "npx prisma db push --schema=packages/db/prisma/schema.prisma --skip-generate && node packages/db/prisma/init-prod.mjs && node apps/web/server.js"]
+CMD ["sh", "-ec", "echo '▶ prisma db push...' && npx prisma db push --schema=packages/db/prisma/schema.prisma --skip-generate && echo '▶ init-prod...' && node packages/db/prisma/init-prod.mjs && echo '▶ next standalone :'${PORT}'...' && exec node apps/web/server.js"]
