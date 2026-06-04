@@ -62,6 +62,7 @@ export async function testOpenAiConfig(userId: string): Promise<{ ok: boolean; m
     maxTokens: 16,
     temperature: 0,
     json: true,
+    track: { userId, feature: "config_test" },
   });
   if (!res.ok) {
     return {

@@ -2,8 +2,18 @@
  * Appel Chat Completions OpenAI (partagé web + worker).
  */
 import type { OpenAiCredentials } from "./openaiConfig";
+import { recordOpenAiUsage, type OpenAiUsageFeature } from "./openaiUsage";
 
 export type OpenAiMessage = { role: "system" | "user"; content: string };
+
+type ChatResponse = {
+  choices?: { message?: { content?: string } }[];
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+};
 
 export async function openAiChatCompletion(args: {
   credentials: OpenAiCredentials;
@@ -11,7 +21,12 @@ export async function openAiChatCompletion(args: {
   maxTokens?: number;
   temperature?: number;
   json?: boolean;
-}): Promise<{ ok: true; content: string } | { ok: false; status?: number; error?: string }> {
+  /** Si fourni, enregistre la consommation de tokens pour cet utilisateur. */
+  track?: { userId: string; feature: OpenAiUsageFeature | string };
+}): Promise<
+  | { ok: true; content: string; usage?: { prompt: number; completion: number; total: number } }
+  | { ok: false; status?: number; error?: string }
+> {
   try {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -31,10 +46,30 @@ export async function openAiChatCompletion(args: {
       const errText = await res.text().catch(() => "");
       return { ok: false, status: res.status, error: errText.slice(0, 500) };
     }
-    const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+    const json = (await res.json()) as ChatResponse;
     const content = json.choices?.[0]?.message?.content?.trim();
     if (!content) return { ok: false, error: "empty_response" };
-    return { ok: true, content };
+
+    const prompt = json.usage?.prompt_tokens ?? 0;
+    const completion = json.usage?.completion_tokens ?? 0;
+    const total = json.usage?.total_tokens ?? prompt + completion;
+
+    if (args.track && total > 0) {
+      await recordOpenAiUsage({
+        userId: args.track.userId,
+        feature: args.track.feature,
+        model: args.credentials.model,
+        promptTokens: prompt,
+        completionTokens: completion,
+        totalTokens: total,
+      });
+    }
+
+    return {
+      ok: true,
+      content,
+      usage: { prompt, completion, total },
+    };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

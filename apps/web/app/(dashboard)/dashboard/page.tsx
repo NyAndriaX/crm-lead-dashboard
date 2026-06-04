@@ -16,6 +16,7 @@ import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
 import { useIsMobile } from "@/lib/responsive";
+import { OpenAiUsageCard, type OpenAiUsageData } from "@/components/dashboard/OpenAiUsageCard";
 
 const { Title, Text } = Typography;
 
@@ -31,6 +32,7 @@ interface DashStats {
   kpis: Kpis;
   byStatus: Record<string, number>;
   dailyLeads: { date: string; leads: number }[];
+  openAi: OpenAiUsageData | null;
   recentLeads: {
     id: string; firstName: string | null; lastName: string | null;
     company: string | null; status: string; score: number;
@@ -133,7 +135,7 @@ export default function DashboardPage() {
   if (error) return <Alert type="error" message="Impossible de charger le tableau de bord." showIcon />;
   if (!stats) return null;
 
-  const { kpis, byStatus, dailyLeads, recentLeads } = stats;
+  const { kpis, byStatus, dailyLeads, recentLeads, openAi } = stats;
 
   // Données pour le graphe en secteur (statuts)
   const pieData = Object.entries(byStatus)
@@ -297,6 +299,10 @@ export default function DashboardPage() {
           />
         </Col>
       </Row>
+
+      {openAi?.configured && (
+        <OpenAiUsageCard usage={openAi} />
+      )}
 
       {/* ── Graphiques ────────────────────────────────────────────────────── */}
       <Row gutter={[16, 16]}>

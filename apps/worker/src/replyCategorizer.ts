@@ -67,6 +67,7 @@ export async function categorizeReply(args: {
   try {
     const res = await openAiChatCompletion({
       credentials,
+      track: args.userId ? { userId: args.userId, feature: "reply_categorize" } : undefined,
       messages: [
         { role: "system", content: PROMPT_SYSTEM },
         {

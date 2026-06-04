@@ -6,13 +6,18 @@ import {
 } from "antd";
 import { ApiOutlined, CheckCircleOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
-
 const { Title, Text, Paragraph } = Typography;
 
 type ConfigState = {
   enabled: boolean;
   configured: boolean;
   model: string;
+};
+
+type UsageState = {
+  monthTokens: number;
+  monthRequestCount: number;
+  totalTokens: number;
 };
 
 const MODEL_OPTIONS = [
@@ -27,6 +32,7 @@ export function OpenAiSection() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [config, setConfig] = useState<ConfigState | null>(null);
+  const [usage, setUsage] = useState<UsageState | null>(null);
   const [form] = Form.useForm();
 
   const load = useCallback(async () => {
@@ -39,6 +45,18 @@ export function OpenAiSection() {
         model: data.data.model,
         apiKey: "",
       });
+      if (data.data.configured) {
+        const u = await api.get<{ data: UsageState & { byFeature: { feature: string; tokens: number }[] } }>(
+          "/me/openai-usage",
+        );
+        setUsage({
+          monthTokens: u.data.data.monthTokens,
+          monthRequestCount: u.data.data.monthRequestCount,
+          totalTokens: u.data.data.totalTokens,
+        });
+      } else {
+        setUsage(null);
+      }
     } catch {
       message.error("Impossible de charger la configuration OpenAI.");
     } finally {
@@ -124,6 +142,23 @@ export function OpenAiSection() {
           </span>
         }
       />
+
+      {config?.configured && usage ? (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Consommation"
+          description={
+            <span>
+              Ce mois : <strong>{usage.monthTokens.toLocaleString("fr-FR")}</strong> tokens
+              ({usage.monthRequestCount} appel{usage.monthRequestCount > 1 ? "s" : ""}) — total :{" "}
+              <strong>{usage.totalTokens.toLocaleString("fr-FR")}</strong> tokens.
+              Détail sur le tableau de bord.
+            </span>
+          }
+        />
+      ) : null}
 
       {config?.configured ? (
         <Alert

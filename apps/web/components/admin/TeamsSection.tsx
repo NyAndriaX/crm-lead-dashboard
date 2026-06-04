@@ -18,6 +18,7 @@ import {
   UserAddOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
+import { PAGE_CARD_STYLE } from "@/lib/pageUi";
 
 const { Text, Title } = Typography;
 
@@ -212,29 +213,32 @@ export function TeamsSection() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      <Card size="small">
-        <Space size={32} wrap>
-          <Statistic title="Équipes" value={teams.length} valueStyle={{ fontSize: 20 }} />
-          <Statistic title="Total membres" value={totalMembers} valueStyle={{ fontSize: 20, color: "#1677ff" }} />
-          <Statistic title="Non assignés" value={unassigned} valueStyle={{ fontSize: 20, color: "#fa8c16" }} />
-          <div style={{ flex: 1 }} />
-          <Space>
+      <Card size="small" style={PAGE_CARD_STYLE}>
+        <div className="page-toolbar">
+          <Space size={32} wrap>
+            <Statistic title="Équipes" value={teams.length} valueStyle={{ fontSize: 20 }} />
+            <Statistic title="Total membres" value={totalMembers} valueStyle={{ fontSize: 20, color: "#1677ff" }} />
+            <Statistic title="Non assignés" value={unassigned} valueStyle={{ fontSize: 20, color: "#fa8c16" }} />
+          </Space>
+          <div className="page-toolbar-actions">
             <Button icon={<ReloadOutlined />} onClick={() => fetchAll()}>Actualiser</Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
               Nouvelle équipe
             </Button>
-          </Space>
-        </Space>
+          </div>
+        </div>
       </Card>
 
-      <Table
-        rowKey="id"
-        columns={columns}
-        dataSource={teams}
-        loading={loading}
-        size="middle"
-        pagination={{ pageSize: 10, showTotal: (t) => `${t} équipe(s)` }}
-      />
+      <Card style={PAGE_CARD_STYLE}>
+        <Table
+          rowKey="id"
+          columns={columns}
+          dataSource={teams}
+          loading={loading}
+          size="middle"
+          pagination={{ pageSize: 10, showTotal: (t) => `${t} équipe(s)` }}
+        />
+      </Card>
 
       {/* Création */}
       <Modal

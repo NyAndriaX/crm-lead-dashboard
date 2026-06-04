@@ -79,6 +79,7 @@ export async function generateEmailAiVariants(
 
   const res = await openAiChatCompletion({
     credentials,
+    track: { userId: input.userId, feature: "email_variants" },
     messages: [
       { role: "system", content: system },
       { role: "user", content: buildUserPayload(input) },

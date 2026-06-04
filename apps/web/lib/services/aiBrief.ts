@@ -71,6 +71,7 @@ export async function generateLeadAiBrief(
   try {
     const res = await openAiChatCompletion({
       credentials,
+      track: userId ? { userId, feature: "lead_brief" } : undefined,
       messages: [
         {
           role: "system",

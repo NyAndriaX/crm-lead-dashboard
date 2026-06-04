@@ -46,8 +46,10 @@ export async function aiPersonalizeBody(args: {
   const ctx = enrichmentSummary(args.enrichment);
 
   const who = [args.lead.firstName, args.lead.lastName].filter(Boolean).join(" ") || "le prospect";
+  const isRelance = /relance/i.test(args.stage);
   const { text, source } = await aiComplete({
     userId: args.userId,
+    feature: isRelance ? "sequence_personalize" : "email_personalize",
     maxTokens: 800,
     temperature: 0.7,
     fallback: () => baseVars,

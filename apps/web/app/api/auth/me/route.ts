@@ -9,12 +9,12 @@ export const GET = handler(async () => {
   const s = await requireSession();
   const profile = await prisma.user.findUnique({
     where: { id: s.sub },
-    select: { twoFactorOn: true, teamId: true, lastLoginAt: true },
+    select: { name: true, twoFactorOn: true, teamId: true, lastLoginAt: true },
   });
   return json({
     user: {
       id: s.sub,
-      name: s.name,
+      name: profile?.name ?? s.name,
       email: s.email,
       role: s.role,
       twoFactorOn: profile?.twoFactorOn ?? false,

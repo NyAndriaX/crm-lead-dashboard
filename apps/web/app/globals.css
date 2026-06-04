@@ -137,3 +137,95 @@ body {
     align-items: center;
   }
 }
+
+/* Administration — layout (typographie via Ant Design) */
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+  height: calc(100vh - 56px - 48px);
+  min-height: 480px;
+  max-height: calc(100vh - 56px - 48px);
+}
+
+@media (max-width: 767px) {
+  .settings-page {
+    height: auto;
+    max-height: none;
+    min-height: 0;
+    gap: 16px;
+  }
+}
+
+.settings-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.settings-layout--stacked {
+  grid-template-columns: 1fr;
+  grid-template-rows: auto 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 767px) {
+  .settings-layout {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .settings-layout .ant-card:last-child .ant-card-body {
+    max-height: min(72vh, 640px);
+  }
+}
+
+.settings-nav-card {
+  overflow: hidden;
+}
+
+.settings-nav-card .ant-card-body {
+  background: #fff;
+}
+
+.settings-nav-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #fff;
+  border-radius: 8px;
+}
+
+.settings-layout .settings-nav-menu,
+.settings-layout .settings-nav-menu .ant-menu-item-group-title {
+  background: #fff !important;
+}
+
+.settings-layout .settings-nav-menu .ant-menu-item-group-list {
+  background: #fff;
+}
+
+.settings-layout .ant-menu-inline .ant-menu-item-selected {
+  background: #f9f0ff !important;
+  color: #531dab !important;
+  font-weight: 600;
+}
+
+.settings-layout .ant-menu-inline .ant-menu-item-selected .anticon {
+  color: #722ed1 !important;
+}
+
+.settings-layout .ant-menu-inline .ant-menu-item {
+  border-radius: 8px;
+  margin-inline: 4px;
+  width: calc(100% - 8px);
+}
+
+.settings-content-body > .ant-space-vertical {
+  gap: 16px !important;
+}

@@ -2,7 +2,7 @@
  * GET /api/dashboard/stats — statistiques du tableau de bord principal.
  * Accessible à tous les rôles ; COMMERCIAL ne voit que ses propres leads.
  */
-import { prisma } from "@crm/db";
+import { prisma, getOpenAiUsageSummary } from "@crm/db";
 import { handler, json, requireSession } from "@/lib/api";
 import { NOT_DELETED } from "@/lib/notDeleted";
 
@@ -82,6 +82,8 @@ export const GET = handler(async () => {
     ? Math.round((((thisMonth as number) - (prevMonth as number)) / (prevMonth as number)) * 100)
     : null;
 
+  const openAi = await getOpenAiUsageSummary(session.sub);
+
   return json({
     data: {
       kpis: {
@@ -98,6 +100,7 @@ export const GET = handler(async () => {
       byStatus,
       dailyLeads: dailyCounts,
       recentLeads,
+      openAi,
     },
   });
 });

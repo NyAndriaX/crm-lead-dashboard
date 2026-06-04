@@ -3,7 +3,9 @@
 import { Space, Typography } from "antd";
 import { UserOutlined } from "@ant-design/icons";
 import { OpenAiSection } from "@/components/account/OpenAiSection";
+import { ProfileSection } from "@/components/account/ProfileSection";
 import { useIsMobile } from "@/lib/responsive";
+import { ADMIN_HERO_GRADIENT } from "@/lib/pageUi";
 
 const { Title, Text } = Typography;
 
@@ -15,7 +17,7 @@ export default function AccountPage() {
       <div
         className="page-hero"
         style={{
-          background: "linear-gradient(135deg,#531dab 0%,#391085 100%)",
+          background: ADMIN_HERO_GRADIENT,
           alignItems: "center",
         }}
       >
@@ -44,6 +46,7 @@ export default function AccountPage() {
         </div>
       </div>
 
+      <ProfileSection />
       <OpenAiSection />
     </Space>
   );

@@ -105,8 +105,25 @@ model User {
   importJobs    ImportJob[]
   notifications Notification[]
   templateBlocks TemplateBlock[]
+  openAiUsageLogs OpenAiUsageLog[]
 
   @@index([teamId])
+}
+
+// Consommation OpenAI par utilisateur (tokens par appel API).
+model OpenAiUsageLog {
+  id               String   @id @default(cuid())
+  userId           String
+  feature          String
+  model            String?
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  totalTokens      Int      @default(0)
+  createdAt        DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model Team {

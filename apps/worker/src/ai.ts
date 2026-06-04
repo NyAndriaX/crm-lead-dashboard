@@ -10,6 +10,7 @@ export type AiMessage = { role: "system" | "user"; content: string };
 
 export async function aiComplete(args: {
   userId?: string | null;
+  feature?: string;
   messages: AiMessage[];
   maxTokens?: number;
   temperature?: number;
@@ -25,6 +26,10 @@ export async function aiComplete(args: {
     maxTokens: args.maxTokens,
     temperature: args.temperature,
     json: args.json,
+    track:
+      args.userId && args.feature
+        ? { userId: args.userId, feature: args.feature }
+        : undefined,
   });
   if (!res.ok) {
     console.warn(`[ai] OpenAI ${res.status ?? ""} — fallback`);
@@ -63,6 +68,7 @@ export async function aiPersonalizeEmail(args: {
 
   const { text, source } = await aiComplete({
     userId: args.userId,
+    feature: args.kind === "relance" ? "sequence_personalize" : "email_personalize",
     maxTokens: 900,
     temperature: 0.7,
     json: true,

@@ -8,6 +8,12 @@ export {
   type OpenAiCredentials,
 } from "./openaiConfig";
 export { openAiChatCompletion, type OpenAiMessage } from "./openaiChat";
+export {
+  recordOpenAiUsage,
+  getOpenAiUsageSummary,
+  type OpenAiUsageFeature,
+  type OpenAiUsageSummary,
+} from "./openaiUsage";
 export { encrypt, decrypt, encryptOrNull, decryptOrNull } from "./piiCrypto";
 
 /** Cast sûr d'un champ Prisma Json (ex. tags, variables, events) vers string[]. */

@@ -17,8 +17,9 @@ import { SecuritySection } from "@/components/admin/SecuritySection";
 import { PipelineStagesSection } from "@/components/admin/PipelineStagesSection";
 import { WebhooksSection } from "@/components/admin/WebhooksSection";
 import { RgpdSection } from "@/components/admin/RgpdSection";
+import { SettingsTabsLayout, type SettingsTabItem } from "@/components/admin/SettingsTabsLayout";
 import {
-  Tabs, Card, Typography, Table, Button, Tag, Space, Form, InputNumber, Row, Col,
+  Card, Typography, Table, Button, Tag, Space, Form, InputNumber, Row, Col,
   Statistic, Badge, Modal, Input, Select, message, Spin, Alert, Popconfirm, List,
   Progress, Divider, Avatar, Tooltip, Checkbox, Collapse,
 } from "antd";
@@ -27,12 +28,14 @@ import {
   StopOutlined, CheckOutlined, ReloadOutlined, SafetyOutlined, FireOutlined,
   TeamOutlined, CalendarOutlined, SettingOutlined, LockOutlined, DeleteOutlined,
   MailOutlined, CloudOutlined, CodeOutlined, EyeOutlined, CopyOutlined, BookOutlined,
+  AppstoreOutlined, ApiOutlined, FileProtectOutlined, InboxOutlined, BarChartOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
 import type { ScoringWeightsInput } from "@/lib/schemas/import";
 import { useIsMobile } from "@/lib/responsive";
+import { ADMIN_HERO_GRADIENT } from "@/lib/pageUi";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -449,14 +452,13 @@ function OverviewTab() {
   };
 
   return (
-    <Space direction="vertical" size={24} style={{ width: "100%" }}>
+    <Space direction="vertical" size={16} style={{ width: "100%" }}>
       {error ? (
-        <Alert type="warning" message="Statistiques réservées aux rôles Admin et Manager." showIcon style={{ marginBottom: 16 }} />
+        <Alert type="warning" message="Statistiques réservées aux rôles Admin et Manager." showIcon />
       ) : null}
       {!error && stats ? (
         <>
-      {/* ── KPI row ── */}
-      <Row gutter={[16, 16]}>
+      <Row gutter={[12, 12]}>
         {[
           { label: "Total leads", value: stats.leads.total, color: "#1677ff", icon: <TeamOutlined />, sub: `${stats.leads.active} actifs` },
           { label: "Nouveaux aujourd'hui", value: stats.leads.newToday, color: "#13c2c2", icon: <CalendarOutlined />, sub: `${stats.leads.newThisWeek} cette semaine` },
@@ -2098,197 +2100,171 @@ function ScoringTab() {
 
 // ── Page principale ───────────────────────────────────────────────────────────
 
+const SETTINGS_TABS: SettingsTabItem[] = [
+  {
+    key: "overview",
+    label: "Vue d'ensemble",
+    group: "Général",
+    description: "Indicateurs globaux et répartition des leads.",
+    icon: <BarChartOutlined />,
+    children: <OverviewTab />,
+  },
+  {
+    key: "users",
+    label: "Utilisateurs",
+    group: "Équipe & accès",
+    description: "Comptes, invitations et rôles des collaborateurs.",
+    icon: <UserOutlined />,
+    children: <UsersTab />,
+  },
+  {
+    key: "teams",
+    label: "Équipes",
+    group: "Équipe & accès",
+    description: "Équipes commerciales et affectation des membres.",
+    icon: <TeamOutlined />,
+    children: <TeamsSection />,
+  },
+  {
+    key: "permissions",
+    label: "Rôles & permissions",
+    group: "Équipe & accès",
+    description: "Matrice des droits par rôle.",
+    icon: <LockOutlined />,
+    children: <PermissionsSection />,
+  },
+  {
+    key: "security",
+    label: "Sécurité (2FA)",
+    group: "Équipe & accès",
+    description: "Authentification à deux facteurs.",
+    icon: <SafetyOutlined />,
+    children: <SecuritySection />,
+  },
+  {
+    key: "pipeline-stages",
+    label: "Pipeline",
+    group: "Commercial",
+    description: "Étapes et statuts du pipeline commercial.",
+    icon: <AppstoreOutlined />,
+    children: <PipelineStagesSection />,
+  },
+  {
+    key: "scoring",
+    label: "Scoring",
+    group: "Commercial",
+    description: "Poids du score automatique des leads.",
+    icon: <TrophyOutlined />,
+    children: <ScoringTab />,
+  },
+  {
+    key: "emailing",
+    label: "Emailing",
+    group: "Commercial",
+    description: "SMTP, modèles et blocs d'emails.",
+    icon: <MailOutlined />,
+    children: <EmailingTab />,
+  },
+  {
+    key: "imap",
+    label: "IMAP / Réponses",
+    group: "Commercial",
+    description: "Boîtes mail pour la détection des réponses.",
+    icon: <InboxOutlined />,
+    children: <ImapSection />,
+  },
+  {
+    key: "imports",
+    label: "Imports",
+    group: "Commercial",
+    description: "Historique et accès aux imports CSV.",
+    icon: <UploadOutlined />,
+    children: (
+      <div style={{ textAlign: "center", padding: "24px 0" }}>
+        <UploadOutlined style={{ fontSize: 40, color: "#722ed1", marginBottom: 12 }} />
+        <Title level={5} style={{ marginTop: 0 }}>Historique des imports</Title>
+        <Paragraph type="secondary" style={{ marginBottom: 16 }}>
+          L&apos;historique complet se trouve sur la page dédiée.
+        </Paragraph>
+        <Button type="primary" href="/import" icon={<UploadOutlined />}>
+          Ouvrir Import
+        </Button>
+      </div>
+    ),
+  },
+  {
+    key: "audit",
+    label: "Journal",
+    group: "Plateforme",
+    description: "Traçabilité des actions sensibles.",
+    icon: <BookOutlined />,
+    children: <AuditLogsSection />,
+  },
+  {
+    key: "system",
+    label: "Système",
+    group: "Plateforme",
+    description: "Santé de l'application et paramètres serveur.",
+    icon: <CloudOutlined />,
+    children: <SystemSection />,
+  },
+  {
+    key: "webhooks",
+    label: "Intégrations",
+    group: "Plateforme",
+    description: "Webhooks sortants vers vos outils.",
+    icon: <ApiOutlined />,
+    children: <WebhooksSection />,
+  },
+  {
+    key: "rgpd",
+    label: "RGPD",
+    group: "Conformité",
+    description: "Registre et traitements des données personnelles.",
+    icon: <FileProtectOutlined />,
+    children: <RgpdSection />,
+  },
+];
+
 export default function SettingsPage() {
   const isMobile = useIsMobile();
 
   return (
-    <Space direction="vertical" size={24} style={{ width: "100%" }}>
+    <div className="settings-page">
       <div
         className="page-hero"
         style={{
-          background: "linear-gradient(135deg,#722ed1 0%,#531dab 100%)",
+          background: ADMIN_HERO_GRADIENT,
           alignItems: "center",
+          flexShrink: 0,
         }}
       >
         <div
           style={{
-            width: 52, height: 52, borderRadius: 14,
+            width: 52,
+            height: 52,
+            borderRadius: 14,
             background: "rgba(255,255,255,0.15)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 24, color: "#fff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 24,
+            color: "#fff",
           }}
         >
           <SettingOutlined />
         </div>
         <div>
-          <Title level={isMobile ? 4 : 3} style={{ color: "#fff", margin: 0 }}>Administration</Title>
+          <Title level={isMobile ? 4 : 3} style={{ color: "#fff", margin: 0 }}>
+            Administration
+          </Title>
           <Text style={{ color: "rgba(255,255,255,0.75)" }}>
-            Gestion des utilisateurs, configuration du scoring et supervision globale
+            Utilisateurs, scoring, emailing et paramètres système
           </Text>
         </div>
       </div>
 
-      <Tabs
-        defaultActiveKey="overview"
-        size={isMobile ? "small" : "large"}
-        tabBarGutter={isMobile ? 12 : 24}
-        tabBarStyle={{ marginBottom: 0 }}
-        items={[
-          {
-            key: "overview",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#1677ff" }} />
-                Vue d&apos;ensemble
-              </Space>
-            ),
-            children: <OverviewTab />,
-          },
-          {
-            key: "users",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#52c41a" }} />
-                Utilisateurs
-              </Space>
-            ),
-            children: <UsersTab />,
-          },
-          {
-            key: "teams",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#2f54eb" }} />
-                Équipes
-              </Space>
-            ),
-            children: <TeamsSection />,
-          },
-          {
-            key: "pipeline-stages",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#08979c" }} />
-                Pipeline (étapes)
-              </Space>
-            ),
-            children: <PipelineStagesSection />,
-          },
-          {
-            key: "permissions",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#eb2f96" }} />
-                Rôles & permissions
-              </Space>
-            ),
-            children: <PermissionsSection />,
-          },
-          {
-            key: "security",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#f5222d" }} />
-                Sécurité (2FA)
-              </Space>
-            ),
-            children: <SecuritySection />,
-          },
-          {
-            key: "audit",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#595959" }} />
-                Journal d&apos;activité
-              </Space>
-            ),
-            children: <AuditLogsSection />,
-          },
-          {
-            key: "system",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#ff7a45" }} />
-                Système
-              </Space>
-            ),
-            children: <SystemSection />,
-          },
-          {
-            key: "webhooks",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#fa541c" }} />
-                Intégrations
-              </Space>
-            ),
-            children: <WebhooksSection />,
-          },
-          {
-            key: "rgpd",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#389e0d" }} />
-                RGPD
-              </Space>
-            ),
-            children: <RgpdSection />,
-          },
-          {
-            key: "scoring",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#fa8c16" }} />
-                Scoring
-              </Space>
-            ),
-            children: <ScoringTab />,
-          },
-          {
-            key: "emailing",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#722ed1" }} />
-                Emailing
-              </Space>
-            ),
-            children: <EmailingTab />,
-          },
-          {
-            key: "imap",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#13c2c2" }} />
-                IMAP / Réponses
-              </Space>
-            ),
-            children: <ImapSection />,
-          },
-          {
-            key: "imports",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#722ed1" }} />
-                Imports
-              </Space>
-            ),
-            children: (
-              <Card>
-                <div style={{ textAlign: "center", padding: "40px 0" }}>
-                  <UploadOutlined style={{ fontSize: 48, color: "#722ed1", marginBottom: 16 }} />
-                  <Title level={4}>Historique des imports</Title>
-                  <Paragraph type="secondary">
-                    L&apos;historique complet et la gestion des imports se trouvent sur la page dédiée.
-                  </Paragraph>
-                  <Button type="primary" href="/import" size="large" icon={<UploadOutlined />}>
-                    Accéder à la page Import
-                  </Button>
-                </div>
-              </Card>
-            ),
-          },
-        ]}
-      />
-    </Space>
+      <SettingsTabsLayout items={SETTINGS_TABS} defaultActiveKey="overview" />
+    </div>
   );
 }

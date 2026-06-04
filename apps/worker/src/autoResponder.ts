@@ -124,6 +124,7 @@ export async function maybeAutoRespond(args: {
     // Rédaction IA (fallback = template déterministe ci-dessus).
     const ai = await aiComplete({
       userId: lead.assignedToId,
+      feature: "auto_reply",
       maxTokens: 500,
       temperature: 0.6,
       json: true,
