@@ -14,7 +14,7 @@ Application full-stack de gestion, qualification et prospection de leads.
 | File de tâches | **@hokify/agenda** sur MongoDB (collection `crmAgendaJobs` par défaut) — **pas de Redis** |
 | Workers | Node.js 20 (process séparé) |
 | Reverse proxy | Nginx |
-| Orchestration | Docker Compose |
+| Déploiement | Docker (un Dockerfile : web + worker) |
 | Monorepo | Yarn 1 (classic) workspaces |
 
 ## Structure du monorepo
@@ -29,9 +29,11 @@ crm-lead-dashboard/
 │   └── worker/     # Worker Node.js — @hokify/agenda (MongoDB), pas de Redis
 ├── packages/
 │   └── db/         # Schéma Prisma (~25 collections) + client partagé (@crm/db) + seed
-├── docker/         # Config Nginx
-├── docs/           # ARCHITECTURE.md, ENV.md, RUNBOOK.md, BACKLOG.md
-├── docker-compose.yml
+├── Dockerfile              # = docker/Dockerfile.app (web + worker)
+├── apps/web/Dockerfile     # image web + worker (au choix pour le deploy)
+├── apps/worker/Dockerfile  # identique à apps/web/Dockerfile
+├── docker/         # Dockerfile.app (référence) + config Nginx
+├── docs/           # ARCHITECTURE.md, ENV.md, PRODUCTION.md, RUNBOOK.md, BACKLOG.md
 ├── .gitlab-ci.yml
 └── package.json          # champ "workspaces"
 ```
@@ -48,8 +50,7 @@ yarn install
 # 2. Variables d'environnement (un seul .env à la racine — chargé via dotenv-cli)
 cp .env.example .env   # puis compléter les secrets (voir docs/ENV.md)
 
-# 3. Base de données (MongoDB seul ; replica set auto-initialisé par le healthcheck)
-docker compose up -d mongo
+# 3. Base de données (MySQL/MariaDB — DATABASE_URL dans .env)
 yarn db:generate
 yarn db:push
 yarn db:seed                    # Admin: admin@crm.local / ChangeMe!2026 + étapes pipeline
@@ -61,7 +62,14 @@ yarn dev
 yarn worker
 ```
 
-Ou tout en conteneurs : `docker compose up --build` (Nginx sur :80). Pas de Redis.
+**Prod Docker** (un domaine, un conteneur — choisir **un** Dockerfile, même image) :
+
+```bash
+docker build -f apps/web/Dockerfile -t crm-app .
+docker run -d --name crm --env-file .env -p 3000:3000 --restart unless-stopped crm-app
+```
+
+Voir [docs/PRODUCTION.md](docs/PRODUCTION.md). `apps/worker/Dockerfile` et `Dockerfile` à la racine sont équivalents.
 
 ## Scripts racine
 
@@ -77,7 +85,7 @@ Ou tout en conteneurs : `docker compose up --build` (Nginx sur :80). Pas de Redi
 
 ## État d'avancement
 
-- **L0 + L1** (socle) : monorepo + CI + Docker Compose · schéma Prisma (~25 collections) · `lib/crypto` AES-256-GCM + HMAC · auth JWT + bcrypt + TOTP (`/api/auth/*`) · RBAC (matrice + `middleware.ts` + `requirePermission`) · OpenAPI 3.1 + Swagger UI (`/api/docs`) · CRUD Leads · shell dashboard Ant Design · worker (**@hokify/agenda** sur MongoDB, sans Redis).
+- **L0 + L1** (socle) : monorepo + CI + image Docker (web+worker) · schéma Prisma (~25 collections) · `lib/crypto` AES-256-GCM + HMAC · auth JWT + bcrypt + TOTP (`/api/auth/*`) · RBAC (matrice + `middleware.ts` + `requirePermission`) · OpenAPI 3.1 + Swagger UI (`/api/docs`) · CRUD Leads · shell dashboard Ant Design · worker (**@hokify/agenda** sur MongoDB, sans Redis).
 - **L2** (Leads avancé — en cours) : fiche lead détaillée (Descriptions + Timeline) · filtres avancés multi-critères + recherche · workflow de statuts (transitions validées) · tags + référentiel · assignation + notification in-app · vues sauvegardées · export CSV/XLSX · lead scoring 0–100 (recalcul auto + job batch).
 
 Détail et reste à faire : [docs/BACKLOG.md](docs/BACKLOG.md) (lots L2 → L10).

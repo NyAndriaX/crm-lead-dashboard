@@ -22,12 +22,13 @@ Variables prod requises :
 | Variable | Exigence prod |
 |---|---|
 | `NODE_ENV` | `production` |
-| `DATABASE_URL` | Mongo **dédié prod** (≠ base de dev/test) |
+| `DATABASE_URL` | MySQL / MariaDB **dédié prod** (≠ base de dev/test) |
 | `PII_ENCRYPTION_KEY` | 32 octets hex aléatoires (⚠️ ne JAMAIS la changer après prod : déchiffre la PII existante) |
 | `AUTH_JWT_SECRET` | ≥ 32 caractères aléatoires |
 | `EMAIL_HASH_SECRET` | aléatoire (≠ « change-me… ») |
-| `APP_BASE_URL` | `https://...` (liens tracking/désinscription) |
+| `APP_BASE_URL` | `https://votre-domaine.fr` (liens tracking, désinscription, cookies) |
 | `INTERNAL_API_TOKEN` | aléatoire si défini |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Pour le premier `init-prod` au démarrage du conteneur (≥ 10 car.) |
 
 > `NEXT_PUBLIC_SHOW_DEMO_ACCOUNTS` **non défini** → comptes démo masqués
 > sur `/login` (figé au `yarn run build`).
@@ -45,59 +46,87 @@ ADMIN_NAME='Ops' \
   yarn db:init-prod                             # 1 admin réel + pipeline. 0 démo
 ```
 
-## 3. Lancer la prod
+Le conteneur Docker exécute aussi `init-prod` au premier démarrage (`RUN_MODE=all`).
 
-### Option A — Docker (recommandé)
+## 3. Docker — un domaine, un conteneur (recommandé)
+
+**Un seul Dockerfile au choix** — les trois produisent la **même image** (Next.js + worker) :
+
+| Fichier | Commande build |
+|---|---|
+| `apps/web/Dockerfile` | `docker build -f apps/web/Dockerfile -t crm-app .` |
+| `apps/worker/Dockerfile` | `docker build -f apps/worker/Dockerfile -t crm-app .` |
+| `Dockerfile` (racine) | `docker build -t crm-app .` |
+
+Le **contexte de build est toujours la racine du dépôt** (le `.` final).
 
 ```bash
-docker compose up --build -d         # nextjs + worker + mongo(rs0) + nginx
-```
-Les Dockerfiles posent `NODE_ENV=production` et la sortie standalone.
-`docker-compose.yml` lit le `.env` (mettez-y les vrais secrets) et
-surcharge `DATABASE_URL` vers le service `mongo`.
+# 1. Build (exemple avec apps/web/Dockerfile)
+docker build -f apps/web/Dockerfile -t crm-app .
 
-### Option B — Bare-metal (sans Docker)
+# 2. Run — web + worker dans le même conteneur (RUN_MODE=all par défaut)
+docker run -d \
+  --name crm \
+  --env-file .env \
+  -p 3000:3000 \
+  --restart unless-stopped \
+  crm-app
+```
+
+Au démarrage le conteneur enchaîne : `prisma db push` → `init-prod` → worker (arrière-plan) → Next.js sur le port **3000**.
+
+### Reverse proxy (Nginx / Traefik / Caddy)
+
+Exposez **un seul domaine** vers le port 3000 du conteneur, par exemple :
+
+```nginx
+location / {
+  proxy_pass http://127.0.0.1:3000;
+  proxy_http_version 1.1;
+  proxy_set_header Host $host;
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+Mettre `APP_BASE_URL=https://votre-domaine.fr` dans `.env`.
+
+### Variables utiles
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `RUN_MODE` | `all` | `all` = web + worker · `web` / `worker` = un seul process (cas avancé) |
+| `PORT` | `3000` | Port HTTP Next.js |
+| `SKIP_DB_PUSH` | — | `true` pour sauter `prisma db push` |
+| `SKIP_INIT_PROD` | — | `true` pour sauter `init-prod` |
+
+### Logs
 
 ```bash
-yarn run build          # build standalone
-yarn start:prod         # serveur web standalone (copie static/public + NODE_ENV=production)
-yarn worker:prod        # worker (crons imap-sync / sequence-tick / scraping-scheduler)
+docker logs -f crm
 ```
-> `yarn run start` (= `next start`) est **incompatible** avec
-> `output: standalone` — utiliser `yarn start:prod`.
 
-Le **worker doit tourner** (process séparé) avec les MÊMES
-`DATABASE_URL`, `PII_ENCRYPTION_KEY`, `EMAIL_HASH_SECRET`, `APP_BASE_URL`
-que le web, sinon : pas d'envoi de campagnes/relances, pas de collecte
-IMAP, pas de scraping planifié.
+Healthcheck intégré : `GET /api/health` sur le port 3000.
 
-## 4. Couche AI Autopilot (optionnelle)
+## 4. Bare-metal (sans Docker)
 
-Sans clé → fallback déterministe (fonctionne, non-IA). Pour activer :
+```bash
+yarn run build
+yarn start:all    # ou : yarn start:prod + yarn worker:prod (2 terminaux)
+```
+
+> `yarn run start` (= `next start`) est **incompatible** avec `output: standalone` — utiliser `yarn start:prod`.
+
+Le worker doit tourner avec les **mêmes** secrets que le web (`DATABASE_URL`, `PII_ENCRYPTION_KEY`, etc.).
+
+## 5. Couche IA (optionnelle)
+
+Chaque utilisateur configure sa clé OpenAI dans **Mon compte → Intégration IA** (`/account`). Pas de `OPENAI_API_KEY` dans l'environnement serveur.
 
 ```
-OPENAI_API_KEY=sk-...
-AUTO_RESPONDER_MODE=draft        # off | draft | auto — "auto" envoie SANS validation humaine
+AUTO_RESPONDER_MODE=draft        # off | draft | auto
 AUTO_RESPONDER_MEETING_URL=https://calendly.com/...
-SCRAPING_LIVE=false              # true = scrapers réels (Playwright + proxies + conformité CGU)
+SCRAPING_LIVE=false
+SCRAPER_API_URL=https://votre-scraper.example.com
 ```
-
-⚠️ `AUTO_RESPONDER_MODE=auto` : n'activer qu'après validation sur boîte de
-test. `draft` génère un brouillon + notification (aucun envoi).
-
-## 5. SMTP / IMAP
-
-Les configs SMTP/IMAP se gèrent **dans l'app** (Paramètres → Emailing /
-IMAP), chiffrées en base. Sans SMTP réel : les envois finissent en
-`SOFT_BOUNCE` (comportement attendu).
-
-## 6. Checklist go-live
-
-- [ ] Secrets réels générés (section 1) — boot prod ne doit pas être bloqué
-- [ ] `DATABASE_URL` = Mongo prod dédié (replica set requis)
-- [ ] `yarn db:reset && yarn db:init-prod` exécuté sur la base prod
-- [ ] `APP_BASE_URL` en https + reverse proxy/TLS (nginx)
-- [ ] Web **et** worker démarrés, mêmes secrets
-- [ ] Sonde externe sur `GET /api/health` (Uptime Robot/Datadog)
-- [ ] Au moins 1 SMTP configuré dans Paramètres → Emailing
-- [ ] `NEXT_PUBLIC_SHOW_DEMO_ACCOUNTS` non défini au build

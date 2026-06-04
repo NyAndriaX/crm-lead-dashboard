@@ -43,7 +43,7 @@ export async function recoverStaleScrapingJobs(): Promise<number> {
     where: {
       type: "scraping-run",
       status: "RUNNING",
-      lockedAt: { lt: cutoff },
+      lockedAt: { lt: cutoffQueued },
     },
     data: { status: "FAILED", lastError: "Stale job recovered at worker startup", lockedAt: null, lockedBy: null },
   });

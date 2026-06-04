@@ -25,7 +25,7 @@ _(Optionnels, à arbitrer plus tard : CRM-074 personnalisation IA, CRM-075 webho
 
 | Ticket | Sujet | État |
 |---|---|---|
-| CRM-001 | `docker-compose.yml` (nextjs, worker, **mongo**, nginx — pas de Redis), réseau `crm-network`, healthcheck `/api/health` | ✅ fait |
+| CRM-001 | Image Docker unique (web+worker, `apps/web/Dockerfile` ou équivalent), healthcheck `/api/health` — déploiement sans docker-compose | ✅ fait |
 | CRM-002 | Commande VPS (Hetzner CCX23) / MongoDB Atlas — décision infra client | ⏳ action client (J1) |
 | CRM-003 | Schéma Prisma MongoDB (~25 collections, dont `jobs`) — `packages/db/prisma/schema.prisma` | ✅ fait |
 | CRM-004 | Index Mongo : `@@index` + text index `leads` (`@@fulltext`) ; TTL / partiels manuels | ✅ Prisma + `manual-indexes.md` |

@@ -20,6 +20,7 @@ packages/db/generated/
 .env.local
 .env.*.local
 .env.production
+.env.production.example
 *.local
 
 # logs

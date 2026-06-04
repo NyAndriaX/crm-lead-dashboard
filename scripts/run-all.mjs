@@ -11,9 +11,9 @@
  * Les variables d'env (.env) sont déjà injectées par `dotenv -e .env --`
  * dans le script appelant : les enfants héritent de process.env.
  *
- * ⚠️ En PRODUCTION réelle, utilisez plutôt 2 conteneurs séparés
- * (docker-compose : services `nextjs` et `worker`). Ce lanceur couple
- * les deux dans un process parent — pratique en local, pas pour scaler.
+ * ⚠️ En PRODUCTION réelle, utilisez plutôt l'image Docker
+ * (`docker build -f apps/web/Dockerfile` — web + worker, RUN_MODE=all).
+ * Ce lanceur couple les deux en local dans un terminal.
  */
 import { spawn } from "node:child_process";
 import path from "node:path";

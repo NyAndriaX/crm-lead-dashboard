@@ -5,7 +5,7 @@
 
 ## Vue d'ensemble
 
-Application **Next.js 15 full-stack** (UI Ant Design + API Route Handlers) + un process **worker Node.js** pour les traitements asynchrones. **MongoDB 7** stocke les données métier **et** la file **@hokify/agenda** (collection configurable, défaut `crmAgendaJobs`). Le tout orchestré par **Docker Compose** derrière **Nginx**.
+Application **Next.js 15 full-stack** (UI Ant Design + API Route Handlers) + un process **worker Node.js** pour les traitements asynchrones. **MySQL/MariaDB** (Prisma) pour les données métier ; **MongoDB** pour la file **@hokify/agenda** (collection `crmAgendaJobs`). En production : **un conteneur Docker** (image unique web+worker) derrière **Nginx** ou autre reverse proxy.
 
 ```
 Navigateur ──► Nginx (SSL/proxy) ──► Next.js ──► Prisma ──► MongoDB
@@ -17,14 +17,22 @@ Navigateur ──► Nginx (SSL/proxy) ──► Next.js ──► Prisma ──
 
 > Le service **scraper** (Python · Playwright · rq) est prévu mais hors du périmètre courant.
 
-## Services (docker-compose)
+## Déploiement (Docker)
 
-| Service | Techno | Rôle |
+Un **seul conteneur** par domaine (`RUN_MODE=all` par défaut) :
+
+| Process | Techno | Rôle |
 |---|---|---|
-| `nextjs` | Next.js 15 + TS + Ant Design 5 + Prisma | UI + API + auth + business logic + OpenAPI |
-| `worker` | Node.js 20 + Prisma + @hokify/agenda | Consomme la collection Agenda : envoi emails, import async, scoring, notifications… |
-| `mongo` | MongoDB 7 (replica set 1 nœud) | Stockage principal + collection Agenda (`crmAgendaJobs` par défaut), dump quotidien |
-| `nginx` | Nginx Alpine | Reverse proxy, SSL, compression, rate limit |
+| Web | Next.js 15 standalone | UI + API + auth + OpenAPI |
+| Worker | Node.js 20 + @hokify/agenda | Campagnes, IMAP, relances, scraping, scoring batch… |
+
+Build : `docker build -f apps/web/Dockerfile -t crm-app .` (équivalent à `apps/worker/Dockerfile` ou `Dockerfile` racine). Voir [PRODUCTION.md](PRODUCTION.md).
+
+| Infra externe | Rôle |
+|---|---|
+| MySQL / MariaDB | Données Prisma (leads, users, SMTP, …) |
+| MongoDB | File Agenda (`crmAgendaJobs`) |
+| Nginx (ou autre) | SSL, proxy vers `:3000` |
 
 ## File de tâches sans Redis (@hokify/agenda)
 
