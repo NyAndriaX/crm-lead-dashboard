@@ -18,9 +18,21 @@ import { PIPELINE_STAGES } from "./seed/fixtures.mjs";
 
 const prisma = new PrismaClient();
 
-const adminEmail = (process.env.ADMIN_EMAIL ?? "").trim().toLowerCase();
-const adminPassword = process.env.ADMIN_PASSWORD ?? "";
-const adminName = process.env.ADMIN_NAME ?? "Administrateur";
+/** Retire guillemets entourants (copie .env / Dokploy). */
+function cleanEnv(v) {
+  const s = (v ?? "").trim();
+  if (
+    (s.startsWith('"') && s.endsWith('"') && s.length >= 2) ||
+    (s.startsWith("'") && s.endsWith("'") && s.length >= 2)
+  ) {
+    return s.slice(1, -1);
+  }
+  return s;
+}
+
+const adminEmail = cleanEnv(process.env.ADMIN_EMAIL).toLowerCase();
+const adminPassword = cleanEnv(process.env.ADMIN_PASSWORD);
+const adminName = cleanEnv(process.env.ADMIN_NAME) || "Administrateur";
 
 function fail(msg) {
   console.error(`\n✖ ${msg}\n`);
