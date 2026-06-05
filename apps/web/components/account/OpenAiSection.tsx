@@ -14,6 +14,8 @@ type ConfigState = {
   enabled: boolean;
   configured: boolean;
   model: string;
+  autoResponderMode: string;
+  autoResponderMeetingUrl: string | null;
 };
 
 type UsageState = {
@@ -27,6 +29,12 @@ const MODEL_OPTIONS = [
   { value: "gpt-4o", label: "gpt-4o" },
   { value: "gpt-4.1-mini", label: "gpt-4.1-mini" },
   { value: "gpt-4.1", label: "gpt-4.1" },
+];
+
+const AUTO_RESPONDER_OPTIONS = [
+  { value: "off", label: "Désactivé" },
+  { value: "draft", label: "Brouillon IA (validation humaine)" },
+  { value: "auto", label: "Envoi automatique" },
 ];
 
 export function OpenAiSection() {
@@ -63,6 +71,8 @@ export function OpenAiSection() {
       form.setFieldsValue({
         enabled: data.data.enabled,
         model: data.data.model,
+        autoResponderMode: data.data.autoResponderMode ?? "off",
+        autoResponderMeetingUrl: data.data.autoResponderMeetingUrl ?? "",
         apiKey: "",
       });
       if (data.data.configured) {
@@ -94,6 +104,8 @@ export function OpenAiSection() {
       const { data } = await api.put<{ data: ConfigState }>("/me/openai-config", {
         enabled: values.enabled,
         model: values.model,
+        autoResponderMode: values.autoResponderMode,
+        autoResponderMeetingUrl: values.autoResponderMeetingUrl?.trim() || null,
         ...(values.apiKey?.trim() ? { apiKey: values.apiKey.trim() } : {}),
       });
       setConfig(data.data);
@@ -217,7 +229,7 @@ export function OpenAiSection() {
         />
       )}
 
-      <Form form={form} layout="vertical" initialValues={{ enabled: false, model: "gpt-4o-mini" }}>
+      <Form form={form} layout="vertical" initialValues={{ enabled: false, model: "gpt-4o-mini", autoResponderMode: "off" }}>
         <Form.Item name="enabled" label="Activer l'IA pour mon compte" valuePropName="checked">
           <Switch checkedChildren="Oui" unCheckedChildren="Non" />
         </Form.Item>
@@ -233,6 +245,20 @@ export function OpenAiSection() {
         </Form.Item>
         <Form.Item name="model" label="Modèle">
           <Select options={MODEL_OPTIONS} />
+        </Form.Item>
+        <Form.Item
+          name="autoResponderMode"
+          label="Auto-répondeur (réponses leads)"
+          extra="S'applique aux leads qui vous sont assignés quand une réponse email est reçue via IMAP."
+        >
+          <Select options={AUTO_RESPONDER_OPTIONS} />
+        </Form.Item>
+        <Form.Item
+          name="autoResponderMeetingUrl"
+          label="Lien de prise de RDV (auto-répondeur)"
+          extra="Utilisé dans les réponses IA « intéressé » / « rappel »."
+        >
+          <Input placeholder="https://calendly.com/votre-equipe/30min" />
         </Form.Item>
         <Space wrap>
           <Button type="primary" icon={<ApiOutlined />} loading={saving} onClick={() => void save()}>

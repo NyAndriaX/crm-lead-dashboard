@@ -3,6 +3,7 @@ import { prisma } from "./client";
 export type OpenAiUsageFeature =
   | "config_test"
   | "email_variants"
+  | "email_generate"
   | "lead_brief"
   | "reply_categorize"
   | "email_personalize"

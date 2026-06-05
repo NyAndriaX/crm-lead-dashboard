@@ -2,6 +2,7 @@
 export const OPENAI_FEATURE_LABELS: Record<string, string> = {
   config_test: "Test de connexion",
   email_variants: "Variantes d'email",
+  email_generate: "Génération template / bloc",
   lead_brief: "Brief lead",
   reply_categorize: "Catégorisation réponses",
   email_personalize: "Personnalisation email",

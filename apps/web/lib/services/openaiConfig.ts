@@ -1,7 +1,13 @@
 /**
  * Configuration OpenAI personnelle par utilisateur.
  */
-import { prisma, getOpenAiConfigPublic, openAiChatCompletion, resolveOpenAiCredentials } from "@crm/db";
+import {
+  prisma,
+  getOpenAiConfigPublic,
+  openAiChatCompletion,
+  resolveOpenAiCredentials,
+  normalizeAutoResponderMode,
+} from "@crm/db";
 import { encryptOrNull } from "@/lib/crypto";
 import { ApiError } from "@/lib/api";
 
@@ -14,6 +20,8 @@ export type UpsertOpenAiConfigInput = {
   apiKey?: string;
   /** Si true, supprime la clé enregistrée. */
   clearApiKey?: boolean;
+  autoResponderMode?: string;
+  autoResponderMeetingUrl?: string | null;
 };
 
 export async function upsertOpenAiConfig(userId: string, input: UpsertOpenAiConfigInput) {
@@ -27,12 +35,21 @@ export async function upsertOpenAiConfig(userId: string, input: UpsertOpenAiConf
     openAiEnabled?: boolean;
     openAiModel?: string;
     openAiApiKeyEnc?: Buffer | null;
+    autoResponderMode?: string;
+    autoResponderMeetingUrl?: string | null;
   } = {};
 
   if (input.enabled !== undefined) data.openAiEnabled = input.enabled;
   if (input.model !== undefined) {
     const m = input.model.trim();
     data.openAiModel = m || "gpt-4o-mini";
+  }
+  if (input.autoResponderMode !== undefined) {
+    data.autoResponderMode = normalizeAutoResponderMode(input.autoResponderMode);
+  }
+  if (input.autoResponderMeetingUrl !== undefined) {
+    const url = input.autoResponderMeetingUrl?.trim();
+    data.autoResponderMeetingUrl = url || null;
   }
   if (input.clearApiKey) {
     data.openAiApiKeyEnc = null;

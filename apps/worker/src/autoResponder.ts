@@ -6,7 +6,7 @@
  *  - "interesse" / "rappel" → email proposant un créneau de RDV
  *  - "hors_sujet" / "auto_reply" → rien
  *
- * Mode via env AUTO_RESPONDER_MODE :
+ * Mode via paramètres du compte utilisateur assigné au lead (Mon compte → Intégration IA) :
  *  - "off"   (défaut) : ne fait rien
  *  - "draft" : génère le message + InboxMessage outbound marqué brouillon
  *              + notification pour validation humaine (PAS d'envoi SMTP)
@@ -16,7 +16,7 @@
  */
 import * as crypto from "node:crypto";
 import nodemailer from "nodemailer";
-import { prisma } from "@crm/db";
+import { prisma, getAutoResponderSettings, type AutoResponderMode } from "@crm/db";
 import { aiComplete } from "./ai";
 import type { ReplyCategory } from "./replyCategorizer";
 
@@ -62,23 +62,14 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#039;");
 }
 
-type Mode = "off" | "draft" | "auto";
-function mode(): Mode {
-  const raw = (process.env.AUTO_RESPONDER_MODE ?? "").toLowerCase().trim();
-  if (raw === "auto") return "auto";
-  if (raw === "draft") return "draft";
-  if (raw === "off") return "off";
-  // Safer default: in non-prod, draft instead of doing nothing.
-  return process.env.NODE_ENV === "production" ? "off" : "draft";
-}
-
-const MEETING_LINK = process.env.AUTO_RESPONDER_MEETING_URL ?? "https://calendly.com/votre-equipe/30min";
+type Mode = AutoResponderMode;
 
 function fallbackReply(args: {
   category: ReplyCategory;
   firstName: string | null;
   company: string | null;
   clientExcerpt: string | null;
+  meetingUrl: string;
 }): { subject: string; html: string } | null {
   const who = args.firstName ? args.firstName : "Bonjour";
   const echo = args.clientExcerpt ? ` J'ai bien noté : "${escapeHtml(args.clientExcerpt)}".` : "";
@@ -90,10 +81,11 @@ function fallbackReply(args: {
     };
   }
   if (args.category === "interesse" || args.category === "rappel") {
+    const link = args.meetingUrl;
     return {
       subject: "Re: échangeons 30 min ?",
       html: `<p>Bonjour ${who},</p><p>Ravi de votre intérêt ! J'ai bien noté votre message.${echo} ` +
-        `Pour avancer concrètement, proposez-vous un créneau de 30 minutes via ce lien : <a href="${MEETING_LINK}">${MEETING_LINK}</a>.</p>` +
+        `Pour avancer concrètement, proposez-vous un créneau de 30 minutes via ce lien : <a href="${link}">${link}</a>.</p>` +
         `<p>À très vite,<br/>L'équipe commerciale</p>`,
     };
   }
@@ -116,12 +108,6 @@ export async function maybeAutoRespond(args: {
   inboundBodyHtml: string | null;
   inboundMessageId: string | null;
 }): Promise<{ acted: boolean; mode: Mode; reason?: string }> {
-  const m = mode();
-  if (m === "off") return { acted: false, mode: m, reason: "disabled" };
-  if (args.category === "hors_sujet" || args.category === "auto_reply") {
-    return { acted: false, mode: m, reason: "category_skipped" };
-  }
-
   try {
     const lead = await prisma.lead.findUnique({
       where: { id: args.leadId },
@@ -135,18 +121,27 @@ export async function maybeAutoRespond(args: {
         assignedToId: true,
       },
     });
+    const responder = await getAutoResponderSettings(lead?.assignedToId);
+    const m = responder.mode;
     if (!lead || lead.deletedAt) return { acted: false, mode: m, reason: "lead_missing" };
+    if (m === "off") return { acted: false, mode: m, reason: "disabled" };
+    if (args.category === "hors_sujet" || args.category === "auto_reply") {
+      return { acted: false, mode: m, reason: "category_skipped" };
+    }
+
     const email = decryptOrNull(lead.emailEnc);
     if (!email) return { acted: false, mode: m, reason: "no_email" };
 
     const inboundText = args.inboundBodyText
       ?? (args.inboundBodyHtml ? stripHtmlToText(args.inboundBodyHtml) : null);
     const clientExcerpt = inboundText ? inboundText.slice(0, 260) : null;
+    const meetingUrl = responder.meetingUrl;
     const fb = fallbackReply({
       category: args.category,
       firstName: lead.firstName,
       company: lead.company,
       clientExcerpt,
+      meetingUrl,
     });
     if (!fb) return { acted: false, mode: m, reason: "no_template" };
 
@@ -166,7 +161,7 @@ export async function maybeAutoRespond(args: {
             "et le message du client (extrait). Rédige une réponse email courte, professionnelle et " +
             "chaleureuse. Réponds en tenant compte des préoccupations/demandes spécifiques du client. " +
             "Ne rien inventer. Si catégorie 'pas_interesse' : remercie, n'insiste pas, laisse la porte " +
-            `ouverte. Si 'interesse'/'rappel' : propose un RDV via ce lien : ${MEETING_LINK}. ` +
+            `ouverte. Si 'interesse'/'rappel' : propose un RDV via ce lien : ${meetingUrl}. ` +
             'Réponds UNIQUEMENT en JSON {"subject": string, "html": string}. Pas de markdown.',
         },
         {
@@ -272,6 +267,6 @@ export async function maybeAutoRespond(args: {
     return { acted: true, mode: m };
   } catch (e) {
     console.warn(`[auto-responder] KO leadId=${args.leadId}:`, e instanceof Error ? e.message : e);
-    return { acted: false, mode: m, reason: "error" };
+    return { acted: false, mode: "off", reason: "error" };
   }
 }

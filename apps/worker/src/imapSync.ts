@@ -271,7 +271,7 @@ async function onReplyReceived(args: {
     console.warn(`[imap-sync] notif assignée KO leadId=${args.leadId}:`, e instanceof Error ? e.message : e);
   }
 
-  // A4 (F7) : agent IA d'auto-réponse (off/draft/auto selon AUTO_RESPONDER_MODE).
+  // A4 (F7) : agent IA d'auto-réponse (mode par compte utilisateur assigné au lead).
   try {
     const r = await maybeAutoRespond({
       leadId: args.leadId,

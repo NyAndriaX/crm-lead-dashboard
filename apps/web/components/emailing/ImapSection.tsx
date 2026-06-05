@@ -7,7 +7,7 @@
  * - Test de connexion via /api/imap-configs/test.
  * - Affichage de la date du dernier sync (mise à jour par le job worker imap-sync).
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import {
   Card, Table, Button, Space, Tag, Typography, Form, Input, InputNumber, Switch,
   Modal, message, Popconfirm, Empty, Tooltip,
@@ -40,6 +40,21 @@ type FormValues = {
   isActive: boolean;
 };
 
+type Notice = { kind: "success" | "warning" | "error" | "info"; text: string };
+
+function noticeStyle(kind: Notice["kind"]): CSSProperties {
+  switch (kind) {
+    case "success":
+      return { background: "#f6ffed", border: "1px solid #b7eb8f", color: "#389e0d" };
+    case "warning":
+      return { background: "#fffbeb", border: "1px solid #ffe58f", color: "#ad6800" };
+    case "error":
+      return { background: "#fff1f0", border: "1px solid #ffa39e", color: "#cf1322" };
+    default:
+      return { background: "#e6f7ff", border: "1px solid #91d5ff", color: "#1677ff" };
+  }
+}
+
 export function ImapSection() {
   const [rows, setRows] = useState<ImapConfigRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -48,6 +63,7 @@ export function ImapSection() {
   const [testing, setTesting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [testNotice, setTestNotice] = useState<Notice | null>(null);
   const [form] = Form.useForm<FormValues>();
 
   const load = useCallback(async () => {
@@ -66,11 +82,13 @@ export function ImapSection() {
 
   function openCreate() {
     setEditing(null);
+    setTestNotice(null);
     form.resetFields();
     form.setFieldsValue({ port: 993, isActive: true });
     setEditorOpen(true);
   }
   function openEdit(row: ImapConfigRow) {
+    setTestNotice(null);
     setEditing(row);
     form.setFieldsValue({
       label: row.label,
@@ -113,17 +131,18 @@ export function ImapSection() {
   }
 
   async function test() {
+    setTestNotice(null);
     try {
       const v = await form.validateFields(["host", "port", "login", "password"]);
       setTesting(true);
-      const response = await api.post("/imap-configs/test", v);
+      const response = await api.post<{ data: { ok?: boolean; message?: string } }>("/imap-configs/test", v);
       const msg = response.data?.data?.message || "Connexion IMAP réussie";
-      message.success(msg);
+      setTestNotice({ kind: "success", text: msg });
     } catch (e) {
       const respMessage = (e as { response?: { data?: { message?: string } } }).response?.data?.message?.trim();
       const directMessage = e instanceof Error ? e.message : String(e);
       const msg = respMessage || directMessage || "Échec du test IMAP";
-      message.error(msg);
+      setTestNotice({ kind: "error", text: msg });
     } finally {
       setTesting(false);
     }
@@ -274,6 +293,20 @@ export function ImapSection() {
           <Form.Item label="Compte actif" name="isActive" valuePropName="checked">
             <Switch />
           </Form.Item>
+          {testNotice ? (
+            <div
+              role="status"
+              style={{
+                marginBottom: 12,
+                padding: "10px 12px",
+                borderRadius: 10,
+                fontWeight: 600,
+                ...noticeStyle(testNotice.kind),
+              }}
+            >
+              {testNotice.text}
+            </div>
+          ) : null}
           <Button icon={<ApiOutlined />} onClick={() => void test()} loading={testing}>
             Tester la connexion
           </Button>

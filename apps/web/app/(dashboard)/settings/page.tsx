@@ -1779,6 +1779,11 @@ function EmailingTab() {
           </Row>
           <Row gutter={16}>
             <Col xs={24}>
+              <EmailTemplateAiVariants form={templateForm} mode="template" />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24}>
               <Form.Item
                 name="isPublic"
                 valuePropName="checked"
@@ -1825,11 +1830,6 @@ function EmailingTab() {
                   maxHeight={isMobile ? 280 : 420}
                 />
               </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col xs={24}>
-              <EmailTemplateAiVariants form={templateForm} mode="template" />
             </Col>
           </Row>
           <Row gutter={16}>
@@ -1885,6 +1885,11 @@ function EmailingTab() {
               </Form.Item>
             </Col>
           </Row>
+          <Row gutter={16}>
+            <Col xs={24}>
+              <EmailTemplateAiVariants form={templateBlockForm} mode="block" />
+            </Col>
+          </Row>
           <Divider orientation="left" plain>
             <Space size={6}>
               <CodeOutlined />
@@ -1922,11 +1927,6 @@ function EmailingTab() {
                   maxHeight={isMobile ? 260 : 380}
                 />
               </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col xs={24}>
-              <EmailTemplateAiVariants form={templateBlockForm} mode="block" />
             </Col>
           </Row>
           <Row gutter={16}>

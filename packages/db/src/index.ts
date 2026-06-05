@@ -9,6 +9,13 @@ export {
 } from "./openaiConfig";
 export { openAiChatCompletion, type OpenAiMessage } from "./openaiChat";
 export {
+  getAutoResponderSettings,
+  normalizeAutoResponderMode,
+  DEFAULT_AUTO_RESPONDER_MEETING_URL,
+  type AutoResponderMode,
+  type AutoResponderSettings,
+} from "./autoResponderConfig";
+export {
   recordOpenAiUsage,
   getOpenAiUsageSummary,
   type OpenAiUsageFeature,
