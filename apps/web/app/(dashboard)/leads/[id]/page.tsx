@@ -4,9 +4,9 @@ import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Card, Descriptions, Timeline, Tag, Select, Button, Space, Typography, Progress,
-  message, Skeleton, Result, Row, Col, Modal, Empty,
+  message, Skeleton, Result, Row, Col, Modal, Empty, Popconfirm,
 } from "antd";
-import { ArrowLeftOutlined, ReloadOutlined, MailOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, ReloadOutlined, MailOutlined, ThunderboltOutlined, DeleteOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
 import SafeHtml from "@/components/SafeHtml";
 import { LeadEnrichmentCard } from "@/components/leads/LeadEnrichmentCard";
@@ -108,6 +108,18 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   async function recalc() {
     try { const { data } = await api.post<{ score: number }>(`/leads/${id}/recalculate-score`); setLead((l) => (l ? { ...l, score: data.score } : l)); message.success(`Score : ${data.score}`); }
     catch { message.error("Échec du recalcul."); }
+  }
+
+  async function deleteThreadMessage(messageId: string) {
+    try {
+      await api.delete(`/inbox/${messageId}`);
+      message.success("Message supprimé");
+      await load();
+    } catch (e) {
+      message.error(
+        (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Suppression impossible",
+      );
+    }
   }
 
   async function retryAiReply(messageId: string) {
@@ -259,6 +271,13 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                             Relancer IA
                           </Button>
                         ) : null}
+                        <Popconfirm
+                          title="Supprimer ce message ?"
+                          onConfirm={() => void deleteThreadMessage(m.id)}
+                          okButtonProps={{ danger: true }}
+                        >
+                          <Button size="small" danger icon={<DeleteOutlined />} />
+                        </Popconfirm>
                         <Text type="secondary" style={{ fontSize: 12 }}>
                           {new Date(m.receivedAt).toLocaleString("fr-FR")}
                         </Text>

@@ -4,9 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Table, Input, Select, Tag, Space, Button, Badge, Drawer, Typography, Divider, Form,
-  message, Tooltip, Switch, Empty, Card,
+  message, Tooltip, Switch, Empty, Card, Popconfirm,
 } from "antd";
-import { ReloadOutlined, MailOutlined, CheckOutlined, SendOutlined, TagsOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { ReloadOutlined, MailOutlined, CheckOutlined, SendOutlined, TagsOutlined, ThunderboltOutlined, DeleteOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
 import SafeHtml from "@/components/SafeHtml";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
@@ -50,7 +50,7 @@ type ThreadItem = InboxItem & { bodyText: string | null; bodyHtml: string | null
 type SmtpOption = { id: string; label: string; fromEmail: string | null };
 
 function leadName(it: InboxItem): string {
-  if (!it.lead) return "(non rattaché)";
+  if (!it.lead) return "(sans nom)";
   return [it.lead.firstName, it.lead.lastName].filter(Boolean).join(" ") || it.lead.company || "(sans nom)";
 }
 
@@ -61,7 +61,6 @@ export default function InboxPage() {
   const [pageSize, setPageSize] = useState(25);
   const [search, setSearch] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
-  const [view, setView] = useState<"replies" | "unmatched" | "auto" | "all">("replies");
   const [loading, setLoading] = useState(false);
   const [opened, setOpened] = useState<ThreadItem | null>(null);
   const [thread, setThread] = useState<ThreadItem[]>([]);
@@ -79,7 +78,6 @@ export default function InboxPage() {
       params.set("pageSize", String(pageSize));
       if (search.trim()) params.set("search", search.trim());
       if (unreadOnly) params.set("unreadOnly", "true");
-      params.set("view", view);
       const r = await api.get<{ data: InboxItem[]; total: number }>(`/inbox?${params.toString()}`);
       setData(r.data.data);
       setTotal(r.data.total);
@@ -88,7 +86,7 @@ export default function InboxPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, search, unreadOnly, view]);
+  }, [page, pageSize, search, unreadOnly]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -136,6 +134,18 @@ export default function InboxPage() {
       message.success(`Catégorie : ${CATEGORY_LABEL[data.data.category] ?? data.data.category} (${data.data.source})`);
     } catch {
       message.error("Échec de la catégorisation.");
+    }
+  }
+
+  async function deleteMessage(target: Pick<InboxItem, "id">) {
+    try {
+      await api.delete(`/inbox/${target.id}`);
+      message.success("Message supprimé");
+      if (opened?.id === target.id) setOpened(null);
+      await load();
+    } catch (e) {
+      const errMsg = (e as { response?: { data?: { message?: string } } }).response?.data?.message;
+      message.error(errMsg ?? "Suppression impossible");
     }
   }
 
@@ -203,9 +213,7 @@ export default function InboxPage() {
                 {leadName(r)} · {STATUS_LABELS[r.lead.status]}
               </Tag>
             </Link>
-          ) : (
-            <Tag>non rattaché</Tag>
-          )}
+          ) : null}
         </Space>
       ),
     },
@@ -240,7 +248,7 @@ export default function InboxPage() {
     {
       title: "",
       key: "actions",
-      width: 160,
+      width: 200,
       render: (_: unknown, r: InboxItem) => (
         <Space size={4}>
           {r.direction === "inbound" && r.leadId && !r.isAutoReply && (
@@ -270,6 +278,14 @@ export default function InboxPage() {
           <Tooltip title={r.isRead ? "Marquer non lu" : "Marquer lu"}>
             <Button size="small" icon={<CheckOutlined />} onClick={(e) => { e.stopPropagation(); void toggleRead(r); }} />
           </Tooltip>
+          <Popconfirm
+            title="Supprimer ce message ?"
+            description="Le message sera retiré de l'inbox et du fil du lead."
+            onConfirm={(e) => { e?.stopPropagation(); void deleteMessage(r); }}
+            okButtonProps={{ danger: true }}
+          >
+            <Button size="small" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} />
+          </Popconfirm>
         </Space>
       ),
     },
@@ -282,17 +298,6 @@ export default function InboxPage() {
           <Title level={3} style={{ margin: 0 }}><MailOutlined /> Boîte de réception</Title>
         </Space>
         <Space wrap>
-          <Select
-            value={view}
-            onChange={(v) => { setView(v); setPage(1); }}
-            style={{ width: 180 }}
-            options={[
-              { value: "replies", label: "Réponses" },
-              { value: "unmatched", label: "Non rattachés" },
-              { value: "auto", label: "Auto-replies" },
-              { value: "all", label: "Tous les entrants" },
-            ]}
-          />
           <Input.Search
             placeholder="Sujet, contenu…"
             value={search}
@@ -352,9 +357,19 @@ export default function InboxPage() {
                 </Link>
               )}
             </Space>
-            <div>
+            <Space style={{ width: "100%", justifyContent: "space-between" }}>
               <Text type="secondary">{new Date(opened.receivedAt).toLocaleString("fr-FR")}</Text>
-            </div>
+              <Popconfirm
+                title="Supprimer ce message ?"
+                description="Le message sera retiré de l'inbox et du fil du lead."
+                onConfirm={() => void deleteMessage(opened)}
+                okButtonProps={{ danger: true }}
+              >
+                <Button size="small" danger icon={<DeleteOutlined />}>
+                  Supprimer
+                </Button>
+              </Popconfirm>
+            </Space>
 
             {opened.direction === "inbound" && !opened.isAutoReply ? (
               <>
@@ -385,9 +400,7 @@ export default function InboxPage() {
                   >
                     Relancer la réponse IA
                   </Button>
-                ) : (
-                  <Text type="secondary">Rattachez ce message à un lead pour relancer la réponse IA.</Text>
-                )}
+                ) : null}
               </>
             ) : null}
 

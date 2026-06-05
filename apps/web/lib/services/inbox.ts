@@ -5,23 +5,13 @@
  * déchiffre uniquement côté serveur, et n'expose JAMAIS le payload encrypté brut.
  */
 import { prisma, Prisma } from "@crm/db";
+import { ApiError } from "@/lib/api";
 import { decryptOrNull } from "@/lib/crypto";
-
-/**
- * Vues de la boîte de réception :
- *  - "replies"   (défaut) : vraies réponses — rattachées à un lead ET non auto-reply.
- *  - "unmatched" : entrants non rattachés à un lead (à associer manuellement).
- *  - "auto"      : auto-replies (absence / OOO / accusés).
- *  - "all"       : tout (ancien comportement, aucun filtre).
- */
-export type InboxView = "replies" | "unmatched" | "auto" | "all";
 
 export type InboxFilter = {
   search?: string;
   leadId?: string;
   unreadOnly?: boolean;
-  direction?: "inbound" | "outbound";
-  view?: InboxView;
   page?: number;
   pageSize?: number;
 };
@@ -116,24 +106,12 @@ export async function listInbox(filter: InboxFilter): Promise<{
   const page = Math.max(1, filter.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, filter.pageSize ?? 25));
 
-  const where: Prisma.InboxMessageWhereInput = {};
-  where.direction = filter.direction ?? "inbound";
-
-  if (filter.leadId) {
-    // Contexte lead explicite (fil d'un lead) : on ne restreint pas par "vue".
-    where.leadId = filter.leadId;
-  } else {
-    const view: InboxView = filter.view ?? "replies";
-    if (view === "replies") {
-      where.leadId = { not: null };
-      where.isAutoReply = false;
-    } else if (view === "unmatched") {
-      where.leadId = null;
-    } else if (view === "auto") {
-      where.isAutoReply = true;
-    }
-    // "all" → aucun filtre supplémentaire.
-  }
+  const where: Prisma.InboxMessageWhereInput = {
+    direction: "inbound",
+    isAutoReply: false,
+    deletedAt: null,
+    leadId: filter.leadId ? filter.leadId : { not: null },
+  };
 
   if (filter.unreadOnly) where.isRead = false;
   if (filter.search) {
@@ -178,7 +156,7 @@ export async function getInboxMessage(id: string): Promise<InboxThreadItem | nul
       },
     },
   });
-  if (!row) return null;
+  if (!row || !row.leadId || row.isAutoReply || row.deletedAt) return null;
   return {
     ...mapItem(row),
     bodyText: row.bodyText,
@@ -188,7 +166,7 @@ export async function getInboxMessage(id: string): Promise<InboxThreadItem | nul
 
 export async function getLeadThread(leadId: string): Promise<InboxThreadItem[]> {
   const rows = await prisma.inboxMessage.findMany({
-    where: { leadId },
+    where: { leadId, deletedAt: null },
     include: {
       lead: {
         select: { id: true, firstName: true, lastName: true, company: true, status: true },
@@ -215,6 +193,24 @@ export async function countUnreadInbox(): Promise<number> {
   // Aligné sur la vue "replies" : ne compte que les vraies réponses non lues
   // (rattachées à un lead, hors auto-replies) — pas toute la boîte mail.
   return prisma.inboxMessage.count({
-    where: { direction: "inbound", isRead: false, leadId: { not: null }, isAutoReply: false },
+    where: {
+      direction: "inbound",
+      isRead: false,
+      leadId: { not: null },
+      isAutoReply: false,
+      deletedAt: null,
+    },
   });
+}
+
+export async function deleteInboxMessage(id: string): Promise<void> {
+  const row = await prisma.inboxMessage.findUnique({
+    where: { id },
+    select: { id: true, leadId: true, deletedAt: true },
+  });
+  if (!row || row.deletedAt) throw new ApiError(404, "Message introuvable", "not_found");
+  if (!row.leadId) {
+    throw new ApiError(400, "Seuls les messages rattachés à un lead peuvent être supprimés.", "no_lead");
+  }
+  await prisma.inboxMessage.update({ where: { id }, data: { deletedAt: new Date() } });
 }

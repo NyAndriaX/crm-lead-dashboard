@@ -36,9 +36,20 @@ export async function updateSegment(id: string, input: UpdateSegmentInput) {
 
 export async function deleteSegment(id: string) {
   await getSegment(id);
-  const used = await prisma.campaign.count({ where: { segmentId: id } });
-  if (used > 0) throw new ApiError(409, "Segment utilisé par une ou plusieurs campagnes", "segment_in_use");
-  await prisma.segment.delete({ where: { id } });
+  const active = await prisma.campaign.count({
+    where: { segmentId: id, status: { in: ["SENDING", "SCHEDULED"] } },
+  });
+  if (active > 0) {
+    throw new ApiError(
+      409,
+      "Ce segment est utilisé par une campagne en cours. Mettez-la en pause ou annulez-la avant de supprimer le segment.",
+      "segment_in_use",
+    );
+  }
+  await prisma.$transaction([
+    prisma.campaign.updateMany({ where: { segmentId: id }, data: { segmentId: null } }),
+    prisma.segment.delete({ where: { id } }),
+  ]);
 }
 
 /** Compte les leads correspondant au segment (aperçu côté API). */

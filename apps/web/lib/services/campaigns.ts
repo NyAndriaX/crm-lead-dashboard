@@ -85,12 +85,21 @@ export async function updateCampaign(id: string, input: UpdateCampaignInput) {
   });
 }
 
+const DELETABLE_STATUSES = new Set(["DRAFT", "CANCELLED", "DONE", "PAUSED"]);
+
 export async function deleteCampaign(id: string) {
   const cur = await getCampaign(id);
-  if (!["DRAFT", "CANCELLED"].includes(cur.status)) {
-    throw new ApiError(409, "Seules les campagnes brouillon ou annulées peuvent être supprimées", "invalid_status");
+  if (!DELETABLE_STATUSES.has(cur.status)) {
+    throw new ApiError(
+      409,
+      "Impossible de supprimer une campagne en cours d'envoi ou planifiée. Mettez-la en pause ou annulez-la d'abord.",
+      "invalid_status",
+    );
   }
-  await prisma.campaign.delete({ where: { id } });
+  await prisma.$transaction([
+    prisma.emailEvent.deleteMany({ where: { campaignId: id } }),
+    prisma.campaign.delete({ where: { id } }),
+  ]);
 }
 
 export async function pauseCampaign(id: string) {

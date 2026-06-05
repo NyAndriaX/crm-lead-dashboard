@@ -404,6 +404,7 @@ model InboxMessage {
   isAutoReply Boolean  @default(false)
   isRead      Boolean  @default(false)
   receivedAt  DateTime @default(now())
+  deletedAt   DateTime?
 
   lead Lead? @relation(fields: [leadId], references: [id])
 

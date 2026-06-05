@@ -355,12 +355,8 @@ export default function CampaignsPage() {
     [segmentQuery, segments],
   );
 
-  const segmentIdsInUse = useMemo(
-    () => new Set(campaigns.map((campaign) => campaign.segment?.id).filter(Boolean) as string[]),
-    [campaigns],
-  );
-
   const canEditCampaign = (status: string) => ["DRAFT", "SCHEDULED", "PAUSED"].includes(status);
+  const canDeleteCampaign = (status: string) => ["DRAFT", "CANCELLED", "DONE", "PAUSED"].includes(status);
   const editingCampaignNotEditable = Boolean(editingCampaign && !canEditCampaign(editingCampaign.status));
 
   // Colonnes stables ; dépend uniquement de `isMobile` (handlers exclus volontairement).
@@ -406,9 +402,10 @@ export default function CampaignsPage() {
                 Pause
               </Button>
             ) : null}
-            {r.status === "DRAFT" || r.status === "CANCELLED" ? (
+            {canDeleteCampaign(r.status) ? (
               <Popconfirm
                 title={`Supprimer la campagne « ${r.name} » ?`}
+                description={r.status === "DONE" ? "L'historique d'envoi et les statistiques seront définitivement effacés." : undefined}
                 onConfirm={(e) => { e?.stopPropagation(); void destroyCampaign(r.id); }}
                 okButtonProps={{ danger: true }}
               >
@@ -417,7 +414,7 @@ export default function CampaignsPage() {
                 </Button>
               </Popconfirm>
             ) : (
-              <Tooltip title="Seules les campagnes brouillon ou annulées peuvent être supprimées">
+              <Tooltip title="Mettez la campagne en pause ou annulez-la avant de la supprimer">
                 <Button size="small" danger disabled>
                   Supprimer
                 </Button>
@@ -487,23 +484,16 @@ export default function CampaignsPage() {
                         <Button size="small" onClick={(e) => { e.stopPropagation(); void openEditSegment(row); }}>
                     Modifier
                   </Button>
-                  {segmentIdsInUse.has(row.id) ? (
-                    <Tooltip title="Impossible : ce segment est déjà utilisé par une campagne">
-                      <Button size="small" danger disabled>
-                        Supprimer
-                      </Button>
-                    </Tooltip>
-                  ) : (
-                    <Popconfirm
-                      title={`Supprimer le segment « ${row.name} » ?`}
-                      onConfirm={(e) => { e?.stopPropagation(); void deleteSegment(row.id); }}
-                      okButtonProps={{ danger: true }}
-                    >
-                      <Button size="small" danger onClick={(e) => e.stopPropagation()}>
-                        Supprimer
-                      </Button>
-                    </Popconfirm>
-                  )}
+                  <Popconfirm
+                    title={`Supprimer le segment « ${row.name} » ?`}
+                    description="Les campagnes terminées qui l'utilisent seront conservées sans segment."
+                    onConfirm={(e) => { e?.stopPropagation(); void deleteSegment(row.id); }}
+                    okButtonProps={{ danger: true }}
+                  >
+                    <Button size="small" danger onClick={(e) => e.stopPropagation()}>
+                      Supprimer
+                    </Button>
+                  </Popconfirm>
                 </Space>
               ),
             },

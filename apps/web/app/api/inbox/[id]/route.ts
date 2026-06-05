@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ApiError, handler, json, parseBody, requirePermission } from "@/lib/api";
-import { assignInboxToLead, getInboxMessage, markInboxRead } from "@/lib/services/inbox";
+import { assignInboxToLead, deleteInboxMessage, getInboxMessage, markInboxRead } from "@/lib/services/inbox";
 
 export const dynamic = "force-dynamic";
 
@@ -33,4 +33,12 @@ export const PATCH = handler<Ctx>(async (req, { params }) => {
   }
   const updated = await getInboxMessage(id);
   return json({ data: updated });
+});
+
+export const DELETE = handler<Ctx>(async (_req, { params }) => {
+  await requirePermission("inbox:reply");
+  const { id: rawId } = await params;
+  const id = z.string().min(1).parse(rawId);
+  await deleteInboxMessage(id);
+  return json({ ok: true });
 });
