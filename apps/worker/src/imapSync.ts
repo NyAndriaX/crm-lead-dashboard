@@ -283,6 +283,8 @@ async function onReplyReceived(args: {
     });
     if (r.acted) {
       console.log(`[imap-sync] auto-responder (${r.mode}) leadId=${args.leadId} cat=${args.category}`);
+    } else if (r.reason && r.reason !== "category_skipped") {
+      console.log(`[imap-sync] auto-responder skipped leadId=${args.leadId} reason=${r.reason}`);
     }
   } catch (e) {
     console.warn(`[imap-sync] auto-responder KO leadId=${args.leadId}:`, e instanceof Error ? e.message : e);

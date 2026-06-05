@@ -10,6 +10,7 @@ export {
 export { openAiChatCompletion, type OpenAiMessage } from "./openaiChat";
 export {
   getAutoResponderSettings,
+  resolveAutoResponderUserId,
   normalizeAutoResponderMode,
   DEFAULT_AUTO_RESPONDER_MEETING_URL,
   type AutoResponderMode,

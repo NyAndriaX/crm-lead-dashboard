@@ -6,7 +6,7 @@ import {
   Table, Input, Select, Tag, Space, Button, Badge, Drawer, Typography, Divider, Form,
   message, Tooltip, Switch, Empty, Card,
 } from "antd";
-import { ReloadOutlined, MailOutlined, CheckOutlined, SendOutlined, TagsOutlined } from "@ant-design/icons";
+import { ReloadOutlined, MailOutlined, CheckOutlined, SendOutlined, TagsOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
 import SafeHtml from "@/components/SafeHtml";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
@@ -68,6 +68,8 @@ export default function InboxPage() {
   const [smtpOpts, setSmtpOpts] = useState<SmtpOption[]>([]);
   const [form] = Form.useForm();
   const [sending, setSending] = useState(false);
+  const [aiRetrying, setAiRetrying] = useState(false);
+  const [aiNotice, setAiNotice] = useState<{ kind: "success" | "error" | "warning"; text: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -94,6 +96,7 @@ export default function InboxPage() {
   }, []);
 
   async function openItem(item: InboxItem) {
+    setAiNotice(null);
     try {
       const r = await api.get<{ data: ThreadItem }>(`/inbox/${item.id}`);
       setOpened(r.data.data);
@@ -133,6 +136,28 @@ export default function InboxPage() {
       message.success(`Catégorie : ${CATEGORY_LABEL[data.data.category] ?? data.data.category} (${data.data.source})`);
     } catch {
       message.error("Échec de la catégorisation.");
+    }
+  }
+
+  async function retryAiReply(target?: Pick<InboxItem, "id" | "leadId" | "direction">) {
+    const msg = target ?? opened;
+    if (!msg || msg.direction !== "inbound" || !msg.leadId) return;
+    setAiRetrying(true);
+    setAiNotice(null);
+    try {
+      const { data } = await api.post<{
+        data: { ok: boolean; acted: boolean; mode: string; message: string; category: string };
+      }>(`/inbox/${msg.id}/auto-reply`);
+      const kind = data.data.acted ? "success" : "warning";
+      setAiNotice({ kind, text: data.data.message });
+      const t = await api.get<{ data: ThreadItem[] }>(`/leads/${msg.leadId}/thread`);
+      setThread(t.data.data);
+      await load();
+    } catch (e) {
+      const errMsg = (e as { response?: { data?: { message?: string } } }).response?.data?.message;
+      setAiNotice({ kind: "error", text: errMsg ?? "Échec de la relance IA." });
+    } finally {
+      setAiRetrying(false);
     }
   }
 
@@ -215,9 +240,24 @@ export default function InboxPage() {
     {
       title: "",
       key: "actions",
-      width: 130,
+      width: 160,
       render: (_: unknown, r: InboxItem) => (
         <Space size={4}>
+          {r.direction === "inbound" && r.leadId && !r.isAutoReply && (
+            <Tooltip title="Relancer la réponse IA">
+              <Button
+                size="small"
+                icon={<ThunderboltOutlined />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void (async () => {
+                    await openItem(r);
+                    await retryAiReply(r);
+                  })();
+                }}
+              />
+            </Tooltip>
+          )}
           {r.direction === "inbound" && (
             <Tooltip title="Re-catégoriser (IA / heuristique)">
               <Button
@@ -315,6 +355,41 @@ export default function InboxPage() {
             <div>
               <Text type="secondary">{new Date(opened.receivedAt).toLocaleString("fr-FR")}</Text>
             </div>
+
+            {opened.direction === "inbound" && !opened.isAutoReply ? (
+              <>
+                <Divider style={{ margin: "8px 0" }}>Réponse IA</Divider>
+                {aiNotice ? (
+                  <div
+                    role="status"
+                    style={{
+                      marginBottom: 12,
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      fontWeight: 600,
+                      background: aiNotice.kind === "success" ? "#f6ffed" : aiNotice.kind === "error" ? "#fff1f0" : "#fffbeb",
+                      border: `1px solid ${aiNotice.kind === "success" ? "#b7eb8f" : aiNotice.kind === "error" ? "#ffa39e" : "#ffe58f"}`,
+                      color: aiNotice.kind === "success" ? "#389e0d" : aiNotice.kind === "error" ? "#cf1322" : "#ad6800",
+                    }}
+                  >
+                    {aiNotice.text}
+                  </div>
+                ) : null}
+                {opened.leadId ? (
+                  <Button
+                    type="primary"
+                    icon={<ThunderboltOutlined />}
+                    loading={aiRetrying}
+                    onClick={() => void retryAiReply()}
+                    style={{ marginBottom: 8 }}
+                  >
+                    Relancer la réponse IA
+                  </Button>
+                ) : (
+                  <Text type="secondary">Rattachez ce message à un lead pour relancer la réponse IA.</Text>
+                )}
+              </>
+            ) : null}
 
             <Divider style={{ margin: "8px 0" }}>Fil de discussion</Divider>
             <Space direction="vertical" size="small" style={{ width: "100%" }}>

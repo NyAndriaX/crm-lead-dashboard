@@ -6,7 +6,7 @@ import {
   Card, Descriptions, Timeline, Tag, Select, Button, Space, Typography, Progress,
   message, Skeleton, Result, Row, Col, Modal, Empty,
 } from "antd";
-import { ArrowLeftOutlined, ReloadOutlined, MailOutlined } from "@ant-design/icons";
+import { ArrowLeftOutlined, ReloadOutlined, MailOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
 import SafeHtml from "@/components/SafeHtml";
 import { LeadEnrichmentCard } from "@/components/leads/LeadEnrichmentCard";
@@ -61,6 +61,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const [savingTags, setSavingTags] = useState(false);
   const [tags, setTags] = useState<string[]>([]);
   const [tagsRef, setTagsRef] = useState<TagRef[]>([]);
+  const [aiRetryingId, setAiRetryingId] = useState<string | null>(null);
+  const [aiNotice, setAiNotice] = useState<{ kind: "success" | "error" | "warning"; text: string } | null>(null);
   const isMobile = useIsMobile();
   const screens = useBreakpoint();
 
@@ -106,6 +108,28 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   async function recalc() {
     try { const { data } = await api.post<{ score: number }>(`/leads/${id}/recalculate-score`); setLead((l) => (l ? { ...l, score: data.score } : l)); message.success(`Score : ${data.score}`); }
     catch { message.error("Échec du recalcul."); }
+  }
+
+  async function retryAiReply(messageId: string) {
+    setAiRetryingId(messageId);
+    setAiNotice(null);
+    try {
+      const { data } = await api.post<{
+        data: { ok: boolean; acted: boolean; message: string };
+      }>(`/inbox/${messageId}/auto-reply`);
+      setAiNotice({
+        kind: data.data.acted ? "success" : "warning",
+        text: data.data.message,
+      });
+      await load();
+    } catch (e) {
+      setAiNotice({
+        kind: "error",
+        text: (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Échec de la relance IA.",
+      });
+    } finally {
+      setAiRetryingId(null);
+    }
   }
   function confirmDelete() {
     Modal.confirm({
@@ -182,6 +206,22 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
               </Link>
             }
           >
+            {aiNotice ? (
+              <div
+                role="status"
+                style={{
+                  marginBottom: 12,
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  fontWeight: 600,
+                  background: aiNotice.kind === "success" ? "#f6ffed" : aiNotice.kind === "error" ? "#fff1f0" : "#fffbeb",
+                  border: `1px solid ${aiNotice.kind === "success" ? "#b7eb8f" : aiNotice.kind === "error" ? "#ffa39e" : "#ffe58f"}`,
+                  color: aiNotice.kind === "success" ? "#389e0d" : aiNotice.kind === "error" ? "#cf1322" : "#ad6800",
+                }}
+              >
+                {aiNotice.text}
+              </div>
+            ) : null}
             {thread.length === 0 ? (
               <Empty
                 description="Aucun email envoyé ou reçu pour ce lead."
@@ -207,9 +247,22 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                       </Space>
                     }
                     extra={
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        {new Date(m.receivedAt).toLocaleString("fr-FR")}
-                      </Text>
+                      <Space size={8}>
+                        {m.direction === "inbound" && !m.isAutoReply ? (
+                          <Button
+                            size="small"
+                            type="primary"
+                            icon={<ThunderboltOutlined />}
+                            loading={aiRetryingId === m.id}
+                            onClick={() => void retryAiReply(m.id)}
+                          >
+                            Relancer IA
+                          </Button>
+                        ) : null}
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          {new Date(m.receivedAt).toLocaleString("fr-FR")}
+                        </Text>
+                      </Space>
                     }
                   >
                     <div style={{ fontSize: 12, color: "#888", marginBottom: 6 }}>

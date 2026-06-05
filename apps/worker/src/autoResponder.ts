@@ -16,7 +16,12 @@
  */
 import * as crypto from "node:crypto";
 import nodemailer from "nodemailer";
-import { prisma, getAutoResponderSettings, type AutoResponderMode } from "@crm/db";
+import {
+  prisma,
+  getAutoResponderSettings,
+  resolveAutoResponderUserId,
+  type AutoResponderMode,
+} from "@crm/db";
 import { aiComplete } from "./ai";
 import type { ReplyCategory } from "./replyCategorizer";
 
@@ -121,10 +126,14 @@ export async function maybeAutoRespond(args: {
         assignedToId: true,
       },
     });
-    const responder = await getAutoResponderSettings(lead?.assignedToId);
+    if (!lead || lead.deletedAt) return { acted: false, mode: "off", reason: "lead_missing" };
+
+    const responderUserId = await resolveAutoResponderUserId(lead.assignedToId);
+    const responder = await getAutoResponderSettings(responderUserId);
     const m = responder.mode;
-    if (!lead || lead.deletedAt) return { acted: false, mode: m, reason: "lead_missing" };
-    if (m === "off") return { acted: false, mode: m, reason: "disabled" };
+    if (m === "off") {
+      return { acted: false, mode: m, reason: lead.assignedToId ? "assignee_disabled" : "no_responder_user" };
+    }
     if (args.category === "hors_sujet" || args.category === "auto_reply") {
       return { acted: false, mode: m, reason: "category_skipped" };
     }
@@ -147,7 +156,7 @@ export async function maybeAutoRespond(args: {
 
     // Rédaction IA (fallback = template déterministe ci-dessus).
     const ai = await aiComplete({
-      userId: lead.assignedToId,
+      userId: responderUserId,
       feature: "auto_reply",
       maxTokens: 500,
       temperature: 0.6,
