@@ -49,10 +49,27 @@ function encryptValue(plaintext: string): Buffer {
   return Buffer.concat([iv, cipher.getAuthTag(), enc]);
 }
 
+function stripHtmlToText(html: string): string {
+  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 type Mode = "off" | "draft" | "auto";
 function mode(): Mode {
-  const m = (process.env.AUTO_RESPONDER_MODE ?? "off").toLowerCase();
-  return m === "auto" ? "auto" : m === "draft" ? "draft" : "off";
+  const raw = (process.env.AUTO_RESPONDER_MODE ?? "").toLowerCase().trim();
+  if (raw === "auto") return "auto";
+  if (raw === "draft") return "draft";
+  if (raw === "off") return "off";
+  // Safer default: in non-prod, draft instead of doing nothing.
+  return process.env.NODE_ENV === "production" ? "off" : "draft";
 }
 
 const MEETING_LINK = process.env.AUTO_RESPONDER_MEETING_URL ?? "https://calendly.com/votre-equipe/30min";
@@ -61,20 +78,22 @@ function fallbackReply(args: {
   category: ReplyCategory;
   firstName: string | null;
   company: string | null;
+  clientExcerpt: string | null;
 }): { subject: string; html: string } | null {
   const who = args.firstName ? args.firstName : "Bonjour";
+  const echo = args.clientExcerpt ? ` J'ai bien noté : "${escapeHtml(args.clientExcerpt)}".` : "";
   if (args.category === "pas_interesse") {
     return {
       subject: "Re: votre retour",
-      html: `<p>Bonjour ${who},</p><p>Merci pour votre retour, c'est noté — je n'insiste pas. ` +
+      html: `<p>Bonjour ${who},</p><p>Merci pour votre retour, c'est noté.${echo} Je n'insiste pas. ` +
         `Je reste disponible si vos besoins évoluent à l'avenir.</p><p>Très bonne continuation,<br/>L'équipe commerciale</p>`,
     };
   }
   if (args.category === "interesse" || args.category === "rappel") {
     return {
       subject: "Re: échangeons 30 min ?",
-      html: `<p>Bonjour ${who},</p><p>Ravi de votre intérêt ! Pour avancer concrètement, ` +
-        `proposez-vous un créneau de 30 minutes via ce lien : <a href="${MEETING_LINK}">${MEETING_LINK}</a>.</p>` +
+      html: `<p>Bonjour ${who},</p><p>Ravi de votre intérêt ! J'ai bien noté votre message.${echo} ` +
+        `Pour avancer concrètement, proposez-vous un créneau de 30 minutes via ce lien : <a href="${MEETING_LINK}">${MEETING_LINK}</a>.</p>` +
         `<p>À très vite,<br/>L'équipe commerciale</p>`,
     };
   }
@@ -93,6 +112,8 @@ export async function maybeAutoRespond(args: {
   leadId: string;
   category: ReplyCategory;
   inboundSubject: string | null;
+  inboundBodyText: string | null;
+  inboundBodyHtml: string | null;
   inboundMessageId: string | null;
 }): Promise<{ acted: boolean; mode: Mode; reason?: string }> {
   const m = mode();
@@ -118,7 +139,15 @@ export async function maybeAutoRespond(args: {
     const email = decryptOrNull(lead.emailEnc);
     if (!email) return { acted: false, mode: m, reason: "no_email" };
 
-    const fb = fallbackReply({ category: args.category, firstName: lead.firstName, company: lead.company });
+    const inboundText = args.inboundBodyText
+      ?? (args.inboundBodyHtml ? stripHtmlToText(args.inboundBodyHtml) : null);
+    const clientExcerpt = inboundText ? inboundText.slice(0, 260) : null;
+    const fb = fallbackReply({
+      category: args.category,
+      firstName: lead.firstName,
+      company: lead.company,
+      clientExcerpt,
+    });
     if (!fb) return { acted: false, mode: m, reason: "no_template" };
 
     // Rédaction IA (fallback = template déterministe ci-dessus).
@@ -134,8 +163,9 @@ export async function maybeAutoRespond(args: {
           role: "system",
           content:
             "Tu es un SDR B2B francophone. On te donne la catégorie d'une réponse reçue " +
-            "et le contexte du contact. Rédige une réponse email courte, professionnelle et " +
-            "chaleureuse. Si catégorie 'pas_interesse' : remercie, n'insiste pas, laisse la porte " +
+            "et le message du client (extrait). Rédige une réponse email courte, professionnelle et " +
+            "chaleureuse. Réponds en tenant compte des préoccupations/demandes spécifiques du client. " +
+            "Ne rien inventer. Si catégorie 'pas_interesse' : remercie, n'insiste pas, laisse la porte " +
             `ouverte. Si 'interesse'/'rappel' : propose un RDV via ce lien : ${MEETING_LINK}. ` +
             'Réponds UNIQUEMENT en JSON {"subject": string, "html": string}. Pas de markdown.',
         },
@@ -143,7 +173,9 @@ export async function maybeAutoRespond(args: {
           role: "user",
           content:
             `Catégorie : ${args.category}\nContact : ${lead.firstName ?? ""} ${lead.lastName ?? ""}\n` +
-            `Entreprise : ${lead.company ?? "(inconnue)"}\nSujet reçu : ${args.inboundSubject ?? "(sans sujet)"}`,
+            `Entreprise : ${lead.company ?? "(inconnue)"}\n` +
+            `Sujet reçu : ${args.inboundSubject ?? "(sans sujet)"}\n` +
+            `Message du client (extrait) :\n${(inboundText ?? "(vide)").slice(0, 2000)}`,
         },
       ],
     });
@@ -208,10 +240,6 @@ export async function maybeAutoRespond(args: {
         receivedAt: new Date(),
       },
     });
-
-    if (args.category === "pas_interesse" && m === "auto") {
-      await prisma.lead.update({ where: { id: args.leadId }, data: { status: "PERDU" } });
-    }
 
     await prisma.leadHistory.create({
       data: {

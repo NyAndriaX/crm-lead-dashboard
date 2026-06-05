@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useId, useState } from "react";
+import { useCallback, useId, useState, type CSSProperties } from "react";
 import {
   Alert,
   Button,
@@ -9,7 +9,6 @@ import {
   Radio,
   Space,
   Typography,
-  message,
 } from "antd";
 import { ThunderboltOutlined } from "@ant-design/icons";
 import type { FormInstance } from "antd/es/form";
@@ -22,6 +21,8 @@ const { TextArea } = Input;
 type Mode = "template" | "block";
 
 type Variant = { label: string; subject?: string; bodyHtml: string };
+
+type Notice = { kind: "success" | "warning" | "error" | "info"; text: string };
 
 function parseVariables(raw: unknown): string[] {
   if (typeof raw !== "string" || !raw.trim()) return [];
@@ -37,6 +38,7 @@ export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mo
   const [loading, setLoading] = useState(false);
   const [variants, setVariants] = useState<Variant[]>([]);
   const [picked, setPicked] = useState<number>(0);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [ctx, setCtx] = useState({
     prenom: "",
     entreprise: "",
@@ -48,10 +50,28 @@ export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mo
 
   const htmlField = mode === "template" ? "bodyHtml" : "htmlContent";
 
+  function show(kind: Notice["kind"], text: string) {
+    setNotice({ kind, text });
+  }
+
+  function noticeStyle(kind: Notice["kind"]): CSSProperties {
+    switch (kind) {
+      case "success":
+        return { background: "#f6ffed", border: "1px solid #b7eb8f", color: "#389e0d" };
+      case "warning":
+        return { background: "#fffbeb", border: "1px solid #ffe58f", color: "#ad6800" };
+      case "error":
+        return { background: "#fff1f0", border: "1px solid #ffa39e", color: "#cf1322" };
+      default:
+        return { background: "#e6f7ff", border: "1px solid #91d5ff", color: "#1677ff" };
+    }
+  }
+
   const generate = useCallback(async () => {
     const bodyHtml = form.getFieldValue(htmlField);
     if (typeof bodyHtml !== "string" || !bodyHtml.trim()) {
-      message.warning(
+      show(
+        "warning",
         mode === "template"
           ? "Ajoutez d’abord un corps de message (brouillon suffit)."
           : "Ajoutez d’abord du contenu HTML au bloc.",
@@ -61,7 +81,7 @@ export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mo
     const variables = parseVariables(form.getFieldValue("variables"));
     const subject = mode === "template" ? String(form.getFieldValue("subject") ?? "").trim() : undefined;
     if (mode === "template" && !subject) {
-      message.warning("Renseignez un sujet (même provisoire) avant de lancer l’IA.");
+      show("warning", "Renseignez un sujet (même provisoire) avant de lancer l’IA.");
       return;
     }
 
@@ -76,6 +96,7 @@ export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mo
     const hasCtx = Object.values(leadContext).some(Boolean);
 
     setLoading(true);
+    setNotice(null);
     setVariants([]);
     try {
       const { data } = await api.post<{ data: { variants: Variant[] } }>("/emailing/ai-variants", {
@@ -87,20 +108,20 @@ export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mo
       });
       const list = data.data?.variants ?? [];
       if (!list.length) {
-        message.warning("Aucune variante renvoyée.");
+        show("warning", "Aucune variante renvoyée.");
         return;
       }
       setVariants(list);
       setPicked(0);
-      message.success(`${list.length} variante(s) générée(s).`);
+      show("success", `${list.length} variante(s) générée(s).`);
     } catch (e) {
       const ax = e as AxiosError<{ message?: string; error?: string }>;
       const code = ax.response?.data?.error;
       const msg = ax.response?.data?.message;
       if (code === "ai_disabled") {
-        message.error(msg ?? "Configurez votre clé OpenAI dans Mon compte → Intégration IA.");
+        show("error", msg ?? "Configurez votre clé OpenAI dans Mon compte → Intégration IA.");
       } else {
-        message.error(msg ?? "Échec de la génération IA.");
+        show("error", msg ?? "Échec de la génération IA.");
       }
     } finally {
       setLoading(false);
@@ -118,7 +139,7 @@ export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mo
     } else {
       form.setFieldsValue({ htmlContent: v.bodyHtml });
     }
-    message.success("Variante appliquée — vérifiez le rendu dans l’éditeur et l’aperçu.");
+    show("success", "Variante appliquée — vérifiez le rendu dans l’éditeur et l’aperçu.");
     setVariants([]);
     setPicked(0);
   }, [form, mode, picked, variants]);
@@ -136,6 +157,19 @@ export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mo
           ),
           children: (
             <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+              {notice ? (
+                <div
+                  role="status"
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    fontWeight: 600,
+                    ...noticeStyle(notice.kind),
+                  }}
+                >
+                  {notice.text}
+                </div>
+              ) : null}
               <Alert
                 type="info"
                 showIcon

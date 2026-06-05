@@ -29,7 +29,7 @@ const variantSchema = z.object({
 });
 
 const variantsOutputSchema = z.object({
-  variants: z.array(variantSchema).min(1).max(5),
+  variants: z.array(variantSchema).min(2).max(3),
 });
 
 function buildUserPayload(input: GenerateEmailAiVariantsInput): string {
@@ -69,7 +69,7 @@ export async function generateEmailAiVariants(
   const system = [
     "Vous aidez à rédiger des emails B2B en français.",
     'Répondez UNIQUEMENT avec un JSON valide au format : {"variants":[{"label":"...","subject":"...","bodyHtml":"..."}]}',
-    "Proposez 2 ou 3 variantes de ton (plus direct, plus relationnel, plus formel) en réutilisant la structure HTML (balises, liens).",
+    "Proposez 2 ou 3 variantes de ton (plus direct, plus relationnel, plus formel) en réutilisant la structure HTML (balises, liens). Idéalement : 3 variantes.",
     "Conservez impérativement les variables de fusion sous forme {{nom}} (ex. {{prenom}}, {{entreprise}}, {{actu}}, {{custom}}) là où elles apparaissent dans le brouillon.",
     "N'inventez pas de chiffres, clients ou faits non fournis dans le contexte.",
     input.mode === "block"
@@ -112,5 +112,18 @@ export async function generateEmailAiVariants(
   if (!out.success) {
     throw new ApiError(502, "Format de variantes IA inattendu.", "openai_format", out.error.flatten());
   }
-  return out.data;
+  if (input.mode === "template") {
+    const invalid = out.data.variants.some((v) => !v.subject || !v.subject.trim());
+    if (invalid) {
+      throw new ApiError(502, "Variantes IA incomplètes : subject manquant.", "openai_subject");
+    }
+    return {
+      variants: out.data.variants.map((v) => ({ ...v, subject: v.subject!.trim() })),
+    };
+  }
+
+  // En mode bloc, le subject doit être vide.
+  return {
+    variants: out.data.variants.map((v) => ({ ...v, subject: "" })),
+  };
 }

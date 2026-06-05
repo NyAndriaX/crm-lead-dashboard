@@ -23,6 +23,7 @@ import { prisma } from "@crm/db";
 import type { WorkerJobContext } from "@crm/queue";
 import { categorizeReply, type ReplyCategory } from "./replyCategorizer";
 import { maybeAutoRespond } from "./autoResponder";
+import { autopilotPipelineOnReply, type ReplyOutcome } from "./pipelineAutopilot";
 
 const ALGO = "aes-256-gcm";
 const IV_LEN = 12;
@@ -131,12 +132,6 @@ function recipientRaw(parsed: ParsedMail): string {
   return to.text ?? "";
 }
 
-const STATUS_TO_DISCUSSION: ReadonlySet<string> = new Set([
-  "NOUVEAU",
-  "CONTACTE",
-  "QUALIFIE",
-]);
-
 async function matchLeadId(parsed: ParsedMail): Promise<string | null> {
   // 1. Threading par Message-ID / In-Reply-To / References
   const refIds = extractRefIds(parsed);
@@ -194,6 +189,8 @@ async function onReplyReceived(args: {
   leadId: string;
   fromAddress: string | null;
   subject: string | null;
+  inboundBodyText: string | null;
+  inboundBodyHtml: string | null;
   receivedAt: Date;
   isAutoReply: boolean;
   category: ReplyCategory;
@@ -211,20 +208,27 @@ async function onReplyReceived(args: {
     return;
   }
 
-  const lead = await prisma.lead.findUnique({
-    where: { id: args.leadId },
-    select: { status: true },
-  });
-  const promoteStatus = lead && STATUS_TO_DISCUSSION.has(lead.status);
-
-  await prisma.lead.update({
-    where: { id: args.leadId },
-    data: {
-      lastReplyAt: args.receivedAt,
-      lastActionAt: args.receivedAt,
-      ...(promoteStatus ? { status: "EN_DISCUSSION" as const } : {}),
-    },
-  });
+  // Progression autonome pipeline + statut (RDV, deal conclu, refus, etc.).
+  let pipelineResult: { outcome: ReplyOutcome; statusChanged: boolean; stageChanged: boolean } = {
+    outcome: "none",
+    statusChanged: false,
+    stageChanged: false,
+  };
+  try {
+    pipelineResult = await autopilotPipelineOnReply({
+      leadId: args.leadId,
+      category: args.category,
+      subject: args.subject,
+      bodyText: args.inboundBodyText,
+      bodyHtml: args.inboundBodyHtml,
+      receivedAt: args.receivedAt,
+    });
+  } catch (e) {
+    console.warn(
+      `[imap-sync] pipeline-autopilot KO leadId=${args.leadId}:`,
+      e instanceof Error ? e.message : e,
+    );
+  }
 
   await prisma.emailEvent.create({
     data: {
@@ -248,7 +252,9 @@ async function onReplyReceived(args: {
         from: args.fromAddress ?? null,
         subject: args.subject ?? null,
         category: args.category,
-        statusChanged: Boolean(promoteStatus),
+        pipelineOutcome: pipelineResult.outcome,
+        statusChanged: pipelineResult.statusChanged,
+        stageChanged: pipelineResult.stageChanged,
       } as object,
     },
   });
@@ -271,6 +277,8 @@ async function onReplyReceived(args: {
       leadId: args.leadId,
       category: args.category,
       inboundSubject: args.subject,
+      inboundBodyText: args.inboundBodyText,
+      inboundBodyHtml: args.inboundBodyHtml,
       inboundMessageId: args.inboundMessageId,
     });
     if (r.acted) {
@@ -344,6 +352,8 @@ async function ingestParsedMessage(parsed: ParsedMail): Promise<{
       leadId,
       fromAddress,
       subject,
+      inboundBodyText: bodyText,
+      inboundBodyHtml: bodyHtml,
       receivedAt,
       isAutoReply: auto,
       category,
