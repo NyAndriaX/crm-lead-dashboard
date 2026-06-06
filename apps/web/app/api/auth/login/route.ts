@@ -6,7 +6,7 @@ import {
 import { decrypt } from "@/lib/crypto";
 import { audit, clientIp } from "@/lib/audit";
 import { loginSchema } from "@/lib/schemas/auth";
-import { permissionsFor } from "@/lib/rbac";
+import { permissionsFor, ensureRbacLoaded } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +59,7 @@ export const POST = handler(async (req) => {
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
   await audit({ userId: user.id, action: "auth.login.success", ip });
 
+  await ensureRbacLoaded();
   return json({
     user: { id: user.id, name: user.name, email: user.email, role: user.role },
     permissions: permissionsFor(user.role),

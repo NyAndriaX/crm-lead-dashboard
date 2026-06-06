@@ -646,7 +646,7 @@ export default function CampaignsPage() {
             name="aiPersonalize"
             label="Personnalisation IA par destinataire (F2/F3)"
             valuePropName="checked"
-            tooltip="Chaque email est réécrit par l'IA, unique et adapté au lead. Utilise la clé OpenAI du créateur de la campagne (Mon compte → Intégration IA)."
+            tooltip="Chaque email est réécrit par l'IA, unique et adapté au lead. Utilise la clé OpenAI du créateur de la campagne (Configuration → Intégration IA)."
           >
             <Switch />
           </Form.Item>

@@ -2,7 +2,6 @@
 
 import { Space, Typography } from "antd";
 import { UserOutlined } from "@ant-design/icons";
-import { OpenAiSection } from "@/components/account/OpenAiSection";
 import { ProfileSection } from "@/components/account/ProfileSection";
 import { useIsMobile } from "@/lib/responsive";
 import { ADMIN_HERO_GRADIENT } from "@/lib/pageUi";
@@ -41,13 +40,12 @@ export default function AccountPage() {
             Mon compte
           </Title>
           <Text style={{ color: "rgba(255,255,255,0.75)" }}>
-            Paramètres personnels et intégrations
+            Profil et informations personnelles
           </Text>
         </div>
       </div>
 
       <ProfileSection />
-      <OpenAiSection />
     </Space>
   );
 }

@@ -159,7 +159,7 @@ export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mo
       const code = ax.response?.data?.error;
       const msg = ax.response?.data?.message;
       if (code === "ai_disabled") {
-        show("error", msg ?? "Configurez votre clé OpenAI dans Mon compte → Intégration IA.");
+        show("error", msg ?? "Configurez votre clé OpenAI dans Configuration → Intégration IA.");
       } else {
         show("error", msg ?? "Échec de la génération IA.");
       }
@@ -260,7 +260,7 @@ export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mo
                 message="Clé OpenAI requise"
                 description={
                   <Paragraph style={{ marginBottom: 0 }} type="secondary">
-                    Configurez votre clé dans <a href="/account">Mon compte → Intégration IA</a>.
+                    Configurez votre clé dans <a href="/settings?tab=openai">Configuration → Intégration IA</a>.
                     La génération remplit directement les champs du formulaire — il vous suffit d&apos;enregistrer.
                   </Paragraph>
                 }

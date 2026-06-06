@@ -42,7 +42,7 @@ export async function generateEmailAiContent(input: GenerateEmailAiInput) {
   if (!credentials) {
     throw new ApiError(
       503,
-      "Génération IA indisponible : configurez votre clé OpenAI dans Mon compte → Intégration IA.",
+      "Génération IA indisponible : configurez votre clé OpenAI dans Configuration → Intégration IA.",
       "ai_disabled",
     );
   }

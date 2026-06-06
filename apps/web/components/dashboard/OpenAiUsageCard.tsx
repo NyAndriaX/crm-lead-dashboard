@@ -53,7 +53,7 @@ export function OpenAiUsageCard({ usage }: { usage: OpenAiUsageData }) {
         </Space>
       }
       extra={
-        <Link href="/account">
+        <Link href="/settings?tab=openai">
           <Space size={4}>
             <SettingOutlined />
             <span>Configurer</span>

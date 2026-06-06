@@ -6,6 +6,7 @@
 import nodemailer from "nodemailer";
 import { prisma } from "./client";
 import { decryptOrNull } from "./piiCrypto";
+import { getAccessToken, decryptToken } from "./microsoftOAuth";
 
 export class TransactionalEmailError extends Error {
   constructor(public reason: string, public details?: unknown) {
@@ -25,6 +26,50 @@ export async function sendTransactionalEmail(args: {
   });
 
   if (smtp) {
+    const fromAddr = smtp.fromEmail ?? smtp.oauthMailSender ?? "";
+    const fromName = smtp.fromName ?? "CRM";
+
+    // OAuth Microsoft 365 (SMTP XOAUTH2)
+    if (
+      smtp.oauthProvider === "microsoft" &&
+      smtp.oauthTenantId &&
+      smtp.oauthClientId &&
+      smtp.oauthClientSecretEnc &&
+      smtp.oauthRefreshTokenEnc
+    ) {
+      const mailSender = smtp.oauthMailSender ?? fromAddr;
+      try {
+        const clientSecret = decryptToken(smtp.oauthClientSecretEnc);
+        const refreshToken = decryptToken(smtp.oauthRefreshTokenEnc);
+        const { access_token } = await getAccessToken(
+          { tenantId: smtp.oauthTenantId, clientId: smtp.oauthClientId, clientSecret },
+          refreshToken,
+        );
+        const transporter = nodemailer.createTransport({
+          host: "smtp.office365.com",
+          port: 587,
+          secure: false,
+          auth: { type: "OAuth2", user: mailSender, accessToken: access_token },
+          tls: { rejectUnauthorized: true },
+        });
+        const info = await transporter.sendMail({
+          from: `"${fromName}" <${mailSender}>`,
+          to: args.to,
+          subject: args.subject,
+          html: args.html,
+          text: args.text,
+        });
+        await prisma.smtpConfig.update({ where: { id: smtp.id }, data: { sentToday: { increment: 1 } } });
+        console.info(`[email] envoyé via OAuth Microsoft "${smtp.label}" → ${args.to} (messageId=${info.messageId})`);
+        return { messageId: info.messageId };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error(`[email] ÉCHEC envoi OAuth Microsoft "${smtp.label}" → ${args.to} : ${msg}`);
+        throw new TransactionalEmailError("smtp_send_failed", msg);
+      }
+    }
+
+    // SMTP classique (login + mot de passe)
     const login = decryptOrNull(smtp.loginEnc);
     const pass = decryptOrNull(smtp.passwordEnc);
     if (!login || !pass) {
@@ -33,8 +78,6 @@ export async function sendTransactionalEmail(args: {
       );
       throw new TransactionalEmailError("smtp_credentials_unreadable");
     }
-    const fromAddr = smtp.fromEmail ?? login;
-    const fromName = smtp.fromName ?? "CRM";
     const transporter = nodemailer.createTransport({
       host: smtp.host,
       port: smtp.port,

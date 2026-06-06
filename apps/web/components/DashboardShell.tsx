@@ -10,7 +10,8 @@ import {
   DashboardOutlined, TeamOutlined, ImportOutlined, MailOutlined, MessageOutlined,
   RetweetOutlined, ProjectOutlined, BarChartOutlined, SettingOutlined,
   LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
-  HomeOutlined, RadarChartOutlined, ThunderboltOutlined,
+  HomeOutlined, RadarChartOutlined,
+  UserOutlined, ThunderboltOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
 import { useBreakpoint, useIsMobile } from "@/lib/responsive";
@@ -54,11 +55,9 @@ function buildNav(role: ShellUser["role"], collapsed: boolean): MenuProps["items
     { key: "/inbox", icon: <MessageOutlined />, label: <Link href="/inbox">Réponses</Link> },
     { key: "/sequences", icon: <RetweetOutlined />, label: <Link href="/sequences">Relances</Link> },
     { type: "divider" },
-    ...(collapsed ? [] : [{ type: "group" as const, label: <span style={{ fontSize: 10, letterSpacing: 1, textTransform: "uppercase", opacity: 0.5 }}>Gestion</span>, children: [] }]),
+    ...(collapsed ? [] : [{ type: "group" as const, label: <span style={{ fontSize: 10, letterSpacing: 1, textTransform: "uppercase", opacity: 0.5 }}>Commercial</span>, children: [] }]),
     { key: "/pipeline", icon: <ProjectOutlined />, label: <Link href="/pipeline">Pipeline</Link> },
     { key: "/analytics", icon: <BarChartOutlined />, label: <Link href="/analytics">Analytics</Link> },
-    { type: "divider" as const },
-    { key: "/account", icon: <ThunderboltOutlined />, label: <Link href="/account">Intégration IA</Link> },
     ...(isManager ? [
       { type: "divider" as const },
       ...(collapsed ? [] : [{ type: "group" as const, label: <span style={{ fontSize: 10, letterSpacing: 1, textTransform: "uppercase", opacity: 0.5 }}>Administration</span>, children: [] }]),
@@ -78,8 +77,8 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
   const isMobile = useIsMobile();
 
   const selectedKey = (
-    pathname.startsWith("/account") ? "/account" :
     pathname.startsWith("/settings") ? "/settings" :
+    pathname.startsWith("/account") ? "/account" :
     pathname.startsWith("/leads") ? "/leads" :
     pathname.startsWith("/import") ? "/import" :
     pathname.startsWith("/scraping") ? "/scraping" :
@@ -257,10 +256,15 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
                   },
                   { type: "divider" },
                   {
+                    key: "account",
+                    icon: <UserOutlined />,
+                    label: <Link href="/account">Mon profil</Link>,
+                  },
+                  ...(user.role !== "ADMIN" && user.role !== "MANAGER" ? [{
                     key: "openai",
                     icon: <ThunderboltOutlined />,
-                    label: <Link href="/account">Intégration OpenAI</Link>,
-                  },
+                    label: <Link href="/settings?tab=openai">Intégration IA</Link>,
+                  }] : []),
                   { key: "logout", icon: <LogoutOutlined />, label: "Déconnexion", danger: true, onClick: logout },
                 ],
               }}

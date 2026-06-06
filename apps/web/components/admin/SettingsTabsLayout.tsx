@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, useEffect, type ReactNode } from "react";
 import { Card, Grid, Menu, Select, Space, Typography, theme } from "antd";
 import type { MenuProps } from "antd";
 import { ADMIN_ACCENT, PAGE_CARD_STYLE } from "@/lib/pageUi";
@@ -19,6 +19,7 @@ export type SettingsTabItem = {
 type Props = {
   items: SettingsTabItem[];
   defaultActiveKey?: string;
+  onTabChange?: (key: string) => void;
 };
 
 const GROUP_ORDER = [
@@ -59,11 +60,20 @@ function groupLabel(title: string) {
   );
 }
 
-export function SettingsTabsLayout({ items, defaultActiveKey }: Props) {
+export function SettingsTabsLayout({ items, defaultActiveKey, onTabChange }: Props) {
   const [activeKey, setActiveKey] = useState(defaultActiveKey ?? items[0]?.key ?? "");
   const screens = Grid.useBreakpoint();
   const { token } = theme.useToken();
   const isSideNav = !screens.xs && (screens.md ?? true);
+
+  useEffect(() => {
+    if (defaultActiveKey) setActiveKey(defaultActiveKey);
+  }, [defaultActiveKey]);
+
+  function selectTab(key: string) {
+    setActiveKey(key);
+    onTabChange?.(key);
+  }
 
   const active = items.find((t) => t.key === activeKey) ?? items[0];
   const groups = useMemo(() => groupItems(items), [items]);
@@ -119,7 +129,7 @@ export function SettingsTabsLayout({ items, defaultActiveKey }: Props) {
       <div className="settings-layout settings-layout--stacked">
         <Select
           value={activeKey}
-          onChange={setActiveKey}
+          onChange={selectTab}
           options={items.map((i) => ({ value: i.key, label: i.label }))}
           size="large"
           style={{ width: "100%" }}
@@ -151,7 +161,7 @@ export function SettingsTabsLayout({ items, defaultActiveKey }: Props) {
             mode="inline"
             selectedKeys={[activeKey]}
             items={menuItems}
-            onClick={({ key }) => setActiveKey(key)}
+            onClick={({ key }) => selectTab(key)}
             className="settings-nav-menu"
             style={{ border: "none", background: token.colorBgContainer }}
           />

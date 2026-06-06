@@ -1,56 +1,39 @@
-// RBAC — CRM-007 / SEC-02. Matrice rôle × permission.
-// 4 rôles : ADMIN, MANAGER, COMMERCIAL, LECTEUR.
+// RBAC — CRM-007 / SEC-02. Matrice rôle × permission (configurable en base).
 import type { Role } from "@crm/db";
+import {
+  getRbacMatrix,
+  DEFAULT_MATRIX,
+  ALL_PERMISSIONS,
+  type Permission,
+} from "@crm/db";
 
-export type Permission =
-  | "leads:read"
-  | "leads:write"
-  | "leads:delete"
-  | "leads:assign"
-  | "import:run"
-  | "campaigns:read"
-  | "campaigns:write"
-  | "campaigns:send"
-  | "inbox:read"
-  | "inbox:reply"
-  | "sequences:manage"
-  | "pipeline:manage"
-  | "analytics:read"
-  | "users:manage"
-  | "settings:manage"
-  | "rgpd:manage";
+export type { Permission };
 
-const ALL: Permission[] = [
-  "leads:read", "leads:write", "leads:delete", "leads:assign",
-  "import:run",
-  "campaigns:read", "campaigns:write", "campaigns:send",
-  "inbox:read", "inbox:reply",
-  "sequences:manage", "pipeline:manage", "analytics:read",
-  "users:manage", "settings:manage", "rgpd:manage",
-];
+let matrixCache: Record<Role, Permission[]> | null = null;
 
-const MATRIX: Record<Role, Permission[]> = {
-  ADMIN: ALL,
-  MANAGER: [
-    "leads:read", "leads:write", "leads:delete", "leads:assign",
-    "import:run",
-    "campaigns:read", "campaigns:write", "campaigns:send",
-    "inbox:read", "inbox:reply",
-    "sequences:manage", "pipeline:manage", "analytics:read",
-  ],
-  COMMERCIAL: [
-    "leads:read", "leads:write",
-    "campaigns:read",
-    "inbox:read", "inbox:reply",
-    "pipeline:manage", "analytics:read",
-  ],
-  LECTEUR: ["leads:read", "campaigns:read", "inbox:read", "analytics:read"],
-};
+/** Charge la matrice depuis la base (cache process). */
+export async function ensureRbacLoaded(): Promise<void> {
+  if (matrixCache) return;
+  try {
+    matrixCache = await getRbacMatrix();
+  } catch {
+    matrixCache = { ...DEFAULT_MATRIX, ADMIN: [...ALL_PERMISSIONS] };
+  }
+}
+
+/** Invalide le cache après mise à jour admin. */
+export function invalidateRbacCache(next?: Record<Role, Permission[]>): void {
+  matrixCache = next ?? null;
+}
 
 export function can(role: Role, permission: Permission): boolean {
-  return MATRIX[role]?.includes(permission) ?? false;
+  const matrix = matrixCache ?? DEFAULT_MATRIX;
+  return matrix[role]?.includes(permission) ?? false;
 }
 
 export function permissionsFor(role: Role): Permission[] {
-  return MATRIX[role] ?? [];
+  const matrix = matrixCache ?? DEFAULT_MATRIX;
+  return matrix[role] ?? [];
 }
+
+export { ALL_PERMISSIONS, DEFAULT_MATRIX, PERMISSION_META, RBAC_ROLE_LABELS, RBAC_ROLES } from "@crm/db";

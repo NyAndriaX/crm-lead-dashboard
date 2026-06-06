@@ -272,32 +272,46 @@ model LeadPipeline {
 // ──────────────────────────────────────────────────────────────
 
 model SmtpConfig {
-  id          String   @id @default(cuid())
-  label       String
-  host        String
-  port        Int
-  loginEnc    Bytes
-  passwordEnc Bytes
-  fromName    String?
-  fromEmail   String?
-  dailyLimit  Int      @default(200)
-  sentToday   Int      @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  id               String   @id @default(cuid())
+  label            String
+  host             String
+  port             Int
+  loginEnc         Bytes
+  passwordEnc      Bytes
+  fromName         String?
+  fromEmail        String?
+  dailyLimit       Int      @default(200)
+  sentToday        Int      @default(0)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  // OAuth Microsoft 365
+  oauthProvider    String?  // "microsoft" | null
+  oauthTenantId    String?
+  oauthClientId    String?
+  oauthClientSecretEnc Bytes?
+  oauthRefreshTokenEnc Bytes?
+  oauthMailSender  String?
 
   campaigns Campaign[]
 }
 
 model ImapConfig {
-  id          String   @id @default(cuid())
-  label       String
-  host        String
-  port        Int
-  loginEnc    Bytes
-  passwordEnc Bytes
-  isActive    Boolean  @default(true)
-  lastSyncAt  DateTime?
-  createdAt   DateTime @default(now())
+  id               String    @id @default(cuid())
+  label            String
+  host             String
+  port             Int
+  loginEnc         Bytes
+  passwordEnc      Bytes
+  isActive         Boolean   @default(true)
+  lastSyncAt       DateTime?
+  createdAt        DateTime  @default(now())
+  // OAuth Microsoft 365
+  oauthProvider    String?   // "microsoft" | null
+  oauthTenantId    String?
+  oauthClientId    String?
+  oauthClientSecretEnc Bytes?
+  oauthRefreshTokenEnc Bytes?
+  oauthMailbox     String?
 }
 
 model Template {
@@ -533,6 +547,13 @@ model Job {
 model ScoringConfig {
   id        String   @id
   weights   Json
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+}
+
+model RbacConfig {
+  id        String   @id @default("default")
+  matrix    Json
   updatedBy String?
   updatedAt DateTime @updatedAt
 }

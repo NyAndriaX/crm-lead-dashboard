@@ -12,17 +12,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Avatar, Badge, Button, Card, Empty, Input, message, Select, Space, Spin,
-  Statistic, Tag, Tooltip, Typography,
+  Statistic, Tag, Tooltip, Typography, Modal, Form, ColorPicker, Alert,
 } from "antd";
 import {
   FilterOutlined, ProjectOutlined, ReloadOutlined, SearchOutlined, TrophyOutlined,
-  UserOutlined, RiseOutlined, ClockCircleOutlined,
+  UserOutlined, RiseOutlined, ClockCircleOutlined, PlusOutlined, DeleteOutlined,
 } from "@ant-design/icons";
 import Link from "next/link";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { api } from "@/lib/client";
 
-const { Text, Title } = Typography;
+const { Text, Title, Paragraph } = Typography;
+
+const DEFAULT_COLORS = ["#1677ff", "#52c41a", "#fa8c16", "#722ed1", "#13c2c2", "#eb2f96", "#f5222d", "#595959"];
 
 type Stage = {
   id: string;
@@ -107,6 +109,12 @@ export default function PipelinePage() {
   const [filterScoreMin, setFilterScoreMin] = useState<number | undefined>();
   const [search, setSearch] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [canManagePipeline, setCanManagePipeline] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Stage | null>(null);
+  const [reassignTo, setReassignTo] = useState<string | undefined>();
+  const [stageSaving, setStageSaving] = useState(false);
+  const [createForm] = Form.useForm();
 
   const fetchLeads = useCallback(async () => {
     const params = new URLSearchParams();
@@ -144,6 +152,12 @@ export default function PipelinePage() {
   }, [fetchLeads]);
 
   useEffect(() => { void fetchAll(); }, [fetchAll]);
+
+  useEffect(() => {
+    api.get<{ permissions: string[] }>("/auth/me")
+      .then(({ data }) => setCanManagePipeline(data.permissions.includes("pipeline:manage")))
+      .catch(() => setCanManagePipeline(false));
+  }, []);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -241,6 +255,45 @@ export default function PipelinePage() {
     setSearch("");
   }
 
+  async function createStage() {
+    const values = await createForm.validateFields();
+    setStageSaving(true);
+    try {
+      const color =
+        typeof values.color === "object" && values.color?.toHexString
+          ? values.color.toHexString()
+          : values.color ?? DEFAULT_COLORS[0];
+      await api.post("/pipeline-stages", { name: values.name, color });
+      message.success("Colonne ajoutée");
+      createForm.resetFields();
+      setCreateOpen(false);
+      await fetchAll();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
+      message.error(msg);
+    } finally {
+      setStageSaving(false);
+    }
+  }
+
+  async function confirmDeleteStage() {
+    if (!deleteTarget) return;
+    setStageSaving(true);
+    try {
+      const qs = reassignTo ? `?reassignTo=${encodeURIComponent(reassignTo)}` : "";
+      await api.delete(`/pipeline-stages/${deleteTarget.id}${qs}`);
+      message.success(`Colonne « ${deleteTarget.name} » supprimée`);
+      setDeleteTarget(null);
+      setReassignTo(undefined);
+      await fetchAll();
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
+      message.error(msg);
+    } finally {
+      setStageSaving(false);
+    }
+  }
+
   return (
     <div style={{ padding: "16px 24px", height: "100%", display: "flex", flexDirection: "column" }}>
       <div style={{ marginBottom: 16 }}>
@@ -255,6 +308,11 @@ export default function PipelinePage() {
             )}
           </Space>
           <Space>
+            {canManagePipeline && (
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+                Ajouter une colonne
+              </Button>
+            )}
             <Button icon={<ReloadOutlined />} onClick={() => fetchAll()}>Actualiser</Button>
           </Space>
         </Space>
@@ -348,10 +406,16 @@ export default function PipelinePage() {
       ) : stages.length === 0 ? (
         <Empty
           description={
-            <>
-              Aucune étape configurée.{" "}
-              <Link href="/settings">Configurer les étapes</Link>
-            </>
+            canManagePipeline ? (
+              <>
+                Aucune colonne configurée.{" "}
+                <Button type="link" style={{ padding: 0 }} onClick={() => setCreateOpen(true)}>
+                  Ajouter la première colonne
+                </Button>
+              </>
+            ) : (
+              <>Aucune colonne configurée. Contactez un administrateur.</>
+            )
           }
         />
       ) : (
@@ -401,6 +465,17 @@ export default function PipelinePage() {
                         <Text strong>{stage.name}</Text>
                         <Badge count={stageLeads.length} showZero color={stage.color ?? "#bfbfbf"} />
                       </Space>
+                      {canManagePipeline && (
+                        <Tooltip title="Supprimer cette colonne">
+                          <Button
+                            type="text"
+                            size="small"
+                            danger
+                            icon={<DeleteOutlined />}
+                            onClick={() => setDeleteTarget(stage)}
+                          />
+                        </Tooltip>
+                      )}
                     </Space>
                     {metric && (
                       <Space size={12} style={{ marginTop: 4 }}>
@@ -524,9 +599,107 @@ export default function PipelinePage() {
                 </div>
               );
             })}
+            {canManagePipeline && (
+              <button
+                type="button"
+                onClick={() => setCreateOpen(true)}
+                style={{
+                  flex: "0 0 200px",
+                  minWidth: 200,
+                  minHeight: 120,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  background: "#fafafa",
+                  borderRadius: 8,
+                  border: "2px dashed #d9d9d9",
+                  cursor: "pointer",
+                  color: "#8c8c8c",
+                  transition: "border-color 0.2s, color 0.2s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "#1677ff";
+                  e.currentTarget.style.color = "#1677ff";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "#d9d9d9";
+                  e.currentTarget.style.color = "#8c8c8c";
+                }}
+              >
+                <PlusOutlined style={{ fontSize: 24 }} />
+                <Text type="secondary">Ajouter une colonne</Text>
+              </button>
+            )}
           </div>
         </DragDropContext>
       )}
+
+      <Modal
+        title={<Space><PlusOutlined /><span>Nouvelle colonne</span></Space>}
+        open={createOpen}
+        onOk={() => void createStage()}
+        onCancel={() => { setCreateOpen(false); createForm.resetFields(); }}
+        confirmLoading={stageSaving}
+        okText="Créer"
+        cancelText="Annuler"
+        destroyOnHidden
+      >
+        <Form form={createForm} layout="vertical" style={{ marginTop: 16 }} initialValues={{ color: DEFAULT_COLORS[0] }}>
+          <Form.Item name="name" label="Nom de la colonne" rules={[{ required: true, max: 60 }]}>
+            <Input placeholder="ex. Démo planifiée" />
+          </Form.Item>
+          <Form.Item name="color" label="Couleur">
+            <ColorPicker presets={[{ label: "Couleurs", colors: DEFAULT_COLORS }]} showText />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Supprimer la colonne"
+        open={!!deleteTarget}
+        onOk={() => void confirmDeleteStage()}
+        onCancel={() => { setDeleteTarget(null); setReassignTo(undefined); }}
+        confirmLoading={stageSaving}
+        okText="Supprimer"
+        okButtonProps={{ danger: true }}
+        cancelText="Annuler"
+        destroyOnHidden
+      >
+        {deleteTarget && (
+          <Space direction="vertical" style={{ width: "100%" }} size={12}>
+            <Paragraph style={{ marginBottom: 0 }}>
+              Supprimer la colonne <Text strong>« {deleteTarget.name} »</Text> ?
+            </Paragraph>
+            {deleteTarget.leadCount > 0 ? (
+              <>
+                <Alert
+                  type="warning"
+                  showIcon
+                  message={`Cette colonne contient ${deleteTarget.leadCount} lead(s).`}
+                  description="Choisissez où les réassigner, sinon ils seront détachés (pas supprimés)."
+                />
+                <div>
+                  <Text strong>Réassigner les leads à :</Text>
+                  <Select
+                    allowClear
+                    style={{ width: "100%", marginTop: 8 }}
+                    placeholder="(détacher les leads)"
+                    value={reassignTo}
+                    onChange={setReassignTo}
+                    options={stages
+                      .filter((s) => s.id !== deleteTarget.id)
+                      .map((s) => ({ value: s.id, label: s.name }))}
+                  />
+                </div>
+              </>
+            ) : (
+              <Alert type="info" message="Aucun lead dans cette colonne." />
+            )}
+          </Space>
+        )}
+      </Modal>
     </div>
   );
 }

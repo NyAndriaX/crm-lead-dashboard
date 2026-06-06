@@ -4,11 +4,14 @@
  * Page Administration — CRM-071.
  * Tabs : Vue d'ensemble · Utilisateurs · Scoring · Imports
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { EmailHtmlDualEditor } from "@/components/emailing/EmailHtmlDualEditor";
 import { EmailHtmlLivePreview } from "@/components/emailing/EmailHtmlLivePreview";
 import { EmailTemplateAiVariants } from "@/components/emailing/EmailTemplateAiVariants";
 import { ImapSection } from "@/components/emailing/ImapSection";
+import { Microsoft365OAuthSection } from "@/components/emailing/Microsoft365OAuthSection";
+import { OpenAiSection } from "@/components/account/OpenAiSection";
 import { TeamsSection } from "@/components/admin/TeamsSection";
 import { PermissionsSection } from "@/components/admin/PermissionsSection";
 import { AuditLogsSection } from "@/components/admin/AuditLogsSection";
@@ -29,6 +32,7 @@ import {
   TeamOutlined, CalendarOutlined, SettingOutlined, LockOutlined, DeleteOutlined,
   MailOutlined, CloudOutlined, CodeOutlined, EyeOutlined, CopyOutlined, BookOutlined,
   AppstoreOutlined, ApiOutlined, FileProtectOutlined, InboxOutlined, BarChartOutlined,
+  ThunderboltOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
@@ -1625,7 +1629,7 @@ function EmailingTab() {
           <Text type="secondary">
             Éditeur double onglet (visuel / HTML), variables de fusion <Text code>{"{{prenom}}"}</Text>, aperçu bureau et mobile.
             {" "}
-            Optionnel : dans les modales de création ou d’édition, la section « Suggestions IA » propose des variantes de ton via OpenAI lorsque <a href="/account">Mon compte → Intégration IA</a> est configurée par chaque utilisateur.
+            Optionnel : dans les modales de création ou d’édition, la section « Suggestions IA » propose des variantes de ton via OpenAI lorsque <a href="/settings?tab=openai">Configuration → Intégration IA</a> est configurée par chaque utilisateur.
           </Text>
         </Space>
         <Table
@@ -2098,6 +2102,52 @@ function ScoringTab() {
   );
 }
 
+// ── Microsoft 365 OAuth tab ───────────────────────────────────────────────────
+
+function Microsoft365OAuthTab() {
+  const [imapConfigs, setImapConfigs] = useState<{ id: string; label: string; hasOauth: boolean }[]>([]);
+  const [smtpConfigs, setSmtpConfigs] = useState<{ id: string; label: string; hasOauth: boolean }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [imap, smtp] = await Promise.all([
+        api.get<{ data: { id: string; label: string; oauthProvider?: string | null }[] }>("/imap-configs"),
+        api.get<{ data: { id: string; label: string; oauthProvider?: string | null }[] }>("/smtp-configs"),
+      ]);
+      setImapConfigs(imap.data.data.map((c) => ({ id: c.id, label: c.label, hasOauth: !!c.oauthProvider })));
+      setSmtpConfigs(smtp.data.data.map((c) => ({ id: c.id, label: c.label, hasOauth: !!c.oauthProvider })));
+    } catch {
+      /* silencieux */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  if (loading) return <div style={{ textAlign: "center", padding: 40 }}><Spin /></div>;
+
+  if (imapConfigs.length === 0 && smtpConfigs.length === 0) {
+    return (
+      <Alert
+        type="info"
+        showIcon
+        message="Aucun compte IMAP ou SMTP trouvé"
+        description={
+          <>
+            Créez d&apos;abord un compte dans l&apos;onglet <strong>Emailing</strong> ou{" "}
+            <strong>IMAP / Réponses</strong>, puis revenez ici pour activer OAuth Microsoft 365.
+          </>
+        }
+      />
+    );
+  }
+
+  return <Microsoft365OAuthSection imapConfigs={imapConfigs} smtpConfigs={smtpConfigs} onRefresh={load} />;
+}
+
 // ── Page principale ───────────────────────────────────────────────────────────
 
 const SETTINGS_TABS: SettingsTabItem[] = [
@@ -2174,6 +2224,14 @@ const SETTINGS_TABS: SettingsTabItem[] = [
     children: <ImapSection />,
   },
   {
+    key: "microsoft365",
+    label: "Microsoft 365 OAuth",
+    group: "Commercial",
+    description: "Connexion OAuth sans mot de passe pour SMTP et IMAP Microsoft 365.",
+    icon: <CloudOutlined />,
+    children: <Microsoft365OAuthTab />,
+  },
+  {
     key: "imports",
     label: "Imports",
     group: "Commercial",
@@ -2191,6 +2249,14 @@ const SETTINGS_TABS: SettingsTabItem[] = [
         </Button>
       </div>
     ),
+  },
+  {
+    key: "openai",
+    label: "Intégration IA",
+    group: "Plateforme",
+    description: "Clé OpenAI, auto-répondeur et consommation par utilisateur.",
+    icon: <ThunderboltOutlined />,
+    children: <OpenAiSection />,
   },
   {
     key: "audit",
@@ -2227,7 +2293,20 @@ const SETTINGS_TABS: SettingsTabItem[] = [
 ];
 
 export default function SettingsPage() {
+  return (
+    <Suspense fallback={null}>
+      <SettingsPageInner />
+    </Suspense>
+  );
+}
+
+function SettingsPageInner() {
   const isMobile = useIsMobile();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const tabFromUrl = searchParams.get("tab");
+  const defaultActiveKey =
+    tabFromUrl && SETTINGS_TABS.some((t) => t.key === tabFromUrl) ? tabFromUrl : "overview";
 
   return (
     <div className="settings-page">
@@ -2256,15 +2335,19 @@ export default function SettingsPage() {
         </div>
         <div>
           <Title level={isMobile ? 4 : 3} style={{ color: "#fff", margin: 0 }}>
-            Administration
+            Configuration
           </Title>
           <Text style={{ color: "rgba(255,255,255,0.75)" }}>
-            Utilisateurs, scoring, emailing et paramètres système
+            Administration, emailing, intégrations et paramètres système
           </Text>
         </div>
       </div>
 
-      <SettingsTabsLayout items={SETTINGS_TABS} defaultActiveKey="overview" />
+      <SettingsTabsLayout
+        items={SETTINGS_TABS}
+        defaultActiveKey={defaultActiveKey}
+        onTabChange={(key) => router.replace(`/settings?tab=${key}`, { scroll: false })}
+      />
     </div>
   );
 }

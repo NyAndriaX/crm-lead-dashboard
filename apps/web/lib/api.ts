@@ -6,7 +6,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@crm/db";
 import { ZodError, type ZodTypeAny, type z } from "zod";
 import { getSession, type AccessClaims } from "./auth";
-import { can, type Permission } from "./rbac";
+import { can, type Permission, ensureRbacLoaded } from "./rbac";
 
 /** Erreurs Prisma / config fréquentes → message exploitable côté client (sans fuite de secrets). */
 function tryMapInfrastructureError(e: unknown): Response | null {
@@ -175,6 +175,7 @@ export async function requireSession(): Promise<AccessClaims> {
 /** Exige une session + une permission RBAC ; lève 401 / 403. */
 export async function requirePermission(permission: Permission): Promise<AccessClaims> {
   const s = await requireSession();
+  await ensureRbacLoaded();
   if (!can(s.role, permission)) {
     throw new ApiError(403, `Permission manquante : ${permission}`, "forbidden");
   }

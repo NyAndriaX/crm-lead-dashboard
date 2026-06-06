@@ -42,6 +42,8 @@ export async function listSmtpConfigs() {
       dailyLimit: true,
       isActive: true,
       createdAt: true,
+      oauthProvider: true,
+      oauthMailSender: true,
     },
     orderBy: { createdAt: "desc" },
   });

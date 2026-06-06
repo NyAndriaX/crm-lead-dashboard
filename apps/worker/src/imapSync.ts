@@ -19,7 +19,7 @@
 import * as crypto from "node:crypto";
 import { ImapFlow, type FetchMessageObject } from "imapflow";
 import { simpleParser, type ParsedMail } from "mailparser";
-import { prisma, notifyUser } from "@crm/db";
+import { prisma, notifyUser, getAccessToken, decryptToken } from "@crm/db";
 import type { WorkerJobContext } from "@crm/queue";
 import { categorizeReply, type ReplyCategory } from "./replyCategorizer";
 import { maybeAutoRespond } from "./autoResponder";
@@ -67,6 +67,13 @@ type ImapRow = {
   loginEnc: Buffer;
   passwordEnc: Buffer;
   lastSyncAt: Date | null;
+  // OAuth Microsoft 365
+  oauthProvider: string | null;
+  oauthTenantId: string | null;
+  oauthClientId: string | null;
+  oauthClientSecretEnc: Buffer | null;
+  oauthRefreshTokenEnc: Buffer | null;
+  oauthMailbox: string | null;
 };
 
 function normalizeMessageId(raw: string | null | undefined): string | null {
@@ -366,6 +373,30 @@ async function ingestParsedMessage(parsed: ParsedMail): Promise<{
   return { saved: true, leadMatched: Boolean(leadId) };
 }
 
+async function buildImapAuth(
+  row: ImapRow,
+): Promise<{ user: string; pass?: string; accessToken?: string }> {
+  if (
+    row.oauthProvider === "microsoft" &&
+    row.oauthTenantId &&
+    row.oauthClientId &&
+    row.oauthClientSecretEnc &&
+    row.oauthRefreshTokenEnc
+  ) {
+    const clientSecret = decryptToken(row.oauthClientSecretEnc);
+    const refreshToken = decryptToken(row.oauthRefreshTokenEnc);
+    const resp = await getAccessToken(
+      { tenantId: row.oauthTenantId, clientId: row.oauthClientId, clientSecret },
+      refreshToken,
+    );
+    const mailbox = row.oauthMailbox ?? decrypt(Buffer.from(row.loginEnc));
+    return { user: mailbox, accessToken: resp.access_token };
+  }
+  const login = decrypt(Buffer.from(row.loginEnc));
+  const pass = decrypt(Buffer.from(row.passwordEnc));
+  return { user: login, pass };
+}
+
 async function syncOneAccount(row: ImapRow): Promise<{
   account: string;
   fetched: number;
@@ -373,14 +404,16 @@ async function syncOneAccount(row: ImapRow): Promise<{
   matched: number;
   error?: string;
 }> {
-  const login = decrypt(Buffer.from(row.loginEnc));
-  const pass = decrypt(Buffer.from(row.passwordEnc));
+  const auth = await buildImapAuth(row);
   const since = row.lastSyncAt ?? new Date(Date.now() - 7 * 24 * 3600 * 1000);
+  const imapAuth = auth.accessToken
+    ? { user: auth.user, accessToken: auth.accessToken }
+    : { user: auth.user, pass: auth.pass! };
   const client = new ImapFlow({
     host: row.host,
     port: row.port,
     secure: row.port === 993,
-    auth: { user: login, pass },
+    auth: imapAuth,
     logger: false,
     tls: { rejectUnauthorized: false },
   });
@@ -444,6 +477,12 @@ export async function runImapSync(_ctx: WorkerJobContext): Promise<unknown> {
       loginEnc: true,
       passwordEnc: true,
       lastSyncAt: true,
+      oauthProvider: true,
+      oauthTenantId: true,
+      oauthClientId: true,
+      oauthClientSecretEnc: true,
+      oauthRefreshTokenEnc: true,
+      oauthMailbox: true,
     },
   });
 
@@ -460,6 +499,8 @@ export async function runImapSync(_ctx: WorkerJobContext): Promise<unknown> {
         ...acc,
         loginEnc: Buffer.from(acc.loginEnc),
         passwordEnc: Buffer.from(acc.passwordEnc),
+        oauthClientSecretEnc: acc.oauthClientSecretEnc ? Buffer.from(acc.oauthClientSecretEnc) : null,
+        oauthRefreshTokenEnc: acc.oauthRefreshTokenEnc ? Buffer.from(acc.oauthRefreshTokenEnc) : null,
       }),
     );
   }

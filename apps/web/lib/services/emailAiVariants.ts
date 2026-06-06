@@ -61,7 +61,7 @@ export async function generateEmailAiVariants(
   if (!credentials) {
     throw new ApiError(
       503,
-      "Personnalisation IA indisponible : configurez votre clé OpenAI dans Mon compte → Intégration IA.",
+      "Personnalisation IA indisponible : configurez votre clé OpenAI dans Configuration → Intégration IA.",
       "ai_disabled",
     );
   }

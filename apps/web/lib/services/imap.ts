@@ -32,6 +32,8 @@ const PUBLIC_SELECT = {
   isActive: true,
   lastSyncAt: true,
   createdAt: true,
+  oauthProvider: true,
+  oauthMailbox: true,
 } as const;
 
 export async function listImapConfigs() {

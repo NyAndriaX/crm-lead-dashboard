@@ -34,6 +34,28 @@ export {
   type NotifyUserInput,
   type NotifyUserResult,
 } from "./notifications";
+export {
+  getRbacMatrix,
+  saveRbacMatrix,
+  matrixToSets,
+  DEFAULT_MATRIX,
+  ALL_PERMISSIONS,
+  PERMISSION_META,
+  ROLE_LABELS as RBAC_ROLE_LABELS,
+  ROLES as RBAC_ROLES,
+  type Permission,
+} from "./rbacConfig";
+export {
+  getAccessToken,
+  startDeviceCodeFlow,
+  pollDeviceCodeToken,
+  encryptToken,
+  decryptToken,
+  MS_OAUTH_SCOPES,
+  type MsOAuthConfig,
+  type MsTokenResponse,
+  type DeviceCodeResponse,
+} from "./microsoftOAuth";
 
 /** Cast sûr d'un champ Prisma Json (ex. tags, variables, events) vers string[]. */
 export function asStringArray(val: unknown): string[] {

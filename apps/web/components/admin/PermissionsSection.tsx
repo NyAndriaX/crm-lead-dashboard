@@ -1,16 +1,15 @@
 "use client";
 
 /**
- * Section Permissions / Rôles (U-02) — affichage en lecture seule de la matrice
- * RBAC actuelle (4 rôles × ~17 permissions).
- *
- * La matrice est définie en dur dans `lib/rbac.ts` (côté serveur). Cet affichage
- * mirroir aide les admins à comprendre exactement ce qu'autorise chaque rôle
- * avant d'affecter un user.
+ * Section Permissions / Rôles — matrice RBAC éditable (persistée en base).
  */
-import { Card, Space, Table, Tag, Typography, Alert } from "antd";
-import { CheckCircleFilled, MinusOutlined } from "@ant-design/icons";
+import { useCallback, useEffect, useState } from "react";
+import {
+  Alert, Button, Card, message, Space, Switch, Table, Tag, Typography,
+} from "antd";
+import { ReloadOutlined, SaveOutlined, LockOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
+import { api } from "@/lib/client";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -30,7 +29,6 @@ const ROLE_LABELS: Record<Role, string> = {
   LECTEUR: "Lecteur",
 };
 
-// Miroir UI de la matrice définie dans lib/rbac.ts (à garder synchronisé).
 const PERMISSIONS: { key: string; label: string; group: string }[] = [
   { key: "leads:read", label: "Lire les leads", group: "Leads" },
   { key: "leads:write", label: "Créer / modifier des leads", group: "Leads" },
@@ -50,46 +48,95 @@ const PERMISSIONS: { key: string; label: string; group: string }[] = [
   { key: "rgpd:manage", label: "Actions RGPD", group: "Administration" },
 ];
 
-const MATRIX: Record<Role, Set<string>> = {
-  ADMIN: new Set(PERMISSIONS.map((p) => p.key)),
-  MANAGER: new Set([
-    "leads:read", "leads:write", "leads:delete", "leads:assign",
-    "import:run",
-    "campaigns:read", "campaigns:write", "campaigns:send",
-    "inbox:read", "inbox:reply",
-    "sequences:manage", "pipeline:manage", "analytics:read",
-  ]),
-  COMMERCIAL: new Set([
-    "leads:read", "leads:write",
-    "campaigns:read",
-    "inbox:read", "inbox:reply",
-    "pipeline:manage", "analytics:read",
-  ]),
-  LECTEUR: new Set(["leads:read", "campaigns:read", "inbox:read", "analytics:read"]),
-};
-
 const ROLES: Role[] = ["ADMIN", "MANAGER", "COMMERCIAL", "LECTEUR"];
+
+type Matrix = Record<Role, string[]>;
 
 type Row = {
   key: string;
   label: string;
   group: string;
-  ADMIN: boolean;
-  MANAGER: boolean;
-  COMMERCIAL: boolean;
-  LECTEUR: boolean;
 };
 
+function matrixToRows(matrix: Matrix): Record<string, Record<Role, boolean>> {
+  const out: Record<string, Record<Role, boolean>> = {};
+  for (const p of PERMISSIONS) {
+    out[p.key] = {
+      ADMIN: matrix.ADMIN.includes(p.key),
+      MANAGER: matrix.MANAGER.includes(p.key),
+      COMMERCIAL: matrix.COMMERCIAL.includes(p.key),
+      LECTEUR: matrix.LECTEUR.includes(p.key),
+    };
+  }
+  return out;
+}
+
+function rowsToMatrix(checked: Record<string, Record<Role, boolean>>): Matrix {
+  const matrix: Matrix = { ADMIN: [], MANAGER: [], COMMERCIAL: [], LECTEUR: [] };
+  for (const role of ROLES) {
+    matrix[role] = PERMISSIONS.filter((p) => checked[p.key]?.[role]).map((p) => p.key);
+  }
+  return matrix;
+}
+
 export function PermissionsSection() {
-  const rows: Row[] = PERMISSIONS.map((p) => ({
-    key: p.key,
-    label: p.label,
-    group: p.group,
-    ADMIN: MATRIX.ADMIN.has(p.key),
-    MANAGER: MATRIX.MANAGER.has(p.key),
-    COMMERCIAL: MATRIX.COMMERCIAL.has(p.key),
-    LECTEUR: MATRIX.LECTEUR.has(p.key),
-  }));
+  const [matrix, setMatrix] = useState<Matrix | null>(null);
+  const [checked, setChecked] = useState<Record<string, Record<Role, boolean>>>({});
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get<{ data: { matrix: Matrix } }>("/rbac/matrix");
+      const m = data.data.matrix;
+      setMatrix(m);
+      setChecked(matrixToRows(m));
+      setDirty(false);
+    } catch {
+      message.error("Impossible de charger la matrice des permissions.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  function toggle(permKey: string, role: Role, value: boolean) {
+    if (role === "ADMIN") return;
+    setChecked((prev) => {
+      const row = prev[permKey] ?? { ADMIN: true, MANAGER: false, COMMERCIAL: false, LECTEUR: false };
+      return {
+        ...prev,
+        [permKey]: { ...row, [role]: value },
+      };
+    });
+    setDirty(true);
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      const payload = rowsToMatrix(checked);
+      const { data } = await api.put<{ data: { matrix: Matrix } }>("/rbac/matrix", { matrix: payload });
+      setMatrix(data.data.matrix);
+      setChecked(matrixToRows(data.data.matrix));
+      setDirty(false);
+      message.success("Matrice des permissions enregistrée.");
+    } catch (e) {
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message;
+      message.error(msg ?? "Échec de l'enregistrement.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function resetDefaults() {
+    void load();
+  }
+
+  const tableRows: Row[] = PERMISSIONS.map((p) => ({ key: p.key, label: p.label, group: p.group }));
 
   const columns: ColumnsType<Row> = [
     {
@@ -108,44 +155,67 @@ export function PermissionsSection() {
       title: "Module",
       dataIndex: "group",
       key: "group",
-      width: 140,
+      width: 130,
       render: (v) => <Tag>{v}</Tag>,
     },
     ...ROLES.map((role): ColumnsType<Row>[number] => ({
-      title: <Tag color={ROLE_COLORS[role]} style={{ margin: 0 }}>{ROLE_LABELS[role]}</Tag>,
+      title: (
+        <Space size={4}>
+          <Tag color={ROLE_COLORS[role]} style={{ margin: 0 }}>{ROLE_LABELS[role]}</Tag>
+          {role === "ADMIN" && <LockOutlined style={{ color: "#999", fontSize: 12 }} />}
+        </Space>
+      ),
       key: role,
-      align: "center",
-      width: 110,
-      render: (_, r) =>
-        r[role] ? (
-          <CheckCircleFilled style={{ color: "#52c41a", fontSize: 18 }} />
-        ) : (
-          <MinusOutlined style={{ color: "#bfbfbf", fontSize: 14 }} />
-        ),
+      align: "center" as const,
+      width: 120,
+      render: (_, r) => (
+        <Switch
+          size="small"
+          checked={checked[r.key]?.[role] ?? false}
+          disabled={role === "ADMIN"}
+          onChange={(v) => toggle(r.key, role, v)}
+        />
+      ),
     })),
   ];
 
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
       <Card size="small">
-        <Title level={5} style={{ marginTop: 0 }}>Matrice des rôles et permissions</Title>
-        <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          Vue en lecture seule des permissions accordées par chaque rôle. La matrice est définie
-          dans <Text code>lib/rbac.ts</Text> et appliquée côté serveur sur chaque route API.
-          Pour changer le rôle d'un utilisateur, allez dans l'onglet <Text strong>Utilisateurs</Text>.
-        </Paragraph>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <Title level={5} style={{ marginTop: 0 }}>Matrice des rôles et permissions</Title>
+            <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+              Modifiez les accès de chaque rôle de base. Les changements sont appliqués immédiatement
+              sur toutes les routes API. Pour changer le rôle d&apos;un utilisateur, allez dans{" "}
+              <Text strong>Utilisateurs</Text>.
+            </Paragraph>
+          </div>
+          <Space wrap>
+            <Button icon={<ReloadOutlined />} onClick={resetDefaults} disabled={loading || saving}>
+              Réinitialiser
+            </Button>
+            <Button
+              type="primary"
+              icon={<SaveOutlined />}
+              loading={saving}
+              disabled={!dirty || loading}
+              onClick={() => void save()}
+            >
+              Enregistrer
+            </Button>
+          </Space>
+        </div>
       </Card>
 
       <Alert
         type="info"
         showIcon
-        message="Logique d'héritage"
+        message="Rôle Administrateur"
         description={
           <>
-            <Text strong>ADMIN</Text> a toutes les permissions ·{" "}
-            <Text strong>MANAGER</Text> a tout sauf l'administration ·{" "}
-            <Text strong>COMMERCIAL</Text> opère sur les leads + campagnes en lecture ·{" "}
-            <Text strong>LECTEUR</Text> n'a que des accès en lecture.
+            Le rôle <Text strong>ADMIN</Text> conserve toujours toutes les permissions (non modifiable)
+            pour éviter de bloquer l&apos;accès à la configuration.
           </>
         }
       />
@@ -153,12 +223,16 @@ export function PermissionsSection() {
       <Table
         rowKey="key"
         columns={columns}
-        dataSource={rows}
+        dataSource={tableRows}
+        loading={loading}
         pagination={false}
         size="middle"
-        scroll={{ x: 800 }}
-        rowClassName={(_, idx) => (idx % 2 === 0 ? "ant-table-row-striped" : "")}
+        scroll={{ x: 900 }}
       />
+
+      {matrix && dirty && (
+        <Alert type="warning" showIcon message="Modifications non enregistrées — cliquez sur Enregistrer pour appliquer." />
+      )}
     </Space>
   );
 }

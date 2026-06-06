@@ -24,7 +24,7 @@ function resultMessage(args: {
     case "disabled":
     case "assignee_disabled":
     case "no_responder_user":
-      return "Auto-répondeur désactivé. Configurez-le dans Mon compte → Intégration IA.";
+      return "Auto-répondeur désactivé. Configurez-le dans Configuration → Intégration IA.";
     case "category_skipped":
       return "Cette catégorie (hors sujet / auto-reply) ne déclenche pas de réponse IA.";
     case "no_email":
