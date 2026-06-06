@@ -8,7 +8,7 @@ import {
   type MissionConfig,
   type ScrapedLead,
 } from "@crm/db";
-import { prisma } from "@crm/db";
+import { prisma, notifyUser } from "@crm/db";
 import type { WorkerJobContext } from "@crm/queue";
 import { runScrapingMission } from "./scraping/adapters";
 import { checkScrapedLeadDuplicate, trackScrapedLeadSeen } from "./scraping/dedup";
@@ -230,16 +230,14 @@ export async function runScraping(ctx: WorkerJobContext): Promise<unknown> {
 
     const notifLink = `/scraping?openResults=${missionId}`;
     for (const a of admins) {
-      await prisma.notification.create({
-        data: {
-          userId: a.id,
-          type: "scraping_done",
-          title: cfg.autoPipeline?.enabled
-            ? "Scraping terminé — leads importés"
-            : "Scraping terminé — leads à valider",
-          body: bodyMsg,
-          link: notifLink,
-        },
+      await notifyUser({
+        userId: a.id,
+        type: "scraping_done",
+        title: cfg.autoPipeline?.enabled
+          ? "Scraping terminé — leads importés"
+          : "Scraping terminé — leads à valider",
+        body: bodyMsg,
+        link: notifLink,
       });
     }
 
@@ -266,14 +264,12 @@ export async function runScraping(ctx: WorkerJobContext): Promise<unknown> {
       take: 5,
     });
     for (const a of admins) {
-      await prisma.notification.create({
-        data: {
-          userId: a.id,
-          type: "scraping_error",
-          title: "Scraping en erreur",
-          body: `Mission « ${mission.name} » : ${msg}`,
-          link: `/scraping?openResults=${missionId}`,
-        },
+      await notifyUser({
+        userId: a.id,
+        type: "scraping_error",
+        title: "Scraping en erreur",
+        body: `Mission « ${mission.name} » : ${msg}`,
+        link: `/scraping?openResults=${missionId}`,
       });
     }
     return { error: msg };

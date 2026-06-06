@@ -9,7 +9,7 @@ import {
 import {
   DashboardOutlined, TeamOutlined, ImportOutlined, MailOutlined, MessageOutlined,
   RetweetOutlined, ProjectOutlined, BarChartOutlined, SettingOutlined,
-  UserOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
+  LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
   HomeOutlined, RadarChartOutlined, ThunderboltOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
@@ -67,30 +67,6 @@ function buildNav(role: ShellUser["role"], collapsed: boolean): MenuProps["items
   ];
 }
 
-function ShellUserCard({ user, initials }: { user: ShellUser; initials: string }) {
-  return (
-    <Space size={8} style={{ width: "100%" }}>
-      <Avatar size={32} style={{ background: ROLE_COLORS[user.role], flexShrink: 0, fontSize: 12, fontWeight: 600 }}>
-        {initials}
-      </Avatar>
-      <div style={{ overflow: "hidden" }}>
-        <Text style={{ color: "#fff", fontSize: 12, fontWeight: 600, display: "block" }} ellipsis>
-          {user.name}
-        </Text>
-        <span
-          style={{
-            fontSize: 10, fontWeight: 500, padding: "1px 6px", borderRadius: 4,
-            background: ROLE_COLORS[user.role] + "33",
-            color: ROLE_COLORS[user.role],
-            letterSpacing: 0.3,
-          }}
-        >
-          {ROLE_LABELS[user.role]}
-        </span>
-      </div>
-    </Space>
-  );
-}
 
 export default function DashboardShell({ user, children }: { user: ShellUser; children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -193,18 +169,6 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
             )}
           </div>
           {menu}
-          {!collapsed && (
-            <div
-              style={{
-                position: "absolute", bottom: 48, left: 0, right: 0,
-                padding: "12px 16px",
-                borderTop: "1px solid rgba(255,255,255,0.08)",
-                background: "rgba(0,0,0,0.15)",
-              }}
-            >
-              <ShellUserCard user={user} initials={initials} />
-            </div>
-          )}
         </Sider>
       )}
 
@@ -230,15 +194,6 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
             <Text strong style={{ color: "#fff", fontSize: 14 }}>CRM Dashboard</Text>
           </div>
           {menu}
-          <div
-            style={{
-              padding: "12px 16px",
-              borderTop: "1px solid rgba(255,255,255,0.08)",
-              background: "rgba(0,0,0,0.15)",
-            }}
-          >
-            <ShellUserCard user={user} initials={initials} />
-          </div>
         </Drawer>
       )}
 

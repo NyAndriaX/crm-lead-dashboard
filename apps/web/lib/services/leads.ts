@@ -11,7 +11,7 @@
  * (substring) + debounce 300 ms côté client. Le text index Mongo (`@@fulltext`) reste
  * disponible pour un `findRaw({ $text })` ranké si besoin ultérieur.
  */
-import { Prisma, prisma, type Lead, buildLeadWhereFromSegmentFilters, LEAD_NOT_DELETED, asStringArray } from "@crm/db";
+import { Prisma, prisma, notifyUser, type Lead, buildLeadWhereFromSegmentFilters, LEAD_NOT_DELETED, asStringArray } from "@crm/db";
 import { decryptOrNull, emailHash, encryptOrNull, normalizeEmail } from "../crypto";
 import type {
   AssignLeadInput, ChangeStatusInput, CreateLeadInput, LeadFilters, ListLeadsQuery,
@@ -255,10 +255,13 @@ export async function assignLead(id: string, input: AssignLeadInput, actorId?: s
   });
   if (input.assignedToId && input.assignedToId !== actorId) {
     const name = [current.firstName, current.lastName].filter(Boolean).join(" ") || current.company || "un lead";
-    await prisma.notification.create({
-      data: { userId: input.assignedToId, type: "lead_assigned", title: "Nouveau lead assigné", body: `${name} vous a été assigné`, link: `/leads/${id}` },
+    await notifyUser({
+      userId: input.assignedToId,
+      type: "lead_assigned",
+      title: "Nouveau lead assigné",
+      body: `${name} vous a été assigné`,
+      link: `/leads/${id}`,
     });
-    await enqueue("notification", { userId: input.assignedToId, kind: "lead_assigned", leadId: id });
   }
   return toDTO(lead);
 }

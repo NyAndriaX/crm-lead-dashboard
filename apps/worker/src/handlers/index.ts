@@ -8,8 +8,10 @@
  *  - "import-process" : traitement CSV/XLSX (CRM-021 → CRM-027)
  *
  * Placeholders :
- *  - "notification"   : envoi de la notification email (CRM-044)
  *  - "sequences-stop" : arrêt des séquences de relance d'un lead (CRM-041/047)
+ *
+ * Notifications :
+ *  - "notification"   : in-app + email (payload NotifyUserInput complet)
  *
  * Emailing / campagnes :
  *  - "campaign-send"  : envoi par lots des campagnes emailing — voir `campaignSend.ts`
@@ -17,7 +19,7 @@
 import * as fs from "node:fs";
 import * as crypto from "node:crypto";
 import * as XLSX from "xlsx";
-import { prisma } from "@crm/db";
+import { prisma, notifyUser, type NotifyUserInput } from "@crm/db";
 import type { WorkerJobContext, WorkerJobHandler } from "@crm/queue";
 import { runCampaignSend } from "../campaignSend";
 import { runImapSync } from "../imapSync";
@@ -241,8 +243,20 @@ export const handlers: Record<string, JobHandler> = {
   "import-process": processImport,
 
   notification: async (ctx) => {
-    console.log("[worker] notification (placeholder):", ctx.payload);
-    return { ok: true, delivered: "in-app only" };
+    const p = (ctx.payload ?? {}) as Partial<NotifyUserInput>;
+    if (p.userId && p.type && p.title) {
+      const result = await notifyUser({
+        userId: p.userId,
+        type: p.type,
+        title: p.title,
+        body: p.body,
+        link: p.link,
+        skipEmail: p.skipEmail,
+      });
+      return { ok: true, ...result };
+    }
+    console.log("[worker] notification job ignoré (payload legacy ou incomplet):", ctx.payload);
+    return { ok: true, skipped: true };
   },
 
   "sequences-stop": async (ctx) => {

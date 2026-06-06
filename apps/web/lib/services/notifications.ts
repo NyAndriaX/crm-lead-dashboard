@@ -2,8 +2,8 @@
  * Service Notifications — lecture/écriture des notifications utilisateur (R-05).
  *
  * Les notifications sont créées par les workers (ex. imap-sync à la réception
- * d'une réponse) ou par l'API web (ex. lead.assign crée déjà une notif via
- * le seed et idéalement à chaque réassignation manuelle).
+ * d'une réponse) ou par l'API web (ex. lead.assign). Chaque notification déclenche
+ * aussi un email de renfort via notifyUser() (@crm/db).
  */
 import { prisma } from "@crm/db";
 

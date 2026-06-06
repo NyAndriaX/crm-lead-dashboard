@@ -23,6 +23,17 @@ export {
   type OpenAiUsageSummary,
 } from "./openaiUsage";
 export { encrypt, decrypt, encryptOrNull, decryptOrNull } from "./piiCrypto";
+export {
+  sendTransactionalEmail,
+  TransactionalEmailError,
+  escapeHtml,
+} from "./transactionalEmail";
+export {
+  notifyUser,
+  notificationEmailTemplate,
+  type NotifyUserInput,
+  type NotifyUserResult,
+} from "./notifications";
 
 /** Cast sûr d'un champ Prisma Json (ex. tags, variables, events) vers string[]. */
 export function asStringArray(val: unknown): string[] {

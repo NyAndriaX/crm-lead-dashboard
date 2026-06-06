@@ -10,7 +10,7 @@
  *  - `final: true` (dernier lot) → crée une Notification "enrichissement terminé".
  */
 import { z } from "zod";
-import { prisma } from "@crm/db";
+import { notifyUser } from "@crm/db";
 import { handler, json, parseBody, requirePermission } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
 import { enrichLeadById } from "@/lib/services/enrichment";
@@ -47,14 +47,12 @@ export const POST = handler(async (req) => {
   }
 
   if (input.final) {
-    await prisma.notification.create({
-      data: {
-        userId: session.sub,
-        type: "enrichment_done",
-        title: "Enrichissement terminé",
-        body: `${input.totalSelected ?? input.ids.length} lead(s) traité(s).`,
-        link: "/leads",
-      },
+    await notifyUser({
+      userId: session.sub,
+      type: "enrichment_done",
+      title: "Enrichissement terminé",
+      body: `${input.totalSelected ?? input.ids.length} lead(s) traité(s).`,
+      link: "/leads",
     });
     await audit({
       userId: session.sub,

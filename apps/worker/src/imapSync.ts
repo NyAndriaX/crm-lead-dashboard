@@ -19,7 +19,7 @@
 import * as crypto from "node:crypto";
 import { ImapFlow, type FetchMessageObject } from "imapflow";
 import { simpleParser, type ParsedMail } from "mailparser";
-import { prisma } from "@crm/db";
+import { prisma, notifyUser } from "@crm/db";
 import type { WorkerJobContext } from "@crm/queue";
 import { categorizeReply, type ReplyCategory } from "./replyCategorizer";
 import { maybeAutoRespond } from "./autoResponder";
@@ -174,14 +174,12 @@ async function notifyLeadAssignee(args: {
   });
   if (!lead?.assignedToId) return;
   const name = [lead.firstName, lead.lastName].filter(Boolean).join(" ") || lead.company || "Un lead";
-  await prisma.notification.create({
-    data: {
-      userId: lead.assignedToId,
-      type: "reply_received",
-      title: `Nouvelle réponse — ${CATEGORY_LABEL[args.category]}`,
-      body: `${name}${args.subject ? ` : "${args.subject.slice(0, 80)}"` : ""}`,
-      link: `/leads/${args.leadId}`,
-    },
+  await notifyUser({
+    userId: lead.assignedToId,
+    type: "reply_received",
+    title: `Nouvelle réponse — ${CATEGORY_LABEL[args.category]}`,
+    body: `${name}${args.subject ? ` : "${args.subject.slice(0, 80)}"` : ""}`,
+    link: `/leads/${args.leadId}`,
   });
 }
 

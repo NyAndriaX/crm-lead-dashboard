@@ -18,6 +18,7 @@ import * as crypto from "node:crypto";
 import nodemailer from "nodemailer";
 import {
   prisma,
+  notifyUser,
   getAutoResponderSettings,
   resolveAutoResponderUserId,
   type AutoResponderMode,
@@ -261,14 +262,12 @@ export async function maybeAutoRespond(args: {
         take: 5,
       });
       for (const a of admins) {
-        await prisma.notification.create({
-          data: {
-            userId: a.id,
-            type: "auto_reply_draft",
-            title: "Brouillon de réponse IA à valider",
-            body: `Réponse "${args.category}" préparée pour un lead. À relire avant envoi.`,
-            link: `/leads/${args.leadId}`,
-          },
+        await notifyUser({
+          userId: a.id,
+          type: "auto_reply_draft",
+          title: "Brouillon de réponse IA à valider",
+          body: `Réponse "${args.category}" préparée pour un lead. À relire avant envoi.`,
+          link: `/leads/${args.leadId}`,
         });
       }
     }

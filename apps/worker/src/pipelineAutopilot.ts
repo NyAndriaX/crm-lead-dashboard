@@ -3,7 +3,7 @@
  * Avance le statut CRM + l'étape Kanban (jamais en arrière), selon la catégorie
  * IA/heuristique et le contenu du message (RDV confirmé, deal conclu, etc.).
  */
-import { prisma, type LeadStatus } from "@crm/db";
+import { prisma, notifyUser, type LeadStatus } from "@crm/db";
 import type { ReplyCategory } from "./replyCategorizer";
 
 export type ReplyOutcome = "won" | "appointment" | "interested" | "callback" | "lost" | "discussion" | "none";
@@ -221,14 +221,12 @@ export async function autopilotPipelineOnReply(args: {
       });
       if (meta?.assignedToId) {
         const name = [meta.firstName, meta.lastName].filter(Boolean).join(" ") || meta.company || "Un lead";
-        await prisma.notification.create({
-          data: {
-            userId: meta.assignedToId,
-            type: outcome === "won" ? "pipeline_won" : "pipeline_appointment",
-            title: outcome === "won" ? "Deal conclu — pipeline mis à jour" : "RDV obtenu — pipeline mis à jour",
-            body: `${name} avancé automatiquement${args.subject ? ` : "${args.subject.slice(0, 80)}"` : ""}.`,
-            link: `/leads/${args.leadId}`,
-          },
+        await notifyUser({
+          userId: meta.assignedToId,
+          type: outcome === "won" ? "pipeline_won" : "pipeline_appointment",
+          title: outcome === "won" ? "Deal conclu — pipeline mis à jour" : "RDV obtenu — pipeline mis à jour",
+          body: `${name} avancé automatiquement${args.subject ? ` : "${args.subject.slice(0, 80)}"` : ""}.`,
+          link: `/leads/${args.leadId}`,
         });
       }
     } catch (e) {
