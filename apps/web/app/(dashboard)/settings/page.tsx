@@ -4,7 +4,7 @@
  * Page Administration — CRM-071.
  * Tabs : Vue d'ensemble · Utilisateurs · Scoring · Imports
  */
-import { useCallback, useEffect, useState, Suspense } from "react";
+import { useCallback, useEffect, useState, Suspense, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { EmailHtmlDualEditor } from "@/components/emailing/EmailHtmlDualEditor";
 import { EmailHtmlLivePreview } from "@/components/emailing/EmailHtmlLivePreview";
@@ -24,7 +24,7 @@ import { SettingsTabsLayout, type SettingsTabItem } from "@/components/admin/Set
 import {
   Card, Typography, Table, Button, Tag, Space, Form, InputNumber, Row, Col,
   Statistic, Badge, Modal, Input, Select, message, Spin, Alert, Popconfirm, List,
-  Progress, Divider, Avatar, Tooltip, Checkbox, Collapse,
+  Progress, Divider, Avatar, Tooltip, Checkbox, Collapse, Switch,
 } from "antd";
 import {
   UserOutlined, TrophyOutlined, UploadOutlined, PlusOutlined, EditOutlined,
@@ -93,6 +93,7 @@ interface TemplateRow {
   variables: string[];
   isPreset: boolean;
   isPublic: boolean;
+  includeUnsubscribeLink: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -116,6 +117,7 @@ interface TemplateFormValues {
   bodyHtml: string;
   variables: string;
   isPublic: boolean;
+  includeUnsubscribeLink: boolean;
 }
 
 interface TemplateBlockFormValues {
@@ -1009,6 +1011,9 @@ function UsersTab() {
 }
 
 function EmailingTab() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const templateAutoOpenRef = useRef(false);
   const [configs, setConfigs] = useState<SmtpConfigRow[]>([]);
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [templateBlocks, setTemplateBlocks] = useState<TemplateBlockRow[]>([]);
@@ -1077,6 +1082,16 @@ function EmailingTab() {
   }, []);
 
   useEffect(() => { void fetchConfigs(); void fetchTemplates(); void fetchTemplateBlocks(); }, [fetchConfigs, fetchTemplates, fetchTemplateBlocks]);
+
+  useEffect(() => {
+    if (searchParams.get("newTemplate") !== "1" || templateAutoOpenRef.current) return;
+    templateAutoOpenRef.current = true;
+    setEditingTemplate(null);
+    templateForm.resetFields();
+    templateForm.setFieldsValue({ variables: "", isPublic: true });
+    setTemplateModalOpen(true);
+    router.replace("/settings?tab=emailing", { scroll: false });
+  }, [searchParams, router, templateForm]);
 
   function openCreate() {
     setEditingConfig(null);
@@ -1168,7 +1183,7 @@ function EmailingTab() {
   async function openTemplateCreate() {
     setEditingTemplate(null);
     templateForm.resetFields();
-    templateForm.setFieldsValue({ variables: '', isPublic: true });
+    templateForm.setFieldsValue({ variables: '', isPublic: true, includeUnsubscribeLink: true });
     setTemplateModalOpen(true);
   }
 
@@ -1181,6 +1196,7 @@ function EmailingTab() {
       bodyHtml: template.bodyHtml,
       variables: template.variables.join(', '),
       isPublic: template.isPublic ?? true,
+      includeUnsubscribeLink: template.includeUnsubscribeLink ?? true,
     });
     setTemplateModalOpen(true);
   }
@@ -1215,6 +1231,7 @@ function EmailingTab() {
       subject: values.subject,
       bodyHtml: values.bodyHtml,
       isPublic: values.isPublic,
+      includeUnsubscribeLink: values.includeUnsubscribeLink ?? true,
       variables: (values.variables ?? '')
         .split(',')
         .map((item: string) => item.trim())
@@ -1837,13 +1854,23 @@ function EmailingTab() {
             </Col>
           </Row>
           <Row gutter={16}>
-            <Col xs={24}>
+            <Col xs={24} sm={16}>
               <Form.Item
                 name="variables"
                 label="Variables"
                 help="Champs utilisables côté envoi : liste séparée par des virgules (ex: prenom, entreprise). Dans le HTML vous pouvez aussi utiliser {{prenom}}, {{entreprise}}, {{actu}}, {{custom}}."
               >
                 <Input placeholder="prenom, entreprise, actu" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={8}>
+              <Form.Item
+                name="includeUnsubscribeLink"
+                label="Lien de désinscription"
+                valuePropName="checked"
+                tooltip="Ajoute automatiquement un lien de désinscription conforme RGPD (RFC 8058) dans le pied de l'email. Recommandé pour les campagnes commerciales. L'IA détecte aussi les demandes de désinscription par email."
+              >
+                <Switch checkedChildren="Inclus" unCheckedChildren="Exclu" />
               </Form.Item>
             </Col>
           </Row>
@@ -1997,6 +2024,135 @@ const WEIGHT_GROUPS = [
     ],
   },
 ];
+
+// ── Onglet Historique des imports ────────────────────────────────────────────
+
+interface ImportJobRow {
+  id: string;
+  fileName: string;
+  status: string;
+  totalRows: number;
+  importedRows: number;
+  duplicateRows: number;
+  errorRows: number;
+  errorReport: string | null;
+  createdAt: string;
+  userId: string;
+  user: { firstName: string | null; lastName: string | null; email: string | null } | null;
+}
+
+const IMPORT_STATUS_COLOR: Record<string, string> = {
+  PENDING: "default", RUNNING: "processing", DONE: "success",
+  FAILED: "error", CANCELLED: "warning",
+};
+
+function ImportsHistoryTab() {
+  const [jobs, setJobs] = useState<ImportJobRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const { data } = await api.get<{ data: ImportJobRow[] }>("/import");
+        setJobs(data.data);
+      } catch {
+        /* non-critique */
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const importCols: ColumnsType<ImportJobRow> = [
+    {
+      title: "Fichier",
+      dataIndex: "fileName",
+      ellipsis: true,
+      render: (v: string) => <Text strong>{v}</Text>,
+    },
+    {
+      title: "Statut",
+      dataIndex: "status",
+      width: 110,
+      render: (s: string) => <Tag color={IMPORT_STATUS_COLOR[s] ?? "default"}>{s}</Tag>,
+    },
+    {
+      title: "Lignes",
+      key: "rows",
+      width: 220,
+      render: (_: unknown, r: ImportJobRow) => (
+        <Space size={4} wrap>
+          <Tag color="green">✓ {r.importedRows}</Tag>
+          {r.duplicateRows > 0 && <Tag color="orange">~{r.duplicateRows} doublons</Tag>}
+          {r.errorRows > 0 && <Tag color="red">✗ {r.errorRows}</Tag>}
+          <Text type="secondary" style={{ fontSize: 11 }}>/ {r.totalRows}</Text>
+        </Space>
+      ),
+    },
+    {
+      title: "Utilisateur",
+      key: "user",
+      width: 160,
+      render: (_: unknown, r: ImportJobRow) => {
+        const u = r.user;
+        if (!u) return <Text type="secondary">—</Text>;
+        return <Text>{[u.firstName, u.lastName].filter(Boolean).join(" ") || u.email || r.userId}</Text>;
+      },
+    },
+    {
+      title: "Date",
+      dataIndex: "createdAt",
+      width: 150,
+      render: (v: string) => <Text type="secondary">{new Date(v).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}</Text>,
+    },
+    {
+      title: "",
+      key: "report",
+      width: 100,
+      render: (_: unknown, r: ImportJobRow) =>
+        r.errorReport ? (
+          <Button
+            size="small"
+            onClick={() =>
+              Modal.info({
+                title: `Rapport d'erreurs — ${r.fileName}`,
+                content: <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, maxHeight: 400, overflow: "auto" }}>{r.errorReport}</pre>,
+                width: 640,
+              })
+            }
+          >
+            Rapport
+          </Button>
+        ) : null,
+    },
+  ];
+
+  return (
+    <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <Text strong>Historique complet des imports CSV/XLSX</Text>
+        <Space>
+          <Button size="small" icon={<ReloadOutlined />} onClick={() => {
+            setLoading(true);
+            api.get<{ data: ImportJobRow[] }>("/import").then((r) => setJobs(r.data.data)).catch(() => {}).finally(() => setLoading(false));
+          }}>Rafraîchir</Button>
+          <Button size="small" type="primary" href="/import" icon={<UploadOutlined />}>
+            Nouvel import
+          </Button>
+        </Space>
+      </div>
+      <Table<ImportJobRow>
+        rowKey="id"
+        dataSource={jobs}
+        columns={importCols}
+        loading={loading}
+        size="small"
+        pagination={{ pageSize: 20 }}
+        locale={{ emptyText: "Aucun import" }}
+      />
+    </Space>
+  );
+}
 
 function ScoringTab() {
   const [form] = Form.useForm<ScoringWeightsInput>();
@@ -2235,20 +2391,9 @@ const SETTINGS_TABS: SettingsTabItem[] = [
     key: "imports",
     label: "Imports",
     group: "Commercial",
-    description: "Historique et accès aux imports CSV.",
+    description: "Historique complet des imports CSV/XLSX.",
     icon: <UploadOutlined />,
-    children: (
-      <div style={{ textAlign: "center", padding: "24px 0" }}>
-        <UploadOutlined style={{ fontSize: 40, color: "#722ed1", marginBottom: 12 }} />
-        <Title level={5} style={{ marginTop: 0 }}>Historique des imports</Title>
-        <Paragraph type="secondary" style={{ marginBottom: 16 }}>
-          L&apos;historique complet se trouve sur la page dédiée.
-        </Paragraph>
-        <Button type="primary" href="/import" icon={<UploadOutlined />}>
-          Ouvrir Import
-        </Button>
-      </div>
-    ),
+    children: <ImportsHistoryTab />,
   },
   {
     key: "openai",

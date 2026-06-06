@@ -7,6 +7,7 @@ import {
   openAiChatCompletion,
   resolveOpenAiCredentials,
   normalizeAutoResponderMode,
+  normalizeKnowledgeDocs,
 } from "@crm/db";
 import { encryptOrNull } from "@/lib/crypto";
 import { ApiError } from "@/lib/api";
@@ -22,6 +23,8 @@ export type UpsertOpenAiConfigInput = {
   clearApiKey?: boolean;
   autoResponderMode?: string;
   autoResponderMeetingUrl?: string | null;
+  knowledgeText?: string | null;
+  knowledgeDocs?: Array<{ id: string; name: string; content: string; createdAt?: string }>;
 };
 
 export async function upsertOpenAiConfig(userId: string, input: UpsertOpenAiConfigInput) {
@@ -37,6 +40,8 @@ export async function upsertOpenAiConfig(userId: string, input: UpsertOpenAiConf
     openAiApiKeyEnc?: Buffer | null;
     autoResponderMode?: string;
     autoResponderMeetingUrl?: string | null;
+    openAiKnowledgeText?: string | null;
+    openAiKnowledgeDocs?: object;
   } = {};
 
   if (input.enabled !== undefined) data.openAiEnabled = input.enabled;
@@ -50,6 +55,19 @@ export async function upsertOpenAiConfig(userId: string, input: UpsertOpenAiConf
   if (input.autoResponderMeetingUrl !== undefined) {
     const url = input.autoResponderMeetingUrl?.trim();
     data.autoResponderMeetingUrl = url || null;
+  }
+  if (input.knowledgeText !== undefined) {
+    const t = input.knowledgeText?.trim();
+    data.openAiKnowledgeText = t ? t.slice(0, 20_000) : null;
+  }
+  if (input.knowledgeDocs !== undefined) {
+    const normalized = normalizeKnowledgeDocs(
+      input.knowledgeDocs.map((d) => ({
+        ...d,
+        createdAt: d.createdAt ?? new Date().toISOString(),
+      })),
+    );
+    data.openAiKnowledgeDocs = normalized as object;
   }
   if (input.clearApiKey) {
     data.openAiApiKeyEnc = null;

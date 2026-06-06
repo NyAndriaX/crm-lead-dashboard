@@ -113,6 +113,7 @@ export async function maybeAutoRespond(args: {
   inboundBodyText: string | null;
   inboundBodyHtml: string | null;
   inboundMessageId: string | null;
+  campaignId?: string | null;
 }): Promise<{ acted: boolean; mode: Mode; reason?: string }> {
   try {
     const lead = await prisma.lead.findUnique({
@@ -129,12 +130,34 @@ export async function maybeAutoRespond(args: {
     });
     if (!lead || lead.deletedAt) return { acted: false, mode: "off", reason: "lead_missing" };
 
-    const responderUserId = await resolveAutoResponderUserId(lead.assignedToId);
-    const responder = await getAutoResponderSettings(responderUserId);
-    const m = responder.mode;
-    if (m === "off") {
-      return { acted: false, mode: m, reason: lead.assignedToId ? "assignee_disabled" : "no_responder_user" };
+    // Vérifier si la campagne d'origine a un auto-répondeur dédié.
+    let campAutoResponder: { mode: string; meetingUrl?: string } | null = null;
+    if (args.campaignId) {
+      const camp = await prisma.campaign.findUnique({ where: { id: args.campaignId }, select: { config: true } });
+      const cfg = (camp?.config ?? {}) as Record<string, unknown>;
+      const ar = (cfg.autoResponder ?? null) as { mode?: string; meetingUrl?: string } | null;
+      if (ar?.mode && ar.mode !== "off") campAutoResponder = { mode: ar.mode, meetingUrl: ar.meetingUrl ?? "" };
     }
+
+    let m: Mode;
+    let meetingUrl: string;
+    let responderUserId: string | null;
+
+    if (campAutoResponder) {
+      m = campAutoResponder.mode as Mode;
+      meetingUrl = campAutoResponder.meetingUrl ?? "";
+      responderUserId = await resolveAutoResponderUserId(lead.assignedToId);
+    } else {
+      responderUserId = await resolveAutoResponderUserId(lead.assignedToId);
+      const responder = await getAutoResponderSettings(responderUserId);
+      m = responder.mode;
+      meetingUrl = responder.meetingUrl;
+      if (m === "off") {
+        return { acted: false, mode: m, reason: lead.assignedToId ? "assignee_disabled" : "no_responder_user" };
+      }
+    }
+
+    if (m === "off") return { acted: false, mode: m, reason: "auto_responder_off" };
     if (args.category === "hors_sujet" || args.category === "auto_reply") {
       return { acted: false, mode: m, reason: "category_skipped" };
     }
@@ -145,7 +168,6 @@ export async function maybeAutoRespond(args: {
     const inboundText = args.inboundBodyText
       ?? (args.inboundBodyHtml ? stripHtmlToText(args.inboundBodyHtml) : null);
     const clientExcerpt = inboundText ? inboundText.slice(0, 260) : null;
-    const meetingUrl = responder.meetingUrl;
     const fb = fallbackReply({
       category: args.category,
       firstName: lead.firstName,

@@ -36,7 +36,8 @@ type Mission = {
     filter_country: boolean;
     requireEmail: boolean;
     dailyQuota?: number | null;
-    autoPipeline?: { enabled: boolean; sequenceId?: string | null };
+    injectionTags?: string[];
+    autoPipeline?: { enabled: boolean; sequenceId?: string | null; tags?: string[] };
     schedulePlan?: {
       mode: "manual" | "once" | "recurring";
       runAt?: string | null;
@@ -112,6 +113,8 @@ function ScrapingPageInner() {
   const [selectedBuf, setSelectedBuf] = useState<string[]>([]);
   const [injecting, setInjecting] = useState(false);
   const [injectResult, setInjectResult] = useState<InjectResult | null>(null);
+  const [injectionTags, setInjectionTags] = useState<string[]>([]);
+  const [tagsRef, setTagsRef] = useState<{ name: string }[]>([]);
 
   const fetchMissions = useCallback(async () => {
     setLoading(true);
@@ -126,6 +129,10 @@ function ScrapingPageInner() {
   }, []);
 
   useEffect(() => { void fetchMissions(); }, [fetchMissions]);
+
+  useEffect(() => {
+    api.get<{ data: { name: string }[] }>("/tags").then((r) => setTagsRef(r.data.data ?? [])).catch(() => {});
+  }, []);
 
 
   // Auto-refresh tant qu'une mission tourne.
@@ -261,6 +268,7 @@ function ScrapingPageInner() {
 
   function openResults(m: Mission) {
     setResultsTarget(m);
+    setInjectionTags(m.config.injectionTags ?? []);
     void loadBuffer(m.id);
   }
 
@@ -283,6 +291,7 @@ function ScrapingPageInner() {
     try {
       const { data } = await api.post<{ data: InjectResult }>(
         `/scraping/missions/${resultsTarget.id}/results`,
+        { injectionTags: injectionTags.length ? injectionTags : undefined },
       );
       setInjectResult(data.data);
       void loadBuffer(resultsTarget.id);
@@ -734,6 +743,22 @@ function ScrapingPageInner() {
           </Space>
         }
       >
+        {/* Tags à l'injection */}
+        <Card size="small" style={{ marginBottom: 16 }} title="Tags à l'injection CRM">
+          <Paragraph type="secondary" style={{ marginTop: 0, fontSize: 12 }}>
+            Tags appliqués aux leads lors de l'injection (en plus des tags système « scraping »).
+          </Paragraph>
+          <Select
+            mode="tags"
+            style={{ width: "100%" }}
+            placeholder="Sélectionner ou créer des tags…"
+            value={injectionTags}
+            onChange={setInjectionTags}
+            options={tagsRef.map((t) => ({ label: t.name, value: t.name }))}
+            tokenSeparators={[","]}
+          />
+        </Card>
+
         {/* Résumé statistiques */}
         {resultsTarget && (
           <Row gutter={16} style={{ marginBottom: 20 }}>

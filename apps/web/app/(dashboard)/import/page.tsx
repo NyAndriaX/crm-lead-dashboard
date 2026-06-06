@@ -60,6 +60,8 @@ export default function ImportPage() {
   const [mapping, setMapping] = useState<Mapping>({});
   const [skipDuplicates, setSkipDuplicates] = useState(true);
   const [defaultSource, setDefaultSource] = useState("");
+  const [defaultTags, setDefaultTags] = useState<string[]>([]);
+  const [tagsRef, setTagsRef] = useState<{ name: string }[]>([]);
   const [starting, setStarting] = useState(false);
   const [currentJob, setCurrentJob] = useState<ImportJob | null>(null);
   const [history, setHistory] = useState<ImportJob[]>([]);
@@ -77,6 +79,10 @@ export default function ImportPage() {
   }, []);
 
   useEffect(() => { void fetchHistory(); }, [fetchHistory]);
+
+  useEffect(() => {
+    api.get<{ data: { name: string }[] }>("/tags").then((r) => setTagsRef(r.data.data ?? [])).catch(() => {});
+  }, []);
 
   // Polling du statut quand l'import tourne
   useEffect(() => {
@@ -142,9 +148,10 @@ export default function ImportPage() {
         mapping,
         skipDuplicates,
         defaultSource: defaultSource || undefined,
+        defaultTags: defaultTags.length ? defaultTags : undefined,
       });
       setCurrentJob(data.data);
-      setStep(3);
+      setStep(4);
       void fetchHistory();
     } catch (e) {
       const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Impossible de démarrer l'import";
@@ -160,6 +167,7 @@ export default function ImportPage() {
     setMapping({});
     setCurrentJob(null);
     setDefaultSource("");
+    setDefaultTags([]);
     setSkipDuplicates(true);
   }
 
@@ -277,14 +285,64 @@ export default function ImportPage() {
         <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
           <Button icon={<ArrowLeftOutlined />} onClick={() => setStep(0)} block={isMobile}>Retour</Button>
           <Button type="primary" icon={<ArrowRightOutlined />} onClick={() => setStep(2)} block={isMobile}>
-            Aperçu ({Object.values(mapping).filter(Boolean).length} colonne(s) mappée(s))
+            Tags & options ({Object.values(mapping).filter(Boolean).length} colonne(s) mappée(s))
           </Button>
         </div>
       </Space>
     );
   }
 
-  // ── Step 3 : Aperçu ───────────────────────────────────────────────────────
+  // ── Step 3 : Tags ─────────────────────────────────────────────────────────
+  function renderTags() {
+    return (
+      <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+        <Alert
+          message="Tags appliqués à tous les leads importés"
+          description="Ces tags seront ajoutés à chaque lead créé lors de l'import. Vous pouvez en sélectionner dans le référentiel ou en créer de nouveaux."
+          type="info"
+          showIcon
+        />
+        <Card title="Tags de l'import">
+          <Select
+            mode="tags"
+            style={{ width: "100%" }}
+            placeholder="Ex: salon-2026, import-csv, secteur-it…"
+            value={defaultTags}
+            onChange={setDefaultTags}
+            options={tagsRef.map((t) => ({ label: t.name, value: t.name }))}
+            tokenSeparators={[","]}
+          />
+          {defaultTags.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <Space wrap>
+                {defaultTags.map((t) => (
+                  <Tag key={t} color="blue">{t}</Tag>
+                ))}
+              </Space>
+            </div>
+          )}
+        </Card>
+        <Card title="Rappel des options">
+          <Space direction="vertical">
+            <Text>
+              <Text strong>Ignorer les doublons :</Text> {skipDuplicates ? "Oui" : "Non"}
+            </Text>
+            <Text>
+              <Text strong>Source par défaut :</Text> {defaultSource || "—"}
+            </Text>
+          </Space>
+        </Card>
+        <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => setStep(1)} block={isMobile}>Retour au mapping</Button>
+          <Button type="primary" icon={<ArrowRightOutlined />} onClick={() => setStep(3)} block={isMobile}>
+            Aperçu
+          </Button>
+        </div>
+      </Space>
+    );
+  }
+
+  // ── Step 4 : Aperçu ───────────────────────────────────────────────────────
   function renderPreview() {
     if (!uploadResult) return null;
     const mappedFields = Object.entries(mapping).filter(([, v]) => v) as [ImportableField, string][];
@@ -308,6 +366,13 @@ export default function ImportPage() {
           message={`Aperçu des 10 premières lignes · ${uploadResult.totalRows} ligne(s) au total`}
           type="info" showIcon
         />
+        {defaultTags.length > 0 && (
+          <Alert
+            message={`Tags appliqués : ${defaultTags.join(", ")}`}
+            type="success"
+            showIcon
+          />
+        )}
 
         <Card>
           <Table
@@ -321,7 +386,7 @@ export default function ImportPage() {
         </Card>
 
         <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => setStep(1)} block={isMobile}>Modifier le mapping</Button>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => setStep(2)} block={isMobile}>Modifier les tags</Button>
           <Button type="primary" loading={starting} onClick={handleStart} block={isMobile}>
             Lancer l&apos;import ({uploadResult.totalRows} ligne(s))
           </Button>
@@ -330,7 +395,7 @@ export default function ImportPage() {
     );
   }
 
-  // ── Step 4 : Traitement ───────────────────────────────────────────────────
+  // ── Step 5 : Traitement ───────────────────────────────────────────────────
   function renderProcessing() {
     if (!currentJob) return null;
     const isDone = currentJob.status === "done";
@@ -433,6 +498,7 @@ export default function ImportPage() {
             items={[
               { title: "Fichier" },
               { title: "Mapping" },
+              { title: "Tags" },
               { title: "Aperçu" },
               { title: "Traitement" },
             ]}
@@ -440,8 +506,9 @@ export default function ImportPage() {
 
           {step === 0 && renderUpload()}
           {step === 1 && renderMapping()}
-          {step === 2 && renderPreview()}
-          {step === 3 && renderProcessing()}
+          {step === 2 && renderTags()}
+          {step === 3 && renderPreview()}
+          {step === 4 && renderProcessing()}
         </Col>
 
         <Col xs={24} lg={8}>

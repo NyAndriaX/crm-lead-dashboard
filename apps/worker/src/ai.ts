@@ -4,7 +4,7 @@
  * Utilise la clé OpenAI de l'utilisateur propriétaire de l'action (créateur
  * de campagne, assigné du lead, etc.). Sans clé → fallback déterministe.
  */
-import { openAiChatCompletion, resolveOpenAiCredentials } from "@crm/db";
+import { openAiChatCompletion, resolveOpenAiCredentials, injectKnowledgeIntoMessages } from "@crm/db";
 
 export type AiMessage = { role: "system" | "user"; content: string };
 
@@ -20,9 +20,11 @@ export async function aiComplete(args: {
   const credentials = await resolveOpenAiCredentials(args.userId);
   if (!credentials) return { text: args.fallback(), source: "fallback" };
 
+  const messages = await injectKnowledgeIntoMessages(args.userId, args.messages);
+
   const res = await openAiChatCompletion({
     credentials,
-    messages: args.messages,
+    messages,
     maxTokens: args.maxTokens,
     temperature: args.temperature,
     json: args.json,

@@ -1,4 +1,5 @@
 import { prisma } from "./client";
+import { estimateOpenAiCostUsd } from "./openaiPricing";
 
 export type OpenAiUsageFeature =
   | "config_test"
@@ -23,6 +24,12 @@ export async function recordOpenAiUsage(args: {
   const total = Math.max(0, args.totalTokens ?? prompt + completion);
   if (total <= 0) return;
 
+  const estimatedCostUsd = estimateOpenAiCostUsd({
+    model: args.model,
+    promptTokens: prompt,
+    completionTokens: completion,
+  });
+
   try {
     await prisma.openAiUsageLog.create({
       data: {
@@ -32,6 +39,7 @@ export async function recordOpenAiUsage(args: {
         promptTokens: prompt,
         completionTokens: completion,
         totalTokens: total,
+        estimatedCostUsd,
       },
     });
   } catch (e) {
@@ -47,10 +55,13 @@ export type OpenAiUsageSummary = {
   promptTokens: number;
   completionTokens: number;
   requestCount: number;
+  totalCostUsd: number;
   monthTokens: number;
   monthRequestCount: number;
+  monthCostUsd: number;
   last7Days: { date: string; tokens: number }[];
-  byFeature: { feature: string; tokens: number; count: number }[];
+  byFeature: { feature: string; tokens: number; count: number; costUsd: number }[];
+  byModel: { model: string; tokens: number; count: number; costUsd: number }[];
 };
 
 export async function getOpenAiUsageSummary(userId: string): Promise<OpenAiUsageSummary | null> {
@@ -67,10 +78,13 @@ export async function getOpenAiUsageSummary(userId: string): Promise<OpenAiUsage
       promptTokens: 0,
       completionTokens: 0,
       requestCount: 0,
+      totalCostUsd: 0,
       monthTokens: 0,
       monthRequestCount: 0,
+      monthCostUsd: 0,
       last7Days: [],
       byFeature: [],
+      byModel: [],
     };
   }
 
@@ -78,21 +92,28 @@ export async function getOpenAiUsageSummary(userId: string): Promise<OpenAiUsage
   monthStart.setDate(1);
   monthStart.setHours(0, 0, 0, 0);
 
-  const [allTime, monthAgg, byFeatureRaw, logs7d] = await Promise.all([
+  const [allTime, monthAgg, byFeatureRaw, byModelRaw, logs7d] = await Promise.all([
     prisma.openAiUsageLog.aggregate({
       where: { userId },
-      _sum: { promptTokens: true, completionTokens: true, totalTokens: true },
+      _sum: { promptTokens: true, completionTokens: true, totalTokens: true, estimatedCostUsd: true },
       _count: { id: true },
     }),
     prisma.openAiUsageLog.aggregate({
       where: { userId, createdAt: { gte: monthStart } },
-      _sum: { totalTokens: true },
+      _sum: { totalTokens: true, estimatedCostUsd: true },
       _count: { id: true },
     }),
     prisma.openAiUsageLog.groupBy({
       by: ["feature"],
       where: { userId, createdAt: { gte: monthStart } },
-      _sum: { totalTokens: true },
+      _sum: { totalTokens: true, estimatedCostUsd: true },
+      _count: { id: true },
+      orderBy: { _sum: { totalTokens: "desc" } },
+    }),
+    prisma.openAiUsageLog.groupBy({
+      by: ["model"],
+      where: { userId, createdAt: { gte: monthStart } },
+      _sum: { totalTokens: true, estimatedCostUsd: true },
       _count: { id: true },
       orderBy: { _sum: { totalTokens: "desc" } },
     }),
@@ -129,13 +150,24 @@ export async function getOpenAiUsageSummary(userId: string): Promise<OpenAiUsage
     promptTokens: allTime._sum.promptTokens ?? 0,
     completionTokens: allTime._sum.completionTokens ?? 0,
     requestCount: allTime._count.id,
+    totalCostUsd: allTime._sum.estimatedCostUsd ?? 0,
     monthTokens: monthAgg._sum.totalTokens ?? 0,
     monthRequestCount: monthAgg._count.id,
+    monthCostUsd: monthAgg._sum.estimatedCostUsd ?? 0,
     last7Days,
     byFeature: byFeatureRaw.map((r) => ({
       feature: r.feature,
       tokens: r._sum.totalTokens ?? 0,
       count: r._count.id,
+      costUsd: r._sum.estimatedCostUsd ?? 0,
     })),
+    byModel: byModelRaw
+      .filter((r) => r.model)
+      .map((r) => ({
+        model: r.model!,
+        tokens: r._sum.totalTokens ?? 0,
+        count: r._count.id,
+        costUsd: r._sum.estimatedCostUsd ?? 0,
+      })),
   };
 }

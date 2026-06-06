@@ -1,4 +1,4 @@
-import { placeIdTag, prisma, type ScrapedLead } from "@crm/db";
+import { placeIdTag, prisma, isEmailHashBlocked, GDPR_ERASE_REASON, type ScrapedLead } from "@crm/db";
 
 export type ScrapedDedupResult = {
   duplicate: boolean;
@@ -31,6 +31,18 @@ export async function checkScrapedLeadDuplicate(
   const company = (lead.company ?? "").trim().toLowerCase();
   const city = (lead.city ?? "").trim().toLowerCase();
   const companyCityKey = company ? `${company}|${city}` : "";
+
+  if (email) {
+    const h = emailHashFn(email);
+    const blocked = await isEmailHashBlocked(h);
+    if (blocked.blocked) {
+      const msg =
+        blocked.reason === GDPR_ERASE_REASON
+          ? "suppression RGPD (contact interdit)"
+          : "email bloqué";
+      return { duplicate: true, reason: msg, kind: "existing" };
+    }
+  }
 
   if (placeId) {
     if (seen.placeId.has(placeId)) {

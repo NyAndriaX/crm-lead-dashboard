@@ -157,11 +157,12 @@ export async function runScraping(ctx: WorkerJobContext): Promise<unknown> {
       for (const row of pendings) {
         const raw = (row.raw ?? {}) as ScrapedLead;
         const em = (raw.email ?? "").trim() || null;
-        const base = buildLeadCreateFromScraped(
-          raw,
-          `Scraping auto: ${mission.name}`,
-          ["scraping-auto"],
-        );
+      const extraTags = [...(cfg.injectionTags ?? []), ...(cfg.autoPipeline?.tags ?? []), "scraping-auto"];
+      const base = buildLeadCreateFromScraped(
+        raw,
+        `Scraping auto: ${mission.name}`,
+        extraTags,
+      );
         try {
           const created = await prisma.lead.create({
             data: {

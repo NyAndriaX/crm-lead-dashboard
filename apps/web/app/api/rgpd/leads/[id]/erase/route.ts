@@ -19,7 +19,7 @@ export const POST = handler<Ctx>(async (req, { params }) => {
   const { id: rawId } = await params;
   const leadId = z.string().min(1).parse(rawId);
 
-  const result = await eraseLead(leadId);
+  const result = await eraseLead(leadId, session.sub);
 
   // Audit minimal sans PII (on conserve juste l'ID et les compteurs)
   await audit({

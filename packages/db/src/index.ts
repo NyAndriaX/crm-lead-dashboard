@@ -22,6 +22,14 @@ export {
   type OpenAiUsageFeature,
   type OpenAiUsageSummary,
 } from "./openaiUsage";
+export { estimateOpenAiCostUsd, formatCostUsd, getModelPricing } from "./openaiPricing";
+export {
+  getOpenAiKnowledgeContext,
+  injectKnowledgeIntoMessages,
+  parseKnowledgeDocs,
+  normalizeKnowledgeDocs,
+  type AiKnowledgeDoc,
+} from "./openaiKnowledge";
 export { encrypt, decrypt, encryptOrNull, decryptOrNull } from "./piiCrypto";
 export {
   sendTransactionalEmail,
@@ -45,6 +53,12 @@ export {
   ROLES as RBAC_ROLES,
   type Permission,
 } from "./rbacConfig";
+export {
+  isEmailHashBlocked,
+  blockEmailHash,
+  gdprBlockMessage,
+  GDPR_ERASE_REASON,
+} from "./emailBlocklist";
 export {
   getAccessToken,
   startDeviceCodeFlow,

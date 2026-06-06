@@ -120,6 +120,9 @@ export async function listInbox(filter: InboxFilter): Promise<{
       where.OR = [
         { subject: { contains: search } },
         { bodyText: { contains: search } },
+        { lead: { firstName: { contains: search } } },
+        { lead: { lastName: { contains: search } } },
+        { lead: { company: { contains: search } } },
       ];
     }
   }

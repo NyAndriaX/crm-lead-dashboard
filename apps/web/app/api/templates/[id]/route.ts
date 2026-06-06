@@ -13,6 +13,7 @@ const updateSchema = z.object({
   bodyHtml: z.string().trim().min(1).optional(),
   variables: z.array(z.string().trim().min(1)).optional(),
   isPublic: z.boolean().optional(),
+  includeUnsubscribeLink: z.boolean().optional(),
 });
 
 export const GET = handler<Ctx>(async (req, { params }) => {

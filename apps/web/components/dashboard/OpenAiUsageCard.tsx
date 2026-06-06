@@ -8,6 +8,12 @@ import { openAiFeatureLabel } from "@/lib/openaiUsageLabels";
 
 const { Text, Title } = Typography;
 
+function formatCostUsd(amount: number): string {
+  if (amount >= 1) return `$${amount.toFixed(2)}`;
+  if (amount >= 0.01) return `$${amount.toFixed(3)}`;
+  return `$${amount.toFixed(4)}`;
+}
+
 export type OpenAiUsageData = {
   enabled: boolean;
   configured: boolean;
@@ -16,10 +22,13 @@ export type OpenAiUsageData = {
   promptTokens: number;
   completionTokens: number;
   requestCount: number;
+  totalCostUsd: number;
   monthTokens: number;
   monthRequestCount: number;
+  monthCostUsd: number;
   last7Days: { date: string; tokens: number }[];
-  byFeature: { feature: string; tokens: number; count: number }[];
+  byFeature: { feature: string; tokens: number; count: number; costUsd: number }[];
+  byModel: { model: string; tokens: number; count: number; costUsd: number }[];
 };
 
 function formatTokens(n: number): string {
@@ -62,20 +71,20 @@ export function OpenAiUsageCard({ usage }: { usage: OpenAiUsageData }) {
       }
     >
       <Text type="secondary" style={{ display: "block", marginBottom: 16 }}>
-        Tokens consommés via votre clé API personnelle (emails, briefs, campagnes, etc.).
+        Tokens et coût estimé via votre clé API personnelle (emails, briefs, campagnes, etc.).
       </Text>
       <Row gutter={[24, 16]}>
         <Col xs={12} sm={6}>
           <Statistic title="Ce mois" value={formatTokens(usage.monthTokens)} suffix="tokens" />
         </Col>
         <Col xs={12} sm={6}>
-          <Statistic title="Appels ce mois" value={usage.monthRequestCount} />
+          <Statistic title="Coût ce mois" value={formatCostUsd(usage.monthCostUsd ?? 0)} />
         </Col>
         <Col xs={12} sm={6}>
           <Statistic title="Total cumulé" value={formatTokens(usage.totalTokens)} suffix="tokens" />
         </Col>
         <Col xs={12} sm={6}>
-          <Statistic title="Total appels" value={usage.requestCount} />
+          <Statistic title="Coût total" value={formatCostUsd(usage.totalCostUsd ?? 0)} />
         </Col>
       </Row>
       <div style={{ marginTop: 24 }}>
@@ -97,6 +106,24 @@ export function OpenAiUsageCard({ usage }: { usage: OpenAiUsageData }) {
                 render: (f: string) => openAiFeatureLabel(f),
               },
               { title: "Tokens", dataIndex: "tokens", render: (v: number) => formatTokens(v) },
+              { title: "Coût", dataIndex: "costUsd", render: (v: number) => formatCostUsd(v ?? 0) },
+              { title: "Appels", dataIndex: "count", width: 80 },
+            ]}
+          />
+        </div>
+      )}
+      {(usage.byModel?.length ?? 0) > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <Title level={5} style={{ marginBottom: 8 }}>Par modèle ce mois</Title>
+          <Table
+            size="small"
+            pagination={false}
+            rowKey="model"
+            dataSource={usage.byModel}
+            columns={[
+              { title: "Modèle", dataIndex: "model", render: (m: string) => <Tag color="purple">{m}</Tag> },
+              { title: "Tokens", dataIndex: "tokens", render: (v: number) => formatTokens(v) },
+              { title: "Coût", dataIndex: "costUsd", render: (v: number) => formatCostUsd(v ?? 0) },
               { title: "Appels", dataIndex: "count", width: 80 },
             ]}
           />

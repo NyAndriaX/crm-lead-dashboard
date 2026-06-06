@@ -11,6 +11,18 @@ const upsertSchema = z.object({
   clearApiKey: z.boolean().optional(),
   autoResponderMode: z.enum(["off", "draft", "auto"]).optional(),
   autoResponderMeetingUrl: z.string().trim().max(500).nullable().optional(),
+  knowledgeText: z.string().max(20_000).nullable().optional(),
+  knowledgeDocs: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        name: z.string().trim().min(1).max(200),
+        content: z.string().max(8_000),
+        createdAt: z.string().optional(),
+      }),
+    )
+    .max(10)
+    .optional(),
 });
 
 /** GET /api/me/openai-config — état de la config OpenAI du user courant (sans clé). */

@@ -6,7 +6,7 @@ import {
   Table, Input, Select, Tag, Space, Button, Badge, Drawer, Typography, Divider, Form,
   message, Tooltip, Switch, Empty, Card, Popconfirm,
 } from "antd";
-import { ReloadOutlined, MailOutlined, CheckOutlined, SendOutlined, TagsOutlined, ThunderboltOutlined, DeleteOutlined } from "@ant-design/icons";
+import { ReloadOutlined, MailOutlined, CheckOutlined, SendOutlined, TagsOutlined, ThunderboltOutlined, DeleteOutlined, SyncOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
 import SafeHtml from "@/components/SafeHtml";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
@@ -69,6 +69,7 @@ export default function InboxPage() {
   const [sending, setSending] = useState(false);
   const [aiRetrying, setAiRetrying] = useState(false);
   const [aiNotice, setAiNotice] = useState<{ kind: "success" | "error" | "warning"; text: string } | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -113,6 +114,19 @@ export default function InboxPage() {
       form.setFieldsValue({ subject: replySubj });
     } catch {
       message.error("Impossible d'ouvrir le message.");
+    }
+  }
+
+  async function triggerImapSync() {
+    setSyncing(true);
+    try {
+      await api.post("/imap-configs/sync", {});
+      message.success("Synchronisation IMAP demandée. Les nouveaux emails apparaîtront dans quelques secondes.");
+      setTimeout(() => void load(), 4000);
+    } catch {
+      message.error("Synchronisation impossible — vérifiez votre configuration IMAP.");
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -299,7 +313,7 @@ export default function InboxPage() {
         </Space>
         <Space wrap>
           <Input.Search
-            placeholder="Sujet, contenu…"
+            placeholder="Sujet, contenu, lead…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onSearch={() => { setPage(1); void load(); }}
@@ -312,6 +326,11 @@ export default function InboxPage() {
             checked={unreadOnly}
             onChange={(v) => { setUnreadOnly(v); setPage(1); }}
           />
+          <Tooltip title="Synchroniser les emails depuis le serveur IMAP maintenant">
+            <Button icon={<SyncOutlined spin={syncing} />} onClick={() => void triggerImapSync()} loading={syncing}>
+              Sync IMAP
+            </Button>
+          </Tooltip>
           <Button icon={<ReloadOutlined />} onClick={() => void load()}>Rafraîchir</Button>
         </Space>
       </div>

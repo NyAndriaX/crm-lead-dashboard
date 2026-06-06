@@ -96,6 +96,10 @@ model User {
   openAiApiKeyEnc Bytes?
   openAiModel     String?   @default("gpt-4o-mini")
   openAiEnabled   Boolean   @default(false)
+  // Texte libre : consignes, offres, ton — lu par l'IA pour campagnes et auto-réponses.
+  openAiKnowledgeText  String?  @db.Text
+  // Fichiers Markdown importés [{ id, name, content, createdAt }].
+  openAiKnowledgeDocs  Json     @default("[]")
   // Auto-répondeur IA (par utilisateur) : off | draft | auto
   autoResponderMode       String  @default("off")
   autoResponderMeetingUrl String?
@@ -122,6 +126,7 @@ model OpenAiUsageLog {
   promptTokens     Int      @default(0)
   completionTokens Int      @default(0)
   totalTokens      Int      @default(0)
+  estimatedCostUsd Float    @default(0)
   createdAt        DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -236,6 +241,7 @@ model Blacklist {
   id        String   @id @default(cuid())
   emailHash String   @unique
   reason    String?
+  erasedBy  String?
   createdAt DateTime @default(now())
 }
 
@@ -315,16 +321,17 @@ model ImapConfig {
 }
 
 model Template {
-  id        String   @id @default(cuid())
-  name      String
-  category  String?
-  subject   String
-  bodyHtml  String   @db.Text
-  variables Json     @default("[]")
-  isPreset  Boolean  @default(false)
-  isPublic  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                     String   @id @default(cuid())
+  name                   String
+  category               String?
+  subject                String
+  bodyHtml               String   @db.Text
+  variables              Json     @default("[]")
+  isPreset               Boolean  @default(false)
+  isPublic               Boolean  @default(true)
+  includeUnsubscribeLink Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   campaigns Campaign[]
 }

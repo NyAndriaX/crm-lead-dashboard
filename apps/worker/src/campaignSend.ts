@@ -301,10 +301,25 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
     const openTok = signEmailTrackToken({ k: "open", c: campaignId, l: lead.id, v: variant });
     const openUrl = `${baseUrl}/api/emailing/track/open?t=${encodeURIComponent(openTok)}`;
     const unsubTok = signEmailTrackToken({ k: "unsub", c: campaignId, l: lead.id, v: variant });
-    const listUnsub = `<${baseUrl}/api/emailing/unsub?t=${encodeURIComponent(unsubTok)}>`;
+    const unsubUrl = `${baseUrl}/api/emailing/unsub?t=${encodeURIComponent(unsubTok)}`;
+    const listUnsub = `<${unsubUrl}>`;
 
     body = rewriteLinks(body, baseUrl, campaignId, lead.id, variant);
     body = injectTracking(body, openUrl);
+
+    // Injection HTML du lien de désinscription si activé sur le template.
+    const includeUnsub = campaign.template.includeUnsubscribeLink ?? true;
+    if (includeUnsub) {
+      const unsubFooter = `<div style="margin-top:24px;padding-top:12px;border-top:1px solid #e8e8e8;text-align:center;font-size:11px;color:#8c8c8c;font-family:Arial,sans-serif">` +
+        `Vous recevez cet email car vous êtes dans notre base de contacts. ` +
+        `<a href="${unsubUrl}" style="color:#8c8c8c;text-decoration:underline">Me désinscrire</a>` +
+        `</div>`;
+      if (/<\/body>/i.test(body)) {
+        body = body.replace(/<\/body>/i, `${unsubFooter}</body>`);
+      } else {
+        body = body + unsubFooter;
+      }
+    }
 
     // Message-ID stable basé sur (campaign, lead). Permet à imap-sync de relier
     // toute réponse au lead via In-Reply-To/References (threading R-02 / R-07).

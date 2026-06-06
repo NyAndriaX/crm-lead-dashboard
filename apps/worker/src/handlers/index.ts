@@ -19,7 +19,7 @@
 import * as fs from "node:fs";
 import * as crypto from "node:crypto";
 import * as XLSX from "xlsx";
-import { prisma, notifyUser, type NotifyUserInput } from "@crm/db";
+import { prisma, notifyUser, isEmailHashBlocked, type NotifyUserInput } from "@crm/db";
 import type { WorkerJobContext, WorkerJobHandler } from "@crm/queue";
 import { runCampaignSend } from "../campaignSend";
 import { runImapSync } from "../imapSync";
@@ -162,6 +162,12 @@ async function processImport(ctx: WorkerJobContext): Promise<unknown> {
         // Dédoublonnage par email
         if (emailRaw) {
           const hash = emailHash(emailRaw);
+          const blocked = await isEmailHashBlocked(hash);
+          if (blocked.blocked) {
+            errorRows++;
+            errors.push(`Ligne ${i + 2} : email bloqué (${blocked.reason ?? "blacklist"})`);
+            continue;
+          }
           const existing = await prisma.lead.findFirst({ where: { emailHash: hash, deletedAt: null }, select: { id: true } });
           if (existing) {
             if (skipDuplicates) { duplicateRows++; continue; }

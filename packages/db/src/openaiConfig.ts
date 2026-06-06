@@ -4,6 +4,7 @@
 import { prisma } from "./client";
 import { decryptOrNull } from "./piiCrypto";
 import { normalizeAutoResponderMode } from "./autoResponderConfig";
+import { parseKnowledgeDocs, type AiKnowledgeDoc } from "./openaiKnowledge";
 
 export const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
 
@@ -18,6 +19,8 @@ export type OpenAiConfigPublic = {
   model: string;
   autoResponderMode: string;
   autoResponderMeetingUrl: string | null;
+  knowledgeText: string | null;
+  knowledgeDocs: AiKnowledgeDoc[];
 };
 
 /** État public (sans clé) pour l'interface utilisateur. */
@@ -30,6 +33,8 @@ export async function getOpenAiConfigPublic(userId: string): Promise<OpenAiConfi
       openAiModel: true,
       autoResponderMode: true,
       autoResponderMeetingUrl: true,
+      openAiKnowledgeText: true,
+      openAiKnowledgeDocs: true,
     },
   });
   if (!u) {
@@ -39,6 +44,8 @@ export async function getOpenAiConfigPublic(userId: string): Promise<OpenAiConfi
       model: DEFAULT_OPENAI_MODEL,
       autoResponderMode: "off",
       autoResponderMeetingUrl: null,
+      knowledgeText: null,
+      knowledgeDocs: [],
     };
   }
   return {
@@ -47,6 +54,8 @@ export async function getOpenAiConfigPublic(userId: string): Promise<OpenAiConfi
     model: u.openAiModel?.trim() || DEFAULT_OPENAI_MODEL,
     autoResponderMode: normalizeAutoResponderMode(u.autoResponderMode),
     autoResponderMeetingUrl: u.autoResponderMeetingUrl,
+    knowledgeText: u.openAiKnowledgeText,
+    knowledgeDocs: parseKnowledgeDocs(u.openAiKnowledgeDocs),
   };
 }
 

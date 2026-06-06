@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma, verifyEmailTrackToken } from "@crm/db";
+import { recalcScoreSilent } from "@/lib/services/leads";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ export async function GET(req: Request) {
         meta: { variant: p.v } as object,
       },
     });
+    void recalcScoreSilent(p.l);
   } catch {
     /* ignore duplicate / erreurs DB */
   }

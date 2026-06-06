@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Alert,
   Button,
@@ -33,10 +34,12 @@ import {
   RocketOutlined,
   TeamOutlined,
   BarChartOutlined,
+  FileAddOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "@/lib/client";
 import { useIsMobile } from "@/lib/responsive";
+import { labelWithHelp } from "@/components/ui/FieldHelp";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -91,6 +94,16 @@ export default function CampaignsPage() {
   const [segmentQuery, setSegmentQuery] = useState("");
   const [campForm] = Form.useForm();
   const [segForm] = Form.useForm();
+  const [tagsRef, setTagsRef] = useState<{ name: string }[]>([]);
+  const [leadOptions, setLeadOptions] = useState<{ label: string; value: string }[]>([]);
+  const [segPreview, setSegPreview] = useState<{
+    data: { id: string; firstName: string | null; lastName: string | null; company: string | null; email: string | null; status: string; score: number }[];
+    total: number;
+  } | null>(null);
+  const [segPreviewLoading, setSegPreviewLoading] = useState(false);
+  const [detailSegmentLeads, setDetailSegmentLeads] = useState<typeof segPreview extends null ? never : NonNullable<typeof segPreview> | null>(null);
+  const [detailLeadsLoading, setDetailLeadsLoading] = useState(false);
+  const segMode = Form.useWatch("segMode", segForm) ?? "filter";
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -114,6 +127,18 @@ export default function CampaignsPage() {
 
   useEffect(() => {
     void load();
+    api.get<{ data: { name: string }[] }>("/tags").then((r) => setTagsRef(r.data.data ?? [])).catch(() => {});
+    api.get<{ data: { id: string; firstName: string | null; lastName: string | null; company: string | null; email: string | null }[] }>(
+      "/leads",
+      { params: { pageSize: 200 } },
+    ).then((r) => {
+      setLeadOptions(
+        (r.data.data ?? []).map((l) => ({
+          value: l.id,
+          label: [l.firstName, l.lastName].filter(Boolean).join(" ") || l.company || l.email || l.id.slice(0, 8),
+        })),
+      );
+    }).catch(() => {});
   }, [load]);
 
   const openStats = async (row: CampaignRow) => {
@@ -152,6 +177,9 @@ export default function CampaignsPage() {
                 growth: v.warmupGrowth,
               }
             : undefined,
+        autoResponder: v.arMode && v.arMode !== "off"
+          ? { mode: v.arMode as string, meetingUrl: (v.arMeetingUrl as string) || "" }
+          : undefined,
       };
       const payload = {
         name: v.name,
@@ -182,15 +210,44 @@ export default function CampaignsPage() {
     }
   };
 
+  const buildSegmentFilters = (v: Record<string, unknown>): Record<string, unknown> => {
+    const mode = (v.segMode as string) ?? "filter";
+    if (mode === "manual") {
+      return { mode: "manual", leadIds: (v.leadIds as string[]) ?? [] };
+    }
+    if (mode === "tags") {
+      return { mode: "tags", tags: (v.segTags as string[]) ?? [] };
+    }
+    const filters: Record<string, unknown> = { mode: "filter" };
+    if (v.fStatus) filters.status = v.fStatus;
+    if (v.fTag) filters.tag = v.fTag;
+    if (v.fSector) filters.sector = v.fSector;
+    if (v.fScoreMin != null) filters.scoreMin = v.fScoreMin;
+    if (v.fScoreMax != null) filters.scoreMax = v.fScoreMax;
+    return filters;
+  };
+
+  const previewSegment = async () => {
+    setSegPreviewLoading(true);
+    try {
+      const v = segForm.getFieldsValue();
+      const filters = buildSegmentFilters(v);
+      const { data } = await api.post<{
+        data: { id: string; firstName: string | null; lastName: string | null; company: string | null; email: string | null; status: string; score: number }[];
+        total: number;
+      }>("/segments/preview", { filters, page: 1, pageSize: 15 });
+      setSegPreview({ data: data.data, total: data.total });
+    } catch {
+      message.error("Aperçu impossible");
+    } finally {
+      setSegPreviewLoading(false);
+    }
+  };
+
   const saveSegment = async () => {
     try {
       const v = await segForm.validateFields();
-      const filters: Record<string, unknown> = {};
-      if (v.fStatus) filters.status = v.fStatus;
-      if (v.fTag) filters.tag = v.fTag;
-      if (v.fSector) filters.sector = v.fSector;
-      if (v.fScoreMin != null) filters.scoreMin = v.fScoreMin;
-      if (v.fScoreMax != null) filters.scoreMax = v.fScoreMax;
+      const filters = buildSegmentFilters(v);
       const payload = { name: v.name, filters };
       if (editingSegment) {
         await api.put(`/segments/${editingSegment.id}`, payload);
@@ -207,6 +264,7 @@ export default function CampaignsPage() {
         setSegModal(false);
         setEditingSegment(null);
         segForm.resetFields();
+        setSegPreview(null);
         message.success("Segment créé");
       }
       void load();
@@ -258,6 +316,7 @@ export default function CampaignsPage() {
       const config = (campaign.config ?? {}) as Record<string, unknown>;
       const ab = (config.ab ?? {}) as Record<string, unknown>;
       const warmup = (config.warmup ?? {}) as Record<string, unknown>;
+      const ar = (config.autoResponder ?? {}) as Record<string, unknown>;
       campForm.setFieldsValue({
         name: campaign.name,
         templateId: campaign.template?.id,
@@ -276,6 +335,8 @@ export default function CampaignsPage() {
         abBodyHtmlB: (ab.bodyHtmlB as string) ?? undefined,
         abSplitPercent: (ab.splitPercent as number) ?? 50,
         bodyHtmlOverride: (config.bodyHtmlOverride as string) ?? undefined,
+        arMode: (ar.mode as string) ?? "off",
+        arMeetingUrl: (ar.meetingUrl as string) ?? undefined,
       });
     } catch {
       message.error("Impossible de charger la campagne");
@@ -285,16 +346,36 @@ export default function CampaignsPage() {
   const openEditSegment = async (row: SegmentRow) => {
     setEditingSegment(row);
     setSegModalMessage(null);
+    setSegPreview(null);
     setSegModal(true);
     const filters = row.filters as Record<string, unknown>;
+    const mode = (filters.mode as string) ?? "filter";
     segForm.setFieldsValue({
       name: row.name,
+      segMode: mode,
       fStatus: filters.status ?? undefined,
       fTag: filters.tag ?? undefined,
       fSector: filters.sector ?? undefined,
       fScoreMin: filters.scoreMin ?? undefined,
       fScoreMax: filters.scoreMax ?? undefined,
+      leadIds: filters.leadIds ?? [],
+      segTags: filters.tags ?? [],
     });
+  };
+
+  const loadDetailSegmentLeads = async (segmentId: string) => {
+    setDetailLeadsLoading(true);
+    try {
+      const { data } = await api.get<{
+        data: { id: string; firstName: string | null; lastName: string | null; company: string | null; email: string | null; status: string; score: number }[];
+        total: number;
+      }>(`/segments/${segmentId}/leads`, { params: { page: 1, pageSize: 50 } });
+      setDetailSegmentLeads({ data: data.data, total: data.total });
+    } catch {
+      setDetailSegmentLeads(null);
+    } finally {
+      setDetailLeadsLoading(false);
+    }
   };
 
   const openCampaignDetails = (row: CampaignRow) => {
@@ -305,6 +386,8 @@ export default function CampaignsPage() {
   const openSegmentDetails = (row: SegmentRow) => {
     setDetailSegment(row);
     setSegmentDetailOpen(true);
+    setDetailSegmentLeads(null);
+    void loadDetailSegmentLeads(row.id);
   };
 
   const closeDetails = () => {
@@ -312,6 +395,7 @@ export default function CampaignsPage() {
     setSegmentDetailOpen(false);
     setDetailCampaign(null);
     setDetailSegment(null);
+    setDetailSegmentLeads(null);
   };
 
   const pause = async (id: string) => {
@@ -431,14 +515,21 @@ export default function CampaignsPage() {
 
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      <div>
-        <Title level={3} style={{ marginBottom: 4 }}>
-          <MailOutlined /> Campagnes emailing
-        </Title>
-        <Text type="secondary">
-          Créez des segments sur vos leads, planifiez des campagnes avec envoi régulé, suivez ouvertures et clics,
-          gérez les bounces et les désabonnements (RFC 8058), et affinez la délivrabilité avec montée en charge et tests A/B.
-        </Text>
+      <div className="page-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <Title level={3} style={{ marginBottom: 4 }}>
+            <MailOutlined /> Campagnes emailing
+          </Title>
+          <Text type="secondary">
+            Créez des segments sur vos leads, planifiez des campagnes avec envoi régulé, suivez ouvertures et clics,
+            gérez les bounces et les désabonnements (RFC 8058), et affinez la délivrabilité avec montée en charge et tests A/B.
+          </Text>
+        </div>
+        <Link href="/settings?tab=emailing&newTemplate=1">
+          <Button type="default" icon={<FileAddOutlined />}>
+            Créer un template
+          </Button>
+        </Link>
       </div>
 
       <Alert
@@ -535,45 +626,123 @@ export default function CampaignsPage() {
         title={editingSegment ? "Modifier le segment" : "Nouveau segment"}
         open={segModal}
         onOk={() => void saveSegment()}
-        onCancel={() => { setSegModal(false); setEditingSegment(null); setSegModalMessage(null); segForm.resetFields(); }}
-        width={520}
+        onCancel={() => { setSegModal(false); setEditingSegment(null); setSegModalMessage(null); setSegPreview(null); segForm.resetFields(); }}
+        width={720}
         okText={editingSegment ? "Enregistrer" : "Créer"}
       >
-        <Form form={segForm} layout="vertical">
+        <Form form={segForm} layout="vertical" initialValues={{ segMode: "filter" }}>
           {segModalMessage ? (
             <Alert type={segModalMessage.type} message={segModalMessage.message} showIcon style={{ marginBottom: 16 }} />
           ) : null}
           <Form.Item name="name" label="Nom" rules={[{ required: true }]}>
             <Input placeholder="Ex: Prospects IT France" />
           </Form.Item>
-          <Text type="secondary">Filtres (aperçu côté API / worker — même logique que la liste Leads)</Text>
-          <Row gutter={8} style={{ marginTop: 8 }}>
-            <Col span={12}>
-              <Form.Item name="fStatus" label="Statut">
-                <Select allowClear placeholder="Tous" options={["NOUVEAU", "CONTACTE", "QUALIFIE", "EN_DISCUSSION", "CONVERTI", "PERDU"].map((s) => ({ label: s, value: s }))} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="fTag" label="Tag">
-                <Input placeholder="ex: vip" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="fSector" label="Secteur">
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item name="fScoreMin" label="Score min">
-                <InputNumber min={0} max={100} style={{ width: "100%" }} />
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item name="fScoreMax" label="Score max">
-                <InputNumber min={0} max={100} style={{ width: "100%" }} />
-              </Form.Item>
-            </Col>
-          </Row>
+          <Form.Item
+            name="segMode"
+            label={labelWithHelp(
+              "Type de segment",
+              "Filtres dynamiques : critères automatiques. Manuel : liste fixe de leads. Par tags : tous les leads portant au moins un des tags choisis.",
+            )}
+          >
+            <Select
+              options={[
+                { label: "Filtres dynamiques (statut, score…)", value: "filter" },
+                { label: "Sélection manuelle de leads", value: "manual" },
+                { label: "Par tags", value: "tags" },
+              ]}
+            />
+          </Form.Item>
+
+          {segMode === "filter" && (
+            <>
+              <Text type="secondary">Filtres — même logique que la liste Leads</Text>
+              <Row gutter={8} style={{ marginTop: 8 }}>
+                <Col span={12}>
+                  <Form.Item name="fStatus" label="Statut">
+                    <Select allowClear placeholder="Tous" options={["NOUVEAU", "CONTACTE", "QUALIFIE", "EN_DISCUSSION", "CONVERTI", "PERDU"].map((s) => ({ label: s, value: s }))} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="fTag" label="Tag">
+                    <Select
+                      allowClear
+                      showSearch
+                      placeholder="Choisir un tag"
+                      options={tagsRef.map((t) => ({ label: t.name, value: t.name }))}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="fSector" label="Secteur">
+                    <Input />
+                  </Form.Item>
+                </Col>
+                <Col span={6}>
+                  <Form.Item name="fScoreMin" label="Score min">
+                    <InputNumber min={0} max={100} style={{ width: "100%" }} />
+                  </Form.Item>
+                </Col>
+                <Col span={6}>
+                  <Form.Item name="fScoreMax" label="Score max">
+                    <InputNumber min={0} max={100} style={{ width: "100%" }} />
+                  </Form.Item>
+                </Col>
+              </Row>
+            </>
+          )}
+
+          {segMode === "manual" && (
+            <Form.Item name="leadIds" label="Leads sélectionnés" rules={[{ required: true, message: "Sélectionnez au moins un lead" }]}>
+              <Select
+                mode="multiple"
+                showSearch
+                placeholder="Rechercher et sélectionner des leads…"
+                options={leadOptions}
+                optionFilterProp="label"
+                style={{ width: "100%" }}
+              />
+            </Form.Item>
+          )}
+
+          {segMode === "tags" && (
+            <Form.Item name="segTags" label="Tags (au moins un tag correspond)" rules={[{ required: true, message: "Sélectionnez au moins un tag" }]}>
+              <Select
+                mode="tags"
+                placeholder="Sélectionner ou créer des tags…"
+                options={tagsRef.map((t) => ({ label: t.name, value: t.name }))}
+                tokenSeparators={[","]}
+                style={{ width: "100%" }}
+              />
+            </Form.Item>
+          )}
+
+          <Space style={{ marginBottom: 12 }}>
+            <Button loading={segPreviewLoading} onClick={() => void previewSegment()}>
+              Aperçu des leads ciblés
+            </Button>
+            {segPreview && (
+              <Text type="secondary">{segPreview.total} lead(s) correspondant(s)</Text>
+            )}
+          </Space>
+
+          {segPreview && (
+            <Table
+              size="small"
+              rowKey="id"
+              pagination={false}
+              dataSource={segPreview.data}
+              columns={[
+                {
+                  title: "Contact",
+                  key: "name",
+                  render: (_, r) => [r.firstName, r.lastName].filter(Boolean).join(" ") || r.company || "—",
+                },
+                { title: "Email", dataIndex: "email", ellipsis: true, render: (v) => v ?? "—" },
+                { title: "Statut", dataIndex: "status", width: 100, render: (s) => <Tag>{s}</Tag> },
+                { title: "Score", dataIndex: "score", width: 70 },
+              ]}
+            />
+          )}
         </Form>
       </Modal>
 
@@ -598,37 +767,59 @@ export default function CampaignsPage() {
               style={{ marginBottom: 16 }}
             />
           ) : null}
-          <Form.Item name="name" label="Nom" rules={[{ required: true }]}>
+          <Form.Item name="name" label={labelWithHelp("Nom de la campagne", "Identifiant interne pour retrouver la campagne dans la liste et les statistiques.")} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
           <Row gutter={12}>
             <Col xs={24} md={8}>
-              <Form.Item name="templateId" label="Template" rules={[{ required: true }]}>
+              <Form.Item
+                name="templateId"
+                label={labelWithHelp("Template", "Modèle d'email (objet + corps HTML) créé dans Configuration → Emailing. Utilisez « Créer un template » si besoin.")}
+                rules={[{ required: true }]}
+              >
                 <Select options={templates.map((t) => ({ label: t.name, value: t.id }))} showSearch optionFilterProp="label" />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item name="segmentId" label="Segment" rules={[{ required: true }]}>
+              <Form.Item
+                name="segmentId"
+                label={labelWithHelp("Segment", "Audience cible : ensemble de leads filtrés, sélectionnés manuellement ou regroupés par tags.")}
+                rules={[{ required: true }]}
+              >
                 <Select options={segments.map((s) => ({ label: s.name, value: s.id }))} showSearch optionFilterProp="label" />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item name="smtpConfigId" label="SMTP" rules={[{ required: true }]}>
+              <Form.Item
+                name="smtpConfigId"
+                label={labelWithHelp("SMTP", "Serveur d'envoi configuré dans Configuration → Emailing. Détermine l'adresse expéditeur et la délivrabilité.")}
+                rules={[{ required: true }]}
+              >
                 <Select options={smtps.map((s) => ({ label: s.label, value: s.id }))} />
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item name="subject" label="Objet (surcharge template)" rules={[{ required: true }]}>
+          <Form.Item
+            name="subject"
+            label={labelWithHelp("Objet (surcharge template)", "Remplace l'objet défini dans le template. Variables {{firstName}}, {{company}} supportées selon le template.")}
+            rules={[{ required: true }]}
+          >
             <Input />
           </Form.Item>
           <Row gutter={12}>
             <Col xs={24} md={12}>
-              <Form.Item name="scheduledAt" label="Planifier à (optionnel)">
+              <Form.Item
+                name="scheduledAt"
+                label={labelWithHelp("Planifier à (optionnel)", "Date et heure de démarrage. Laissez vide pour lancer manuellement via le bouton « Lancer ».")}
+              >
                 <DatePicker showTime style={{ width: "100%" }} format="DD/MM/YYYY HH:mm" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item name="dailyLimit" label="Plafond envois / jour (campagne)">
+              <Form.Item
+                name="dailyLimit"
+                label={labelWithHelp("Plafond envois / jour", "Nombre maximum d'emails envoyés par jour pour cette campagne. Protège votre réputation d'expéditeur.")}
+              >
                 <InputNumber min={1} max={50000} style={{ width: "100%" }} />
               </Form.Item>
             </Col>
@@ -636,21 +827,33 @@ export default function CampaignsPage() {
           <Paragraph strong style={{ marginTop: 8 }}>
             Options avancées
           </Paragraph>
-          <Form.Item name="throttleMinDelayMs" label="Délai min. entre deux envois (ms)">
+          <Form.Item
+            name="throttleMinDelayMs"
+            label={labelWithHelp("Délai min. entre deux envois (ms)", "Pause entre chaque email pour éviter d'être flaggé comme spam. 12 000 ms (12 s) est un bon défaut.")}
+          >
             <InputNumber min={0} max={600000} style={{ width: "100%" }} />
           </Form.Item>
-          <Form.Item name="bodyHtmlOverride" label="Corps HTML (remplace le template si renseigné)">
+          <Form.Item
+            name="bodyHtmlOverride"
+            label={labelWithHelp("Corps HTML (remplace le template)", "Si renseigné, ignore le HTML du template pour cette campagne uniquement.")}
+          >
             <Input.TextArea rows={3} placeholder="Laisser vide pour utiliser le template" />
           </Form.Item>
           <Form.Item
             name="aiPersonalize"
-            label="Personnalisation IA par destinataire (F2/F3)"
+            label={labelWithHelp(
+              "Personnalisation IA par destinataire",
+              "Chaque email est réécrit par l'IA pour être unique et adapté au lead (enrichissement, brief). Utilise votre clé OpenAI et votre base de connaissances (Configuration → Intégration IA).",
+            )}
             valuePropName="checked"
-            tooltip="Chaque email est réécrit par l'IA, unique et adapté au lead. Utilise la clé OpenAI du créateur de la campagne (Configuration → Intégration IA)."
           >
             <Switch />
           </Form.Item>
-          <Form.Item name="abEnabled" label="Test A/B" valuePropName="checked">
+          <Form.Item
+            name="abEnabled"
+            label={labelWithHelp("Test A/B", "Envoie deux variantes (A et B) à des sous-ensembles du segment pour comparer les performances.")}
+            valuePropName="checked"
+          >
             <Switch />
           </Form.Item>
           <Row gutter={12}>
@@ -668,7 +871,7 @@ export default function CampaignsPage() {
           <Form.Item name="abBodyHtmlB" label="HTML variante B">
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="warmupEnabled" label="Montée en charge du domaine (warm-up)" valuePropName="checked">
+          <Form.Item name="warmupEnabled" label={labelWithHelp("Montée en charge (warm-up)", "Augmente progressivement le volume d'envois quotidien pour chauffer un nouveau domaine ou une nouvelle IP SMTP.")} valuePropName="checked">
             <Switch />
           </Form.Item>
           <Row gutter={12}>
@@ -680,6 +883,35 @@ export default function CampaignsPage() {
             <Col span={12}>
               <Form.Item name="warmupGrowth" label="Croissance quotidienne (coeff.)">
                 <InputNumber min={1} max={3} step={0.01} style={{ width: "100%" }} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Paragraph strong style={{ marginTop: 8 }}>
+            Auto-répondeur IA (par campagne)
+          </Paragraph>
+          <Row gutter={12}>
+            <Col xs={24} md={12}>
+              <Form.Item
+                name="arMode"
+                label={labelWithHelp("Mode auto-répondeur", "Définit comment répondre automatiquement aux emails reçus de leads de cette campagne. « Brouillon » : génère un brouillon pour validation humaine. « Auto » : envoie directement.")}
+              >
+                <Select
+                  allowClear
+                  placeholder="Désactivé (global)"
+                  options={[
+                    { label: "Désactivé (utiliser config globale)", value: "off" },
+                    { label: "Brouillon (validation humaine)", value: "draft" },
+                    { label: "Auto (envoi direct)", value: "auto" },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                name="arMeetingUrl"
+                label={labelWithHelp("Lien RDV (pour réponses positives)", "URL Calendly ou agenda envoyée dans la réponse IA aux leads intéressés.")}
+              >
+                <Input placeholder="https://calendly.com/..." />
               </Form.Item>
             </Col>
           </Row>
@@ -712,16 +944,51 @@ export default function CampaignsPage() {
         title={detailSegment ? `Détails segment — ${detailSegment.name}` : "Détails segment"}
         open={segmentDetailOpen}
         onClose={closeDetails}
-        width={520}
+        width={720}
       >
         {detailSegment ? (
-          <Descriptions column={1} size="small" bordered>
-            <Descriptions.Item label="Nom">{detailSegment.name}</Descriptions.Item>
-            <Descriptions.Item label="Créé">{dayjs(detailSegment.createdAt).format("DD/MM/YYYY HH:mm")}</Descriptions.Item>
-            <Descriptions.Item label="Filtres">
-              <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>{JSON.stringify(detailSegment.filters, null, 2)}</pre>
-            </Descriptions.Item>
-          </Descriptions>
+          <Space direction="vertical" size={16} style={{ width: "100%" }}>
+            <Descriptions column={1} size="small" bordered>
+              <Descriptions.Item label="Nom">{detailSegment.name}</Descriptions.Item>
+              <Descriptions.Item label="Créé">{dayjs(detailSegment.createdAt).format("DD/MM/YYYY HH:mm")}</Descriptions.Item>
+              <Descriptions.Item label="Type">
+                {(() => {
+                  const f = detailSegment.filters as Record<string, unknown>;
+                  if (f.mode === "manual") return "Sélection manuelle";
+                  if (f.mode === "tags") return "Par tags";
+                  return "Filtres dynamiques";
+                })()}
+              </Descriptions.Item>
+              <Descriptions.Item label="Critères">
+                <pre style={{ whiteSpace: "pre-wrap", margin: 0, fontSize: 11 }}>{JSON.stringify(detailSegment.filters, null, 2)}</pre>
+              </Descriptions.Item>
+            </Descriptions>
+            <div>
+              <Title level={5}>Leads ciblés</Title>
+              <Table
+                size="small"
+                rowKey="id"
+                loading={detailLeadsLoading}
+                dataSource={detailSegmentLeads?.data ?? []}
+                pagination={false}
+                columns={[
+                  {
+                    title: "Contact",
+                    key: "name",
+                    render: (_, r) => [r.firstName, r.lastName].filter(Boolean).join(" ") || r.company || "—",
+                  },
+                  { title: "Email", dataIndex: "email", ellipsis: true, render: (v) => v ?? "—" },
+                  { title: "Statut", dataIndex: "status", width: 100, render: (s) => <Tag>{s}</Tag> },
+                  { title: "Score", dataIndex: "score", width: 70 },
+                ]}
+                footer={() =>
+                  detailSegmentLeads ? (
+                    <Text type="secondary">{detailSegmentLeads.total} lead(s) au total</Text>
+                  ) : null
+                }
+              />
+            </div>
+          </Space>
         ) : null}
       </Drawer>
 

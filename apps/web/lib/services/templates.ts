@@ -7,6 +7,7 @@ export interface TemplateInput {
   bodyHtml: string;
   variables?: string[];
   isPublic?: boolean;
+  includeUnsubscribeLink?: boolean;
 }
 
 export interface TemplateUpdateInput {
@@ -16,42 +17,29 @@ export interface TemplateUpdateInput {
   bodyHtml?: string;
   variables?: string[];
   isPublic?: boolean;
+  includeUnsubscribeLink?: boolean;
 }
 
+const TEMPLATE_SELECT = {
+  id: true,
+  name: true,
+  category: true,
+  subject: true,
+  bodyHtml: true,
+  variables: true,
+  isPreset: true,
+  isPublic: true,
+  includeUnsubscribeLink: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 export async function listTemplates() {
-  return prisma.template.findMany({
-    orderBy: { updatedAt: "desc" },
-    select: {
-      id: true,
-      name: true,
-      category: true,
-      subject: true,
-      bodyHtml: true,
-      variables: true,
-      isPreset: true,
-      isPublic: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
+  return prisma.template.findMany({ orderBy: { updatedAt: "desc" }, select: TEMPLATE_SELECT });
 }
 
 export async function getTemplate(id: string) {
-  return prisma.template.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      name: true,
-      category: true,
-      subject: true,
-      bodyHtml: true,
-      variables: true,
-      isPreset: true,
-      isPublic: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
+  return prisma.template.findUnique({ where: { id }, select: TEMPLATE_SELECT });
 }
 
 export async function createTemplate(input: TemplateInput) {
@@ -64,19 +52,9 @@ export async function createTemplate(input: TemplateInput) {
       variables: input.variables ?? [],
       isPreset: false,
       isPublic: input.isPublic ?? true,
+      includeUnsubscribeLink: input.includeUnsubscribeLink ?? true,
     },
-    select: {
-      id: true,
-      name: true,
-      category: true,
-      subject: true,
-      bodyHtml: true,
-      variables: true,
-      isPreset: true,
-      isPublic: true,
-      createdAt: true,
-      updatedAt: true,
-    },
+    select: TEMPLATE_SELECT,
   });
 }
 
@@ -90,19 +68,9 @@ export async function updateTemplate(id: string, input: TemplateUpdateInput) {
       ...(input.bodyHtml !== undefined ? { bodyHtml: input.bodyHtml } : {}),
       ...(input.variables !== undefined ? { variables: input.variables } : {}),
       ...(input.isPublic !== undefined ? { isPublic: input.isPublic } : {}),
+      ...(input.includeUnsubscribeLink !== undefined ? { includeUnsubscribeLink: input.includeUnsubscribeLink } : {}),
     },
-    select: {
-      id: true,
-      name: true,
-      category: true,
-      subject: true,
-      bodyHtml: true,
-      variables: true,
-      isPreset: true,
-      isPublic: true,
-      createdAt: true,
-      updatedAt: true,
-    },
+    select: TEMPLATE_SELECT,
   });
 }
 
@@ -127,18 +95,8 @@ export async function duplicateTemplate(sourceId: string) {
       variables: Array.isArray(src.variables) ? [...src.variables] : [],
       isPreset: false,
       isPublic: true,
+      includeUnsubscribeLink: src.includeUnsubscribeLink,
     },
-    select: {
-      id: true,
-      name: true,
-      category: true,
-      subject: true,
-      bodyHtml: true,
-      variables: true,
-      isPreset: true,
-      isPublic: true,
-      createdAt: true,
-      updatedAt: true,
-    },
+    select: TEMPLATE_SELECT,
   });
 }

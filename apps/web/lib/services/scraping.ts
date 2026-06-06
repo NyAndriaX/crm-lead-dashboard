@@ -325,7 +325,11 @@ export async function importScraperPayloadToBuffer(
  * Re-vérifie le dédoublonnage au moment de l'injection (un lead a pu être
  * créé entre le scraping et la validation).
  */
-export async function injectAcceptedLeads(missionId: string, actorId?: string): Promise<{
+export async function injectAcceptedLeads(
+  missionId: string,
+  actorId?: string,
+  injectionTags: string[] = [],
+): Promise<{
   injected: number;
   skippedDuplicate: number;
   skippedInvalid: number;
@@ -360,7 +364,11 @@ export async function injectAcceptedLeads(missionId: string, actorId?: string): 
       continue;
     }
 
-    const base = buildLeadCreateFromScraped(raw, `Scraping: ${raw.source ?? "mission"}`);
+    const base = buildLeadCreateFromScraped(
+      raw,
+      `Scraping: ${raw.source ?? "mission"}`,
+      injectionTags,
+    );
     const lead = await prisma.lead.create({
       data: {
         ...base,

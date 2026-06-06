@@ -11,6 +11,7 @@
  *                   traitement).
  */
 import { prisma } from "@crm/db";
+import { blockEmailHash, GDPR_ERASE_REASON } from "@crm/db";
 import { decryptOrNull } from "@/lib/crypto";
 
 // ── Droit à l'oubli ──────────────────────────────────────────────────────────
@@ -27,13 +28,24 @@ export type EraseResult = {
   };
 };
 
-export async function eraseLead(leadId: string): Promise<EraseResult> {
-  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { id: true } });
+export async function eraseLead(leadId: string, erasedBy?: string): Promise<EraseResult> {
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { id: true, emailHash: true },
+  });
   if (!lead) {
     return {
       leadId,
       removed: { lead: false, leadHistory: 0, emailEvents: 0, inboxMessages: 0, sequenceLeads: 0, leadPipeline: 0 },
     };
+  }
+
+  if (lead.emailHash) {
+    await blockEmailHash({
+      emailHash: lead.emailHash,
+      reason: GDPR_ERASE_REASON,
+      erasedBy: erasedBy ?? null,
+    });
   }
 
   // Ordre important : enfants d'abord pour respecter les FK Prisma (relations
@@ -227,4 +239,104 @@ export const DATA_REGISTRY: DataProcessing[] = [
 
 export function getDataRegistry(): DataProcessing[] {
   return DATA_REGISTRY;
+}
+
+// ── Leads archivés (soft delete) ─────────────────────────────────────────────
+
+export type ArchivedLeadItem = {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  company: string | null;
+  email: string | null;
+  source: string | null;
+  status: string;
+  deletedAt: string;
+  createdAt: string;
+};
+
+export async function listArchivedLeads(opts: { page?: number; pageSize?: number } = {}) {
+  const page = Math.max(1, opts.page ?? 1);
+  const pageSize = Math.min(100, Math.max(1, opts.pageSize ?? 25));
+  const where = { deletedAt: { not: null } as const };
+  const [rows, total] = await Promise.all([
+    prisma.lead.findMany({
+      where,
+      orderBy: { deletedAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        company: true,
+        emailEnc: true,
+        source: true,
+        status: true,
+        deletedAt: true,
+        createdAt: true,
+      },
+    }),
+    prisma.lead.count({ where }),
+  ]);
+  return {
+    data: rows.map((r) => ({
+      id: r.id,
+      firstName: r.firstName,
+      lastName: r.lastName,
+      company: r.company,
+      email: decryptOrNull(r.emailEnc),
+      source: r.source,
+      status: r.status,
+      deletedAt: r.deletedAt!.toISOString(),
+      createdAt: r.createdAt.toISOString(),
+    })),
+    total,
+    page,
+    pageSize,
+  };
+}
+
+// ── Contacts supprimés RGPD (blacklist) ───────────────────────────────────────
+
+export type GdprErasedItem = {
+  id: string;
+  emailHashPrefix: string;
+  reason: string | null;
+  erasedBy: string | null;
+  erasedByName: string | null;
+  createdAt: string;
+};
+
+export async function listGdprErasedContacts(opts: { page?: number; pageSize?: number } = {}) {
+  const page = Math.max(1, opts.page ?? 1);
+  const pageSize = Math.min(100, Math.max(1, opts.pageSize ?? 25));
+  const where = { reason: GDPR_ERASE_REASON };
+  const [rows, total] = await Promise.all([
+    prisma.blacklist.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.blacklist.count({ where }),
+  ]);
+  const userIds = rows.map((r) => r.erasedBy).filter(Boolean) as string[];
+  const users = userIds.length
+    ? await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } })
+    : [];
+  const nameById = new Map(users.map((u) => [u.id, u.name]));
+  return {
+    data: rows.map((r) => ({
+      id: r.id,
+      emailHashPrefix: `${r.emailHash.slice(0, 12)}…`,
+      reason: r.reason,
+      erasedBy: r.erasedBy,
+      erasedByName: r.erasedBy ? nameById.get(r.erasedBy) ?? null : null,
+      createdAt: r.createdAt.toISOString(),
+    })),
+    total,
+    page,
+    pageSize,
+  };
 }

@@ -48,11 +48,17 @@ export const PATCH = handler<Ctx>(async (req, { params }) => {
   return json({ data: { updated: count } });
 });
 
+const injectSchema = z.object({
+  injectionTags: z.array(z.string().trim().min(1).max(64)).max(20).optional(),
+});
+
 export const POST = handler<Ctx>(async (req, { params }) => {
   const session = await requirePermission("leads:write");
   const { id } = await params;
   const missionId = z.string().min(1).parse(id);
-  const result = await injectAcceptedLeads(missionId, session.sub);
+  const body = await req.json().catch(() => ({}));
+  const { injectionTags } = injectSchema.parse(body);
+  const result = await injectAcceptedLeads(missionId, session.sub, injectionTags ?? []);
   await audit({
     userId: session.sub,
     action: "scraping.results.inject",

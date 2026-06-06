@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Card, Table, Button, Space, Typography, Tag, Switch, Modal, Form, Input, InputNumber, Select,
-  Popconfirm, message, Empty, Divider, Drawer,
+  Popconfirm, message, Empty, Divider, Drawer, Steps, Tooltip, Badge,
 } from "antd";
 import {
   PlusOutlined, ReloadOutlined, RetweetOutlined, DeleteOutlined, PauseOutlined,
-  PlayCircleOutlined, EditOutlined, TeamOutlined,
+  PlayCircleOutlined, EditOutlined, TeamOutlined, RobotOutlined, CalendarOutlined, MailOutlined,
+  CheckCircleOutlined, CloseCircleOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
 import { SequencesDashboardPanel } from "@/components/sequences/SequencesDashboardPanel";
@@ -52,13 +53,16 @@ type SequenceLeadRow = {
   };
 };
 type TemplateOption = { id: string; name: string; subject: string };
+type SmtpOption = { id: string; label: string };
 type LeadOption = { id: string; firstName: string | null; lastName: string | null; company: string | null };
 
 export default function SequencesPage() {
   const [rows, setRows] = useState<SequenceRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [templates, setTemplates] = useState<TemplateOption[]>([]);
+  const [smtps, setSmtps] = useState<SmtpOption[]>([]);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [editorStep, setEditorStep] = useState(0);
   const [editing, setEditing] = useState<SequenceRow | null>(null);
   const [form] = Form.useForm();
   const [leadsOpen, setLeadsOpen] = useState<SequenceRow | null>(null);
@@ -83,10 +87,12 @@ export default function SequencesPage() {
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     api.get<{ data: TemplateOption[] }>("/templates").then((r) => setTemplates(r.data.data)).catch(() => {});
+    api.get<{ data: SmtpOption[] }>("/smtp-configs?active=true").then((r) => setSmtps(r.data.data)).catch(() => {});
   }, []);
 
   function openCreate() {
     setEditing(null);
+    setEditorStep(0);
     form.resetFields();
     form.setFieldsValue({
       name: "",
@@ -97,9 +103,11 @@ export default function SequencesPage() {
   }
   function openEdit(seq: SequenceRow) {
     setEditing(seq);
+    setEditorStep(0);
     form.setFieldsValue({
       name: seq.name,
       maxSteps: seq.maxSteps,
+      smtpConfigId: (seq as SequenceRow & { smtpConfigId?: string }).smtpConfigId ?? null,
       steps: seq.steps?.length ? seq.steps : [{ delayDays: 0, templateId: null, stopOnReply: true }],
     });
     setEditorOpen(true);
@@ -111,6 +119,7 @@ export default function SequencesPage() {
       const body = {
         name: values.name,
         maxSteps: values.maxSteps ?? null,
+        smtpConfigId: (values.smtpConfigId as string) || null,
         steps: (values.steps as Step[]).map((s) => ({
           delayDays: Number(s.delayDays ?? 0),
           templateId: s.templateId || null,
@@ -303,84 +312,177 @@ export default function SequencesPage() {
       <Modal
         open={editorOpen}
         onCancel={() => setEditorOpen(false)}
-        onOk={() => void submit()}
-        okText={editing ? "Enregistrer" : "Créer"}
-        title={editing ? "Modifier la séquence" : "Nouvelle séquence"}
-        width={720}
+        footer={
+          <Space style={{ width: "100%", justifyContent: "flex-end" }}>
+            {editorStep > 0 && (
+              <Button onClick={() => setEditorStep((s) => s - 1)}>Retour</Button>
+            )}
+            {editorStep < 1 ? (
+              <Button type="primary" onClick={async () => {
+                try { await form.validateFields(["name"]); setEditorStep(1); } catch { /* validation error shown */ }
+              }}>Suivant</Button>
+            ) : (
+              <Button type="primary" onClick={() => void submit()}>
+                {editing ? "Enregistrer" : "Créer"}
+              </Button>
+            )}
+            <Button onClick={() => setEditorOpen(false)}>Annuler</Button>
+          </Space>
+        }
+        title={editing ? "Modifier la séquence" : "Nouvelle séquence de relance"}
+        width={760}
         destroyOnHidden
       >
+        <Steps
+          current={editorStep}
+          size="small"
+          style={{ marginBottom: 24 }}
+          items={[
+            { title: "Paramètres généraux", icon: <CalendarOutlined /> },
+            { title: "Étapes de relance", icon: <MailOutlined /> },
+          ]}
+        />
         <Form layout="vertical" form={form}>
-          <Form.Item label="Nom" name="name" rules={[{ required: true, message: "Nom requis" }]}>
-            <Input placeholder="Ex : Relance 3 étapes — prospects froids" />
-          </Form.Item>
-          <Form.Item label="Limite globale (max steps, optionnel)" name="maxSteps">
-            <InputNumber min={1} max={20} placeholder="Ex : 3" style={{ width: "100%" }} />
-          </Form.Item>
+          {/* Étape 0 : paramètres généraux */}
+          <div style={{ display: editorStep === 0 ? "block" : "none" }}>
+            <Form.Item label="Nom de la séquence" name="name" rules={[{ required: true, message: "Nom requis" }]}>
+              <Input placeholder="Ex : Relance 3 étapes — prospects froids" />
+            </Form.Item>
+            <Form.Item
+              label="SMTP d'envoi (optionnel — utilise le SMTP actif par défaut)"
+              name="smtpConfigId"
+              tooltip="Permet de choisir un compte SMTP spécifique pour tous les envois de cette séquence."
+            >
+              <Select
+                allowClear
+                placeholder="SMTP par défaut (actif)"
+                options={smtps.map((s) => ({ value: s.id, label: s.label }))}
+              />
+            </Form.Item>
+            <Form.Item
+              label="Nombre maximum d'étapes (optionnel)"
+              name="maxSteps"
+              tooltip="Limite le nombre total d'emails envoyés par lead dans cette séquence."
+            >
+              <InputNumber min={1} max={20} placeholder="Illimité" style={{ width: "100%" }} />
+            </Form.Item>
+          </div>
 
-          <Divider orientation="left" plain>Étapes</Divider>
-          <Form.List name="steps">
-            {(fields, { add, remove }) => (
-              <>
-                {fields.map((field, idx) => (
-                  <Card key={field.key} size="small" style={{ marginBottom: 12 }} title={`Étape ${idx + 1}`}
-                    extra={fields.length > 1 ? (
-                      <Button danger size="small" onClick={() => remove(field.name)}>Retirer</Button>
-                    ) : null}
-                  >
-                    <Space size={12} style={{ width: "100%" }} direction="vertical">
-                      <Space size={12} wrap>
+          {/* Étape 1 : étapes de relance */}
+          <div style={{ display: editorStep === 1 ? "block" : "none" }}>
+            <Form.List name="steps">
+              {(fields, { add, remove }) => (
+                <>
+                  {fields.map((field, idx) => (
+                    <Card
+                      key={field.key}
+                      size="small"
+                      style={{ marginBottom: 12, borderLeft: "3px solid #722ed1" }}
+                      title={
+                        <Space>
+                          <Badge count={idx + 1} color="#722ed1" />
+                          <Text strong>Étape {idx + 1}</Text>
+                        </Space>
+                      }
+                      extra={
+                        fields.length > 1 ? (
+                          <Tooltip title="Supprimer cette étape">
+                            <Button danger size="small" icon={<CloseCircleOutlined />} onClick={() => remove(field.name)} />
+                          </Tooltip>
+                        ) : null
+                      }
+                    >
+                      <Space size={12} style={{ width: "100%" }} direction="vertical">
+                        <Space size={16} wrap>
+                          <Form.Item
+                            name={[field.name, "delayDays"]}
+                            label={idx === 0 ? "Délai avant 1ᵉʳ envoi (jours)" : "Délai après étape précédente (jours)"}
+                            rules={[{ required: true, message: "Délai requis" }]}
+                            style={{ marginBottom: 0 }}
+                            tooltip={idx === 0 ? "0 = envoi immédiat après inscription dans la séquence" : "Jours d'attente entre cette étape et la précédente"}
+                          >
+                            <InputNumber min={0} max={365} addonAfter="j" />
+                          </Form.Item>
+                          <Form.Item
+                            name={[field.name, "stopOnReply"]}
+                            label="Arrêt si réponse"
+                            valuePropName="checked"
+                            style={{ marginBottom: 0 }}
+                            tooltip="Stop la séquence automatiquement si le lead répond à cet email."
+                          >
+                            <Switch defaultChecked />
+                          </Form.Item>
+                          <Form.Item
+                            name={[field.name, "aiPersonalize"]}
+                            label={<Space size={4}><RobotOutlined />Personnalisation IA</Space>}
+                            valuePropName="checked"
+                            tooltip="Réécrit le message de façon unique pour chaque destinataire (enrichissement + historique). Nécessite votre clé OpenAI."
+                            style={{ marginBottom: 0 }}
+                          >
+                            <Switch />
+                          </Form.Item>
+                        </Space>
                         <Form.Item
-                          name={[field.name, "delayDays"]}
-                          label="Délai (jours après étape précédente)"
-                          rules={[{ required: true }]}
+                          name={[field.name, "templateId"]}
+                          label="Template d'email"
                           style={{ marginBottom: 0 }}
+                          tooltip="Choisissez un template existant ou laissez vide pour définir sujet/corps ci-dessous."
                         >
-                          <InputNumber min={0} max={365} />
+                          <Select
+                            allowClear
+                            placeholder="Choisir un template (ou définir sujet/corps ci-dessous)"
+                            options={templates.map((t) => ({ value: t.id, label: `${t.name} — ${t.subject}` }))}
+                            showSearch
+                            optionFilterProp="label"
+                          />
                         </Form.Item>
-                        <Form.Item
-                          name={[field.name, "stopOnReply"]}
-                          label="Arrêt si réponse"
-                          valuePropName="checked"
-                          style={{ marginBottom: 0 }}
-                        >
-                          <Switch defaultChecked />
+                        <Form.Item name={[field.name, "subject"]} label="Sujet personnalisé (remplace le template)" style={{ marginBottom: 0 }}>
+                          <Input placeholder="Sujet de relance — {{prenom}}" />
                         </Form.Item>
-                        <Form.Item
-                          name={[field.name, "aiPersonalize"]}
-                          label="Personnalisation IA"
-                          valuePropName="checked"
-                          tooltip="Réécrit ce message de relance, unique par destinataire (enrichissement + brief IA). Nécessite votre clé OpenAI (Configuration → Intégration IA) sur le lead assigné."
-                          style={{ marginBottom: 0 }}
-                        >
-                          <Switch />
+                        <Form.Item name={[field.name, "bodyHtml"]} label="Corps HTML (remplace le template)" style={{ marginBottom: 0 }}>
+                          <Input.TextArea rows={3} placeholder="<p>Bonjour {{prenom}}, je reprends contact…</p>" />
                         </Form.Item>
                       </Space>
-                      <Form.Item
-                        name={[field.name, "templateId"]}
-                        label="Template (ou laisser vide pour sujet/corps personnalisé)"
-                        style={{ marginBottom: 0 }}
-                      >
-                        <Select
-                          allowClear
-                          placeholder="Choisir un template"
-                          options={templates.map((t) => ({ value: t.id, label: `${t.name} — ${t.subject}` }))}
-                        />
-                      </Form.Item>
-                      <Form.Item name={[field.name, "subject"]} label="Sujet (optionnel — override template)" style={{ marginBottom: 0 }}>
-                        <Input placeholder="Sujet personnalisé" />
-                      </Form.Item>
-                      <Form.Item name={[field.name, "bodyHtml"]} label="Corps HTML (optionnel — override template)" style={{ marginBottom: 0 }}>
-                        <Input.TextArea rows={4} placeholder="<p>Bonjour {{prenom}}...</p>" />
-                      </Form.Item>
-                    </Space>
-                  </Card>
-                ))}
-                <Button block onClick={() => add({ delayDays: 3, templateId: null, stopOnReply: true })} icon={<PlusOutlined />}>
-                  Ajouter une étape
-                </Button>
-              </>
+                    </Card>
+                  ))}
+                  <Button
+                    block
+                    type="dashed"
+                    onClick={() => add({ delayDays: fields.length === 0 ? 0 : 3, templateId: null, stopOnReply: true, aiPersonalize: false })}
+                    icon={<PlusOutlined />}
+                    style={{ marginTop: 4 }}
+                  >
+                    Ajouter une étape de relance
+                  </Button>
+                  {fields.length === 0 && (
+                    <Empty description="Ajoutez au moins une étape" style={{ padding: "24px 0" }} />
+                  )}
+                </>
+              )}
+            </Form.List>
+
+            {/* Aperçu timeline */}
+            {form.getFieldValue("steps")?.length > 1 && (
+              <Card size="small" style={{ marginTop: 16, background: "#f9f0ff", borderColor: "#d3adf7" }} title="Aperçu de la timeline">
+                <Space direction="vertical" size={4} style={{ width: "100%" }}>
+                  {(form.getFieldValue("steps") as Step[]).map((s, i) => {
+                    const cumDays = (form.getFieldValue("steps") as Step[]).slice(0, i + 1).reduce((acc, st) => acc + (st.delayDays ?? 0), 0);
+                    return (
+                      <Space key={i} size={8}>
+                        <CheckCircleOutlined style={{ color: "#722ed1" }} />
+                        <Text style={{ fontSize: 12 }}>
+                          J+{cumDays} — Étape {i + 1}
+                          {s.templateId ? ` (template)` : s.subject ? ` : "${String(s.subject).slice(0, 30)}"` : ""}
+                          {s.aiPersonalize ? " · 🤖 IA" : ""}
+                          {s.stopOnReply ? "" : " · continue si réponse"}
+                        </Text>
+                      </Space>
+                    );
+                  })}
+                </Space>
+              </Card>
             )}
-          </Form.List>
+          </div>
         </Form>
       </Modal>
 

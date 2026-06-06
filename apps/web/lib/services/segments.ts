@@ -1,8 +1,7 @@
-import { prisma } from "@crm/db";
+import { prisma, buildLeadWhereFromSegmentFilters, type LeadSegmentFilters } from "@crm/db";
 import { ApiError } from "../api";
 import type { CreateSegmentInput, UpdateSegmentInput } from "../schemas/campaign";
-import { buildWhere } from "./leads";
-import type { LeadFilters } from "../schemas/lead";
+import { decryptOrNull } from "../crypto";
 
 export async function listSegments() {
   return prisma.segment.findMany({ orderBy: { createdAt: "desc" } });
@@ -52,8 +51,76 @@ export async function deleteSegment(id: string) {
   ]);
 }
 
+function segmentWhere(filters: unknown): ReturnType<typeof buildLeadWhereFromSegmentFilters> {
+  return buildLeadWhereFromSegmentFilters({
+    ...(filters as Partial<LeadSegmentFilters>),
+    includeDeleted: false,
+  });
+}
+
 /** Compte les leads correspondant au segment (aperçu côté API). */
 export async function countSegmentLeads(filters: unknown): Promise<number> {
-  const where = buildWhere({ ...(filters as Partial<LeadFilters>), includeDeleted: false });
-  return prisma.lead.count({ where });
+  return prisma.lead.count({ where: segmentWhere(filters) });
+}
+
+export type SegmentLeadPreview = {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  company: string | null;
+  email: string | null;
+  status: string;
+  score: number;
+  tags: string[];
+};
+
+/** Liste paginée des leads ciblés par un segment. */
+export async function listSegmentLeads(
+  filters: unknown,
+  opts: { page?: number; pageSize?: number } = {},
+): Promise<{ data: SegmentLeadPreview[]; total: number; page: number; pageSize: number }> {
+  const page = Math.max(1, opts.page ?? 1);
+  const pageSize = Math.min(100, Math.max(1, opts.pageSize ?? 25));
+  const where = segmentWhere(filters);
+  const [rows, total] = await Promise.all([
+    prisma.lead.findMany({
+      where,
+      orderBy: { updatedAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        company: true,
+        emailEnc: true,
+        status: true,
+        score: true,
+        tags: true,
+      },
+    }),
+    prisma.lead.count({ where }),
+  ]);
+  return {
+    data: rows.map((r) => ({
+      id: r.id,
+      firstName: r.firstName,
+      lastName: r.lastName,
+      company: r.company,
+      email: decryptOrNull(r.emailEnc),
+      status: r.status,
+      score: r.score,
+      tags: Array.isArray(r.tags) ? (r.tags as string[]) : [],
+    })),
+    total,
+    page,
+    pageSize,
+  };
+}
+
+export function segmentModeLabel(filters: unknown): string {
+  const f = filters as LeadSegmentFilters;
+  if (f.mode === "manual") return "Sélection manuelle";
+  if (f.mode === "tags") return "Par tags";
+  return "Filtres dynamiques";
 }

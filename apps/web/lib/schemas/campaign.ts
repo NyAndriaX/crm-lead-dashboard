@@ -2,7 +2,11 @@ import { z } from "zod";
 import { objectId } from "./common";
 import { leadFilters } from "./lead";
 
-export const segmentFiltersSchema = leadFilters.omit({ includeDeleted: true }).partial();
+export const segmentFiltersSchema = leadFilters.omit({ includeDeleted: true }).partial().extend({
+  mode: z.enum(["filter", "manual", "tags"]).optional(),
+  leadIds: z.array(z.string().min(1)).max(5000).optional(),
+  tags: z.array(z.string().trim().min(1).max(64)).max(20).optional(),
+});
 
 export const createSegmentSchema = z.object({
   name: z.string().trim().min(1).max(120),

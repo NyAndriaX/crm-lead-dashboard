@@ -6,6 +6,12 @@ export const LEAD_NOT_DELETED: Prisma.LeadWhereInput = {
 
 export type LeadSegmentFilters = {
   includeDeleted?: boolean;
+  /** filter (défaut) | manual | tags */
+  mode?: "filter" | "manual" | "tags";
+  /** Sélection manuelle de leads (mode manual). */
+  leadIds?: string[];
+  /** Tags multiples — mode tags : au moins un tag correspond. */
+  tags?: string[];
   q?: string;
   status?: string;
   source?: string;
@@ -21,6 +27,31 @@ export type LeadSegmentFilters = {
 };
 
 export function buildLeadWhereFromSegmentFilters(f: LeadSegmentFilters): Prisma.LeadWhereInput {
+  const mode = f.mode ?? "filter";
+
+  if (mode === "manual" && f.leadIds?.length) {
+    return {
+      ...(!f.includeDeleted ? LEAD_NOT_DELETED : {}),
+      id: { in: f.leadIds },
+    };
+  }
+
+  if (mode === "tags" && f.tags?.length) {
+    const tagList = f.tags.map((t) => t.trim()).filter(Boolean);
+    if (tagList.length === 1) {
+      return {
+        ...(!f.includeDeleted ? LEAD_NOT_DELETED : {}),
+        tags: { array_contains: tagList[0] },
+      };
+    }
+    if (tagList.length > 1) {
+      return {
+        ...(!f.includeDeleted ? LEAD_NOT_DELETED : {}),
+        OR: tagList.map((t) => ({ tags: { array_contains: t } })),
+      };
+    }
+  }
+
   const where: Prisma.LeadWhereInput = {};
   if (!f.includeDeleted) Object.assign(where, LEAD_NOT_DELETED);
   if (f.status) where.status = f.status as LeadStatus;

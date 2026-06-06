@@ -39,7 +39,11 @@ export type MissionConfig = {
   autoPipeline?: {
     enabled: boolean;
     sequenceId?: string | null;
+    /** Tags appliqués à l'injection auto CRM. */
+    tags?: string[];
   };
+  /** Tags appliqués à l'injection manuelle CRM (post-validation). */
+  injectionTags?: string[];
   schedulePlan?: MissionSchedulePlan;
 };
 
@@ -99,10 +103,20 @@ export function normalizeMissionConfig(raw: unknown): MissionConfig {
     dailyQuota:
       typeof c.dailyQuota === "number" && c.dailyQuota > 0 ? Math.min(c.dailyQuota, 1000) : null,
     autoPipeline: c.autoPipeline?.enabled
-      ? { enabled: true, sequenceId: c.autoPipeline.sequenceId ?? null }
-      : { enabled: false, sequenceId: null },
+      ? {
+          enabled: true,
+          sequenceId: c.autoPipeline.sequenceId ?? null,
+          tags: normalizeTagList(c.autoPipeline.tags),
+        }
+      : { enabled: false, sequenceId: null, tags: [] },
+    injectionTags: normalizeTagList(c.injectionTags),
     schedulePlan,
   };
+}
+
+function normalizeTagList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.map((t) => String(t).trim()).filter((t) => t.length > 0 && t.length <= 64))].slice(0, 20);
 }
 
 /** Corps JSON pour POST /scrape (crm-leads-scraper). */

@@ -11,7 +11,7 @@
  * (substring) + debounce 300 ms côté client. Le text index Mongo (`@@fulltext`) reste
  * disponible pour un `findRaw({ $text })` ranké si besoin ultérieur.
  */
-import { Prisma, prisma, notifyUser, type Lead, buildLeadWhereFromSegmentFilters, LEAD_NOT_DELETED, asStringArray } from "@crm/db";
+import { Prisma, prisma, notifyUser, type Lead, buildLeadWhereFromSegmentFilters, LEAD_NOT_DELETED, asStringArray, isEmailHashBlocked, gdprBlockMessage } from "@crm/db";
 import { decryptOrNull, emailHash, encryptOrNull, normalizeEmail } from "../crypto";
 import type {
   AssignLeadInput, ChangeStatusInput, CreateLeadInput, LeadFilters, ListLeadsQuery,
@@ -20,7 +20,7 @@ import type {
 import { parseSort } from "../schemas/common";
 import { ApiError } from "../api";
 import { canTransition, STOPS_SEQUENCES } from "../leadStatus";
-import { computeScore } from "../scoring";
+import { computeScore, getWeightsFromDb } from "../scoring";
 import { enqueue } from "../jobs";
 
 const SORTABLE = ["createdAt", "updatedAt", "score", "lastActionAt", "company", "firstName", "lastName"];
@@ -139,13 +139,23 @@ async function scoringSignals(leadId: string) {
 export async function recalcScore(leadId: string): Promise<number> {
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead) throw new ApiError(404, "Lead introuvable", "not_found");
-  const score = computeScore(lead, await scoringSignals(leadId));
+  const weights = await getWeightsFromDb();
+  const score = computeScore(lead, await scoringSignals(leadId), weights);
   if (score !== lead.score) await prisma.lead.update({ where: { id: leadId }, data: { score } });
   return score;
 }
 
+/** Recalcule le score en arrière-plan sans jamais lever d'exception. */
+export async function recalcScoreSilent(leadId: string): Promise<void> {
+  try { await recalcScore(leadId); } catch { /* best-effort */ }
+}
+
 async function assertEmailNotTaken(email: string, exceptId?: string) {
   const hash = emailHash(email);
+  const blocked = await isEmailHashBlocked(hash);
+  if (blocked.blocked) {
+    throw new ApiError(403, gdprBlockMessage(blocked.reason), "email_blocked");
+  }
   const existing = await prisma.lead.findFirst({
     where: { emailHash: hash, ...LEAD_NOT_DELETED, ...(exceptId ? { id: { not: exceptId } } : {}) },
     select: { id: true },
@@ -300,6 +310,12 @@ export async function softDeleteLead(id: string, actorId?: string): Promise<void
 export async function restoreLead(id: string, actorId?: string): Promise<LeadDTO> {
   const current = await prisma.lead.findUnique({ where: { id } });
   if (!current) throw new ApiError(404, "Lead introuvable", "not_found");
+  if (current.emailHash) {
+    const blocked = await isEmailHashBlocked(current.emailHash);
+    if (blocked.blocked) {
+      throw new ApiError(403, gdprBlockMessage(blocked.reason), "email_blocked");
+    }
+  }
   const lead = await prisma.lead.update({ where: { id }, data: { deletedAt: null } });
   await prisma.leadHistory.create({ data: { leadId: id, userId: actorId, type: "restored" } });
   return toDTO(lead);

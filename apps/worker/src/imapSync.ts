@@ -249,6 +249,33 @@ async function onReplyReceived(args: {
     data: { status: "stopped", stoppedReason: "reply" },
   });
 
+  // Désinscription automatique si la réponse contient une demande explicite.
+  if (args.category === "pas_interesse") {
+    const unsubKeywords = /désabonn|deabonn|d[ée]sinscr|unsubscribe|stop\b|ne\s+(?:plus\s+)?(?:me\s+)?(?:contacter|recevoir)|retirez?\s+(?:mon\s+)?(?:nom|email|adresse)/i;
+    const fullText = `${args.subject ?? ""} ${args.inboundBodyText ?? ""}`;
+    if (unsubKeywords.test(fullText)) {
+      try {
+        const lead = await prisma.lead.findUnique({ where: { id: args.leadId }, select: { emailHash: true, emailStatus: true } });
+        if (lead?.emailHash && lead.emailStatus !== "UNSUBSCRIBED") {
+          await prisma.$transaction([
+            prisma.lead.update({ where: { id: args.leadId }, data: { emailStatus: "UNSUBSCRIBED" } }),
+            prisma.blacklist.upsert({
+              where: { emailHash: lead.emailHash },
+              create: { emailHash: lead.emailHash, reason: "unsubscribe_email" },
+              update: { reason: "unsubscribe_email" },
+            }),
+            prisma.emailEvent.create({
+              data: { leadId: args.leadId, eventType: "UNSUBSCRIBE", meta: { source: "imap_reply", subject: args.subject ?? null } as object },
+            }),
+          ]);
+          console.log(`[imap-sync] auto-unsubscribe leadId=${args.leadId}`);
+        }
+      } catch (e) {
+        console.warn(`[imap-sync] auto-unsubscribe KO leadId=${args.leadId}:`, e instanceof Error ? e.message : e);
+      }
+    }
+  }
+
   await prisma.leadHistory.create({
     data: {
       leadId: args.leadId,
@@ -276,7 +303,18 @@ async function onReplyReceived(args: {
     console.warn(`[imap-sync] notif assignée KO leadId=${args.leadId}:`, e instanceof Error ? e.message : e);
   }
 
-  // A4 (F7) : agent IA d'auto-réponse (mode par compte utilisateur assigné au lead).
+  // Retrouver la dernière campagne liée à ce lead (pour l'auto-répondeur par campagne).
+  let lastCampaignId: string | null = null;
+  try {
+    const lastEvent = await prisma.emailEvent.findFirst({
+      where: { leadId: args.leadId, campaignId: { not: null } },
+      orderBy: { occurredAt: "desc" },
+      select: { campaignId: true },
+    });
+    lastCampaignId = lastEvent?.campaignId ?? null;
+  } catch { /* best-effort */ }
+
+  // A4 (F7) : agent IA d'auto-réponse (config campagne prioritaire, puis compte utilisateur).
   try {
     const r = await maybeAutoRespond({
       leadId: args.leadId,
@@ -285,6 +323,7 @@ async function onReplyReceived(args: {
       inboundBodyText: args.inboundBodyText,
       inboundBodyHtml: args.inboundBodyHtml,
       inboundMessageId: args.inboundMessageId,
+      campaignId: lastCampaignId,
     });
     if (r.acted) {
       console.log(`[imap-sync] auto-responder (${r.mode}) leadId=${args.leadId} cat=${args.category}`);

@@ -2,10 +2,18 @@
 
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import {
-  Alert, Button, Card, Form, Input, Select, Space, Switch, Typography,
+  Alert, Button, Card, Form, Input, List, Select, Space, Switch, Typography, Upload, message,
 } from "antd";
-import { ApiOutlined, CheckCircleOutlined, ThunderboltOutlined } from "@ant-design/icons";
+import { ApiOutlined, CheckCircleOutlined, DeleteOutlined, FileMarkdownOutlined, ThunderboltOutlined, UploadOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
+import { labelWithHelp } from "@/components/ui/FieldHelp";
+
+type KnowledgeDoc = {
+  id: string;
+  name: string;
+  content: string;
+  createdAt: string;
+};
 const { Title, Text, Paragraph } = Typography;
 
 type Notice = { kind: "success" | "warning" | "error" | "info"; text: string };
@@ -16,12 +24,16 @@ type ConfigState = {
   model: string;
   autoResponderMode: string;
   autoResponderMeetingUrl: string | null;
+  knowledgeText: string | null;
+  knowledgeDocs: KnowledgeDoc[];
 };
 
 type UsageState = {
   monthTokens: number;
   monthRequestCount: number;
   totalTokens: number;
+  monthCostUsd?: number;
+  totalCostUsd?: number;
 };
 
 const MODEL_OPTIONS = [
@@ -44,6 +56,7 @@ export function OpenAiSection() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [config, setConfig] = useState<ConfigState | null>(null);
   const [usage, setUsage] = useState<UsageState | null>(null);
+  const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDoc[]>([]);
   const [form] = Form.useForm();
 
   function show(kind: Notice["kind"], text: string) {
@@ -73,8 +86,10 @@ export function OpenAiSection() {
         model: data.data.model,
         autoResponderMode: data.data.autoResponderMode ?? "off",
         autoResponderMeetingUrl: data.data.autoResponderMeetingUrl ?? "",
+        knowledgeText: data.data.knowledgeText ?? "",
         apiKey: "",
       });
+      setKnowledgeDocs(data.data.knowledgeDocs ?? []);
       if (data.data.configured) {
         const u = await api.get<{ data: UsageState & { byFeature: { feature: string; tokens: number }[] } }>(
           "/me/openai-usage",
@@ -83,6 +98,8 @@ export function OpenAiSection() {
           monthTokens: u.data.data.monthTokens,
           monthRequestCount: u.data.data.monthRequestCount,
           totalTokens: u.data.data.totalTokens,
+          monthCostUsd: u.data.data.monthCostUsd,
+          totalCostUsd: u.data.data.totalCostUsd,
         });
       } else {
         setUsage(null);
@@ -106,9 +123,12 @@ export function OpenAiSection() {
         model: values.model,
         autoResponderMode: values.autoResponderMode,
         autoResponderMeetingUrl: values.autoResponderMeetingUrl?.trim() || null,
+        knowledgeText: values.knowledgeText?.trim() || null,
+        knowledgeDocs,
         ...(values.apiKey?.trim() ? { apiKey: values.apiKey.trim() } : {}),
       });
       setConfig(data.data);
+      setKnowledgeDocs(data.data.knowledgeDocs ?? []);
       form.setFieldValue("apiKey", "");
       show("success", "Configuration OpenAI enregistrée.");
     } catch (e) {
@@ -151,6 +171,37 @@ export function OpenAiSection() {
     } finally {
       setTesting(false);
     }
+  }
+
+  async function handleMdUpload(file: File): Promise<boolean> {
+    if (!file.name.toLowerCase().endsWith(".md") && file.type !== "text/markdown" && file.type !== "text/plain") {
+      message.warning("Seuls les fichiers Markdown (.md) ou texte sont acceptés.");
+      return false;
+    }
+    if (knowledgeDocs.length >= 10) {
+      message.warning("Maximum 10 documents.");
+      return false;
+    }
+    try {
+      const content = await file.text();
+      if (content.length > 8000) {
+        message.warning("Document trop volumineux (max 8 000 caractères).");
+        return false;
+      }
+      setKnowledgeDocs((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          name: file.name.replace(/\.md$/i, ""),
+          content: content.trim(),
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+      message.success(`« ${file.name} » ajouté — enregistrez pour persister.`);
+    } catch {
+      message.error("Lecture du fichier impossible.");
+    }
+    return false;
   }
 
   return (
@@ -202,8 +253,15 @@ export function OpenAiSection() {
           description={
             <span>
               Ce mois : <strong>{usage.monthTokens.toLocaleString("fr-FR")}</strong> tokens
-              ({usage.monthRequestCount} appel{usage.monthRequestCount > 1 ? "s" : ""}) — total :{" "}
-              <strong>{usage.totalTokens.toLocaleString("fr-FR")}</strong> tokens.
+              ({usage.monthRequestCount} appel{usage.monthRequestCount > 1 ? "s" : ""})
+              {usage.monthCostUsd != null && (
+                <> — <strong>${usage.monthCostUsd.toFixed(4)}</strong></>
+              )}
+              {" "}— total :{" "}
+              <strong>{usage.totalTokens.toLocaleString("fr-FR")}</strong> tokens
+              {usage.totalCostUsd != null && (
+                <> (<strong>${usage.totalCostUsd.toFixed(4)}</strong>)</>
+              )}.
               Détail sur le tableau de bord.
             </span>
           }
@@ -230,12 +288,12 @@ export function OpenAiSection() {
       )}
 
       <Form form={form} layout="vertical" initialValues={{ enabled: false, model: "gpt-4o-mini", autoResponderMode: "off" }}>
-        <Form.Item name="enabled" label="Activer l'IA pour mon compte" valuePropName="checked">
+        <Form.Item name="enabled" label={labelWithHelp("Activer l'IA pour mon compte", "Active toutes les fonctionnalités IA liées à votre compte : personnalisation des campagnes, briefs, variantes de templates et auto-répondeur.")} valuePropName="checked">
           <Switch checkedChildren="Oui" unCheckedChildren="Non" />
         </Form.Item>
         <Form.Item
           name="apiKey"
-          label="Clé API OpenAI"
+          label={labelWithHelp("Clé API OpenAI", "Votre clé personnelle sk-… depuis platform.openai.com. Elle est chiffrée en base et jamais réaffichée.")}
           extra="Format sk-… — obtenez-la sur platform.openai.com. Ne partagez jamais cette clé."
         >
           <Input.Password
@@ -243,23 +301,84 @@ export function OpenAiSection() {
             autoComplete="new-password"
           />
         </Form.Item>
-        <Form.Item name="model" label="Modèle">
+        <Form.Item name="model" label={labelWithHelp("Modèle", "gpt-4o-mini est le plus économique ; gpt-4o offre une meilleure qualité pour les emails complexes.")}>
           <Select options={MODEL_OPTIONS} />
         </Form.Item>
         <Form.Item
           name="autoResponderMode"
-          label="Auto-répondeur (réponses leads)"
+          label={labelWithHelp("Auto-répondeur (réponses leads)", "Répond automatiquement aux emails entrants des leads qui vous sont assignés (via IMAP). Mode brouillon = validation humaine avant envoi.")}
           extra="S'applique aux leads qui vous sont assignés quand une réponse email est reçue via IMAP."
         >
           <Select options={AUTO_RESPONDER_OPTIONS} />
         </Form.Item>
         <Form.Item
           name="autoResponderMeetingUrl"
-          label="Lien de prise de RDV (auto-répondeur)"
+          label={labelWithHelp("Lien de prise de RDV (auto-répondeur)", "URL Calendly ou équivalent insérée dans les réponses IA lorsque le lead manifeste de l'intérêt.")}
           extra="Utilisé dans les réponses IA « intéressé » / « rappel »."
         >
           <Input placeholder="https://calendly.com/votre-equipe/30min" />
         </Form.Item>
+
+        <Card
+          size="small"
+          title={
+            <Space>
+              <FileMarkdownOutlined />
+              Base de connaissances IA
+            </Space>
+          }
+          style={{ marginBottom: 16 }}
+        >
+          <Paragraph type="secondary" style={{ marginTop: 0, fontSize: 13 }}>
+            Ajoutez du contexte métier (offres, argumentaire, ton, FAQ). L&apos;IA s&apos;en sert pour
+            personnaliser les emails de campagne, les relances et l&apos;auto-répondeur.
+          </Paragraph>
+          <Form.Item
+            name="knowledgeText"
+            label={labelWithHelp("Consignes et texte libre", "Pitch, objections fréquentes, prix indicatifs, ton à adopter… Collez ici tout ce que l'IA doit connaître.")}
+          >
+            <Input.TextArea rows={5} placeholder="Ex : Nous proposons une solution SaaS B2B pour… Ton : professionnel et direct. Ne jamais promettre de délais inférieurs à 2 semaines." />
+          </Form.Item>
+          <Space style={{ marginBottom: 12 }}>
+            <Upload
+              accept=".md,text/markdown,text/plain"
+              showUploadList={false}
+              beforeUpload={(file) => { void handleMdUpload(file); return false; }}
+            >
+              <Button icon={<UploadOutlined />}>Importer un fichier .md</Button>
+            </Upload>
+            <Text type="secondary" style={{ fontSize: 12 }}>Max 10 fichiers · 8 000 car. chacun</Text>
+          </Space>
+          {knowledgeDocs.length > 0 && (
+            <List
+              size="small"
+              bordered
+              dataSource={knowledgeDocs}
+              renderItem={(doc) => (
+                <List.Item
+                  actions={[
+                    <Button
+                      key="del"
+                      type="text"
+                      danger
+                      size="small"
+                      icon={<DeleteOutlined />}
+                      onClick={() => setKnowledgeDocs((prev) => prev.filter((d) => d.id !== doc.id))}
+                    >
+                      Retirer
+                    </Button>,
+                  ]}
+                >
+                  <List.Item.Meta
+                    title={doc.name}
+                    description={`${doc.content.length.toLocaleString("fr-FR")} caractères · ${new Date(doc.createdAt).toLocaleDateString("fr-FR")}`}
+                  />
+                </List.Item>
+              )}
+            />
+          )}
+        </Card>
+
         <Space wrap>
           <Button type="primary" icon={<ApiOutlined />} loading={saving} onClick={() => void save()}>
             Enregistrer
