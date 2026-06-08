@@ -13,13 +13,14 @@ import {
   Empty, Tooltip, Divider,
 } from "antd";
 import {
-  ThunderboltOutlined, CheckCircleTwoTone, WarningTwoTone, LinkOutlined,
+  ThunderboltOutlined, CheckCircleTwoTone, LinkOutlined,
   GlobalOutlined, LinkedinOutlined, TwitterOutlined, FacebookOutlined,
   InstagramOutlined, MailOutlined, BankOutlined, ReadOutlined,
+  EnvironmentOutlined, StarOutlined, SearchOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
 
-const { Text, Link: AntLink } = Typography;
+const { Text, Link: AntLink, Paragraph } = Typography;
 
 type Provider = "email" | "emailVerify" | "company" | "linkedin" | "news" | "social";
 
@@ -41,17 +42,41 @@ function fmtDate(iso?: string | null): string {
   }
 }
 
+type ScraperMeta = {
+  placeId?: string;
+  mapsUrl?: string;
+  rating?: number;
+  reviews?: number;
+  emailStatus?: string;
+  query?: string;
+  scrapedAt?: string;
+  source?: string;
+};
+
 // Le contenu d'enrichment est un Json libre — on type souplement.
 type EnrichmentData = {
+  summary?: string;
+  summarySource?: string;
+  summaryAt?: string;
+  scraper?: ScraperMeta;
   email?: { found: string | null; candidates?: string[]; confidence: number; source: string; mxValid: boolean; at: string };
   emailVerify?: { verdict: string; confidenceScore: number; mxFound: boolean; disposable: boolean; roleAccount: boolean; at: string };
   company?: { source: string; legalName?: string | null; siret?: string | null; nafCode?: string | null; employees?: number | null; revenue?: string | null; foundedYear?: number | null; note?: string; at: string };
   linkedin?: { profileUrlGuess: string | null; companyUrlGuess: string | null; note: string; at: string };
   news?: { items: { title: string; url: string; source: string; date: string | null }[]; source: string; at: string };
   social?: { twitter: string | null; facebook: string | null; instagram: string | null; note: string; at: string };
-  aiBrief?: { summary: string; angle: string; score: number; source: "ai" | "fallback"; at: string };
+  aiBrief?: { summary: string; angle: string; score: number; source: string; at: string };
   lastEnrichedAt?: string;
   providersRun?: Provider[];
+};
+
+const SCRAPER_EMAIL_STATUS: Record<string, { color: string; label: string }> = {
+  found: { color: "green", label: "Email trouvé" },
+  found_legal: { color: "blue", label: "Email légal" },
+  no_email: { color: "default", label: "Sans email" },
+  no_website: { color: "orange", label: "Sans site" },
+  invalid_email: { color: "red", label: "Email invalide" },
+  unreachable: { color: "volcano", label: "Site injoignable" },
 };
 
 const VERDICT_COLOR: Record<string, string> = {
@@ -76,7 +101,11 @@ export function LeadEnrichmentCard({
     "email", "emailVerify", "company", "linkedin", "news", "social",
   ]);
 
-  const hasData = Boolean(data.lastEnrichedAt);
+  const hasScraperData = Boolean(data.summary || data.scraper);
+  const hasEngineData = Boolean(data.lastEnrichedAt);
+  const hasData = hasScraperData || hasEngineData || Boolean(
+    data.aiBrief || data.email || data.emailVerify || data.company || data.linkedin || data.social || data.news,
+  );
 
   async function runEnrich() {
     setLoading(true);
@@ -136,8 +165,71 @@ export function LeadEnrichmentCard({
           />
         ) : (
           <Space direction="vertical" size={10} style={{ width: "100%" }}>
+            {/* Synthèse entreprise issue du scraping */}
+            {data.summary && (
+              <div
+                style={{
+                  background: "#f9f0ff",
+                  border: "1px solid #d3adf7",
+                  borderRadius: 8,
+                  padding: "12px 14px",
+                }}
+              >
+                <Space style={{ width: "100%", justifyContent: "space-between", marginBottom: 6 }} wrap>
+                  <Text strong style={{ color: "#531dab" }}>
+                    <SearchOutlined /> Contexte entreprise
+                  </Text>
+                  <Space size={4} wrap>
+                    {data.summarySource === "scraper" && <Tag color="purple">Scraping</Tag>}
+                    {data.summaryAt && (
+                      <Text type="secondary" style={{ fontSize: 11 }}>{fmtDate(data.summaryAt)}</Text>
+                    )}
+                  </Space>
+                </Space>
+                <Paragraph style={{ margin: 0, fontSize: 13, lineHeight: 1.65, whiteSpace: "pre-wrap" }}>
+                  {data.summary}
+                </Paragraph>
+              </div>
+            )}
+
+            {/* Métadonnées Google Maps */}
+            {data.scraper && (
+              <div
+                style={{
+                  background: "#fafafa",
+                  border: "1px solid #f0f0f0",
+                  borderRadius: 8,
+                  padding: "10px 12px",
+                }}
+              >
+                <Text strong style={{ fontSize: 12 }}>
+                  <EnvironmentOutlined /> Google Maps
+                </Text>
+                <Space size={6} wrap style={{ marginTop: 8 }}>
+                  {data.scraper.rating != null && (
+                    <Tag icon={<StarOutlined />} color="gold">
+                      {data.scraper.rating}{data.scraper.reviews != null ? ` (${data.scraper.reviews} avis)` : ""}
+                    </Tag>
+                  )}
+                  {data.scraper.emailStatus && (
+                    <Tag color={SCRAPER_EMAIL_STATUS[data.scraper.emailStatus]?.color ?? "default"}>
+                      {SCRAPER_EMAIL_STATUS[data.scraper.emailStatus]?.label ?? data.scraper.emailStatus}
+                    </Tag>
+                  )}
+                  {data.scraper.query && <Tag>{data.scraper.query}</Tag>}
+                  {data.scraper.mapsUrl && (
+                    <AntLink href={data.scraper.mapsUrl} target="_blank" style={{ fontSize: 12 }}>
+                      <LinkOutlined /> Voir sur Maps
+                    </AntLink>
+                  )}
+                </Space>
+              </div>
+            )}
+
+            {hasScraperData && hasEngineData && <Divider style={{ margin: "4px 0" }} />}
+
             {/* A1 (F1) — Brief de qualification IA */}
-            {data.aiBrief && (
+            {data.aiBrief && !data.summary && (
               <div
                 style={{
                   background: "#f6ffed",
@@ -152,8 +244,8 @@ export function LeadEnrichmentCard({
                     <Tag color={data.aiBrief.score >= 70 ? "green" : data.aiBrief.score >= 45 ? "blue" : "default"}>
                       potentiel {data.aiBrief.score}
                     </Tag>
-                    <Tag color={data.aiBrief.source === "ai" ? "purple" : "default"}>
-                      {data.aiBrief.source === "ai" ? "IA" : "heuristique"}
+                    <Tag color={data.aiBrief.source === "ai" ? "purple" : data.aiBrief.source === "scraper" ? "geekblue" : "default"}>
+                      {data.aiBrief.source === "ai" ? "IA" : data.aiBrief.source === "scraper" ? "Scraping" : "heuristique"}
                     </Tag>
                   </Space>
                 </Space>

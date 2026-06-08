@@ -21,7 +21,8 @@ export type ScrapedLeadEmailStatus =
   | "found_legal"
   | "no_email"
   | "no_website"
-  | "invalid_email";
+  | "invalid_email"
+  | "unreachable";
 
 /** Lead normalisé (contrat crm-leads-scraper). */
 export type ScrapedLead = {
@@ -43,6 +44,12 @@ export type ScrapedLead = {
   latitude?: number | null;
   longitude?: number | null;
   email_status?: ScrapedLeadEmailStatus | null;
+  homepage_title?: string | null;
+  homepage_excerpt?: string | null;
+  homepage_summary?: string | null;
+  homepage_enrichment_status?: string | null;
+  /** Synthèse IA entreprise renvoyée par le scraper (champ `enrichment` de l'API). */
+  enrichment?: string | null;
   query?: string | null;
   scraped_at?: string | null;
 };
@@ -130,7 +137,30 @@ export function scraperEnrichment(raw: ScrapedLead): Record<string, unknown> | u
   if (raw.latitude != null) scraper.latitude = raw.latitude;
   if (raw.longitude != null) scraper.longitude = raw.longitude;
   if (raw.source) scraper.source = raw.source;
-  return Object.keys(scraper).length > 0 ? { scraper } : undefined;
+  if (raw.homepage_title) scraper.homepageTitle = raw.homepage_title;
+  if (raw.homepage_excerpt) scraper.homepageExcerpt = raw.homepage_excerpt;
+  if (raw.homepage_summary) scraper.homepageSummary = raw.homepage_summary;
+  if (raw.homepage_enrichment_status) {
+    scraper.homepageStatus = raw.homepage_enrichment_status;
+  }
+
+  const out: Record<string, unknown> = {};
+  if (Object.keys(scraper).length > 0) out.scraper = scraper;
+
+  const enrichmentText = raw.enrichment?.trim() || raw.homepage_summary?.trim() || null;
+  if (enrichmentText) {
+    out.summary = enrichmentText;
+    out.summarySource = raw.enrichment?.trim() ? "scraper" : "scraper_homepage";
+    out.summaryAt = raw.scraped_at ?? new Date().toISOString();
+    out.aiBrief = {
+      summary: enrichmentText,
+      angle: raw.enrichment?.trim() ? "Contexte entreprise (scraping)" : "Prospection — page d'accueil",
+      score: 50,
+      source: "scraper",
+      at: raw.scraped_at ?? new Date().toISOString(),
+    };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 export function tagsFromScrapedLead(raw: ScrapedLead): string[] {
@@ -177,6 +207,14 @@ function normalizeOneLead(item: unknown, fallbackQuery?: string): ScrapedLead | 
     latitude: typeof r.latitude === "number" ? r.latitude : null,
     longitude: typeof r.longitude === "number" ? r.longitude : null,
     email_status: (r.email_status as ScrapedLeadEmailStatus) ?? null,
+    homepage_title: typeof r.homepage_title === "string" ? r.homepage_title : null,
+    homepage_excerpt: typeof r.homepage_excerpt === "string" ? r.homepage_excerpt : null,
+    homepage_summary: typeof r.homepage_summary === "string" ? r.homepage_summary : null,
+    homepage_enrichment_status:
+      typeof r.homepage_enrichment_status === "string"
+        ? r.homepage_enrichment_status
+        : null,
+    enrichment: typeof r.enrichment === "string" ? r.enrichment.trim() || null : null,
     query: (typeof r.query === "string" ? r.query : null) || fallbackQuery || null,
     scraped_at: typeof r.scraped_at === "string" ? r.scraped_at : null,
   };

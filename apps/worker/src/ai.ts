@@ -127,8 +127,10 @@ export function enrichmentSummary(enrichment: unknown): string {
   if (news?.items?.length) {
     parts.push(`Actu récente : ${news.items.slice(0, 2).map((n) => n.title).join(" ; ")}`);
   }
+  const summary = typeof e.summary === "string" ? e.summary.trim() : "";
+  if (summary) parts.push(`Contexte : ${summary}`);
   const brief = e.aiBrief as { summary?: string; angle?: string } | undefined;
-  if (brief?.summary) parts.push(`Brief : ${brief.summary}`);
+  if (brief?.summary && brief.summary !== summary) parts.push(`Brief : ${brief.summary}`);
   if (brief?.angle) parts.push(`Angle conseillé : ${brief.angle}`);
   return parts.join("\n");
 }

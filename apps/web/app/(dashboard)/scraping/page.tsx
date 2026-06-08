@@ -61,6 +61,7 @@ type BufferItem = {
     sector?: string | null; source?: string; rating?: number | null;
     reviews?: number | null; email_status?: string | null;
     place_id?: string | null; duplicate?: boolean; duplicateReason?: string | null;
+    enrichment?: string | null;
   };
   createdAt: string;
 };
@@ -70,6 +71,8 @@ const EMAIL_STATUS_TAG: Record<string, { color: string; label: string }> = {
   found_legal: { color: "blue", label: "email légal" },
   no_email: { color: "default", label: "sans email" },
   no_website: { color: "orange", label: "sans site" },
+  unreachable: { color: "volcano", label: "site injoignable" },
+  invalid_email: { color: "red", label: "email invalide" },
 };
 
 const STATUS_TAG: Record<string, { color: string; label: string }> = {
@@ -886,6 +889,19 @@ function ScrapingPageInner() {
           loading={bufferLoading}
           size="small"
           scroll={{ x: 900 }}
+          expandable={{
+            rowExpandable: (r) => Boolean(r.raw.enrichment?.trim()),
+            expandedRowRender: (r) => (
+              <div style={{ padding: "4px 0 8px", maxWidth: 720 }}>
+                <Text type="secondary" style={{ fontSize: 11, display: "block", marginBottom: 4 }}>
+                  Enrichissement entreprise
+                </Text>
+                <Text style={{ fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+                  {r.raw.enrichment}
+                </Text>
+              </div>
+            ),
+          }}
           rowSelection={{
             selectedRowKeys: selectedBuf,
             onChange: (k) => setSelectedBuf(k as string[]),

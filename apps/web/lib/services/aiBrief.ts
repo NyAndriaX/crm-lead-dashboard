@@ -22,6 +22,14 @@ type LeadCtx = {
 
 function fallbackBrief(lead: LeadCtx, enrichment: unknown): Omit<LeadAiBrief, "source" | "at"> {
   const e = (enrichment ?? {}) as Record<string, unknown>;
+  const scraperSummary = typeof e.summary === "string" ? e.summary.trim() : "";
+  if (scraperSummary) {
+    return {
+      summary: scraperSummary,
+      angle: "Reprendre le contexte entreprise issu du scraping pour personnaliser la prise de contact.",
+      score: 50,
+    };
+  }
   const news = (e.news as { items?: { title: string }[] } | undefined)?.items ?? [];
   const company = (e.company as { legalName?: string; foundedYear?: number } | undefined) ?? {};
   const who = [lead.firstName, lead.lastName].filter(Boolean).join(" ") || "Le contact";
@@ -59,10 +67,12 @@ export async function generateLeadAiBrief(
   const e = (enrichment ?? {}) as Record<string, unknown>;
   const news = (e.news as { items?: { title: string }[] } | undefined)?.items ?? [];
   const company = (e.company as Record<string, unknown> | undefined) ?? {};
+  const scraperSummary = typeof e.summary === "string" ? e.summary.trim() : "";
   const ctx = [
     `Contact : ${[lead.firstName, lead.lastName].filter(Boolean).join(" ") || "(inconnu)"}`,
     `Entreprise : ${lead.company ?? "(inconnue)"}`,
     `Secteur : ${lead.sector ?? "(inconnu)"} · Ville : ${lead.city ?? "(inconnue)"}`,
+    scraperSummary ? `Contexte scraping : ${scraperSummary}` : "",
     company.legalName ? `Raison sociale : ${String(company.legalName)}` : "",
     company.foundedYear ? `Créée en : ${String(company.foundedYear)}` : "",
     news.length ? `Actu : ${news.slice(0, 3).map((n) => n.title).join(" | ")}` : "",
