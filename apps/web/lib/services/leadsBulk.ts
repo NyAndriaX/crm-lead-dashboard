@@ -5,7 +5,7 @@
  * est silencieusement ignoré, on retourne `succeeded` + `failed` détaillés).
  */
 import { prisma } from "@crm/db";
-import { syncTags } from "@/lib/services/leads";
+import { syncTags, type Prisma } from "@crm/db";
 
 const MAX_IDS = 1000;
 
@@ -109,7 +109,7 @@ export async function bulkAddTags(ids: string[], tags: string[]): Promise<BulkRe
     }
     await prisma.lead.update({
       where: { id: lead.id },
-      data: { tags: next, lastActionAt: new Date() },
+      data: { tags: next as Prisma.InputJsonValue, lastActionAt: new Date() },
     });
     await prisma.leadHistory.create({
       data: {
@@ -144,7 +144,7 @@ export async function bulkRemoveTags(ids: string[], tags: string[]): Promise<Bul
     }
     await prisma.lead.update({
       where: { id: lead.id },
-      data: { tags: next, lastActionAt: new Date() },
+      data: { tags: next as Prisma.InputJsonValue, lastActionAt: new Date() },
     });
     await prisma.leadHistory.create({
       data: {

@@ -21,6 +21,7 @@ import {
 import Link from "next/link";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { api } from "@/lib/client";
+import { labelWithHelp } from "@/components/ui/FieldHelp";
 
 const { Text, Title, Paragraph } = Typography;
 
@@ -647,7 +648,7 @@ export default function PipelinePage() {
         destroyOnHidden
       >
         <Form form={createForm} layout="vertical" style={{ marginTop: 16 }} initialValues={{ color: DEFAULT_COLORS[0] }}>
-          <Form.Item name="name" label="Nom de la colonne" rules={[{ required: true, max: 60 }]}>
+          <Form.Item name="name" label={labelWithHelp("Nom de la colonne", "Étape du pipeline commercial. Les leads peuvent être déplacés entre colonnes par glisser-déposer.")} rules={[{ required: true, max: 60 }]}>
             <Input placeholder="ex. Démo planifiée" />
           </Form.Item>
           <Form.Item name="color" label="Couleur">

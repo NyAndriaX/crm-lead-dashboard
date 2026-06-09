@@ -13,16 +13,19 @@ import {
   Form,
   Input,
   InputNumber,
+  List,
   Modal,
   Popconfirm,
   Row,
   Select,
   Space,
+  Steps,
   Switch,
   Table,
   Tag,
   Tooltip,
   Typography,
+  Upload,
   message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -35,6 +38,10 @@ import {
   TeamOutlined,
   BarChartOutlined,
   FileAddOutlined,
+  DeleteOutlined,
+  FileMarkdownOutlined,
+  UploadOutlined,
+  ThunderboltOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "@/lib/client";
@@ -103,6 +110,10 @@ export default function CampaignsPage() {
   const [segPreviewLoading, setSegPreviewLoading] = useState(false);
   const [detailSegmentLeads, setDetailSegmentLeads] = useState<typeof segPreview extends null ? never : NonNullable<typeof segPreview> | null>(null);
   const [detailLeadsLoading, setDetailLeadsLoading] = useState(false);
+  const [campKnowledgeDocs, setCampKnowledgeDocs] = useState<
+    { id: string; name: string; content: string; createdAt: string }[]
+  >([]);
+  const [campEditorStep, setCampEditorStep] = useState(0);
   const segMode = Form.useWatch("segMode", segForm) ?? "filter";
 
   const load = useCallback(async () => {
@@ -179,7 +190,9 @@ export default function CampaignsPage() {
             : undefined,
         autoResponder: v.arMode && v.arMode !== "off"
           ? { mode: v.arMode as string, meetingUrl: (v.arMeetingUrl as string) || "" }
-          : undefined,
+          : { mode: "off" },
+        knowledgeText: (v.knowledgeText as string)?.trim() || null,
+        knowledgeDocs: campKnowledgeDocs,
       };
       const payload = {
         name: v.name,
@@ -202,6 +215,8 @@ export default function CampaignsPage() {
         setCampModal(false);
         setEditingCampaign(null);
         campForm.resetFields();
+        setCampKnowledgeDocs([]);
+        setCampEditorStep(0);
       }
       void load();
     } catch (e: unknown) {
@@ -312,6 +327,7 @@ export default function CampaignsPage() {
       const campaign = data.data;
       setEditingCampaign(campaign);
       setCampModalMessage(null);
+      setCampEditorStep(0);
       setCampModal(true);
       const config = (campaign.config ?? {}) as Record<string, unknown>;
       const ab = (config.ab ?? {}) as Record<string, unknown>;
@@ -337,7 +353,21 @@ export default function CampaignsPage() {
         bodyHtmlOverride: (config.bodyHtmlOverride as string) ?? undefined,
         arMode: (ar.mode as string) ?? "off",
         arMeetingUrl: (ar.meetingUrl as string) ?? undefined,
+        knowledgeText: (config.knowledgeText as string) ?? "",
       });
+      const docs = Array.isArray(config.knowledgeDocs) ? config.knowledgeDocs : [];
+      setCampKnowledgeDocs(
+        docs
+          .filter((d): d is { id: string; name: string; content: string; createdAt?: string } =>
+            Boolean(d && typeof d === "object" && (d as { id?: string }).id),
+          )
+          .map((d) => ({
+            id: d.id,
+            name: d.name,
+            content: d.content,
+            createdAt: d.createdAt ?? new Date().toISOString(),
+          })),
+      );
     } catch {
       message.error("Impossible de charger la campagne");
     }
@@ -603,7 +633,7 @@ export default function CampaignsPage() {
               onChange={(e) => setCampaignQuery(e.target.value)}
               style={{ width: 260 }}
             />
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => { setCampModal(true); setEditingCampaign(null); }}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => { setCampEditorStep(0); setCampModal(true); setEditingCampaign(null); setCampKnowledgeDocs([]); campForm.resetFields(); }}>
               Nouvelle campagne
             </Button>
           </Space>
@@ -634,7 +664,7 @@ export default function CampaignsPage() {
           {segModalMessage ? (
             <Alert type={segModalMessage.type} message={segModalMessage.message} showIcon style={{ marginBottom: 16 }} />
           ) : null}
-          <Form.Item name="name" label="Nom" rules={[{ required: true }]}>
+          <Form.Item name="name" label={labelWithHelp("Nom", "Identifiant interne du segment pour le retrouver lors de la création de campagnes.")} rules={[{ required: true }]}>
             <Input placeholder="Ex: Prospects IT France" />
           </Form.Item>
           <Form.Item
@@ -749,13 +779,47 @@ export default function CampaignsPage() {
       <Modal
         title={editingCampaign ? "Modifier la campagne" : "Nouvelle campagne"}
         open={campModal}
-        onOk={() => void saveCampaign()}
-        onCancel={() => { setCampModal(false); setEditingCampaign(null); setCampModalMessage(null); campForm.resetFields(); }}
+        onCancel={() => { setCampModal(false); setEditingCampaign(null); setCampModalMessage(null); campForm.resetFields(); setCampKnowledgeDocs([]); setCampEditorStep(0); }}
         width={720}
-        okText={editingCampaign ? "Enregistrer" : "Créer"}
-        okButtonProps={{ disabled: editingCampaignNotEditable }}
+        footer={
+          <Space style={{ width: "100%", justifyContent: "flex-end" }}>
+            {campEditorStep > 0 && (
+              <Button onClick={() => setCampEditorStep((s) => s - 1)}>Retour</Button>
+            )}
+            {campEditorStep < 1 ? (
+              <Button
+                type="primary"
+                disabled={editingCampaignNotEditable}
+                onClick={async () => {
+                  try {
+                    await campForm.validateFields(["name", "templateId", "segmentId", "smtpConfigId", "subject"]);
+                    setCampEditorStep(1);
+                  } catch { /* erreurs affichées par Ant Design */ }
+                }}
+              >
+                Suivant
+              </Button>
+            ) : (
+              <Button type="primary" disabled={editingCampaignNotEditable} onClick={() => void saveCampaign()}>
+                {editingCampaign ? "Enregistrer" : "Créer"}
+              </Button>
+            )}
+            <Button onClick={() => { setCampModal(false); setEditingCampaign(null); setCampModalMessage(null); campForm.resetFields(); setCampKnowledgeDocs([]); setCampEditorStep(0); }}>
+              Annuler
+            </Button>
+          </Space>
+        }
       >
-        <Form form={campForm} layout="vertical" initialValues={{ abSplitPercent: 50, throttleMinDelayMs: 12000, warmupStart: 40, warmupGrowth: 1.15 }}>
+        <Steps
+          current={campEditorStep}
+          size="small"
+          style={{ marginBottom: 24 }}
+          items={[
+            { title: "Paramètres généraux", icon: <MailOutlined /> },
+            { title: "Options & IA", icon: <ThunderboltOutlined /> },
+          ]}
+        />
+        <Form form={campForm} layout="vertical" initialValues={{ abSplitPercent: 50, throttleMinDelayMs: 12000, warmupStart: 40, warmupGrowth: 1.15, arMode: "off" }}>
           {campModalMessage ? (
             <Alert type={campModalMessage.type} message={campModalMessage.message} showIcon style={{ marginBottom: 16 }} />
           ) : null}
@@ -767,6 +831,7 @@ export default function CampaignsPage() {
               style={{ marginBottom: 16 }}
             />
           ) : null}
+          <div style={{ display: campEditorStep === 0 ? "block" : "none" }}>
           <Form.Item name="name" label={labelWithHelp("Nom de la campagne", "Identifiant interne pour retrouver la campagne dans la liste et les statistiques.")} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
@@ -824,6 +889,8 @@ export default function CampaignsPage() {
               </Form.Item>
             </Col>
           </Row>
+          </div>
+          <div style={{ display: campEditorStep === 1 ? "block" : "none" }}>
           <Paragraph strong style={{ marginTop: 8 }}>
             Options avancées
           </Paragraph>
@@ -843,7 +910,7 @@ export default function CampaignsPage() {
             name="aiPersonalize"
             label={labelWithHelp(
               "Personnalisation IA par destinataire",
-              "Chaque email est réécrit par l'IA pour être unique et adapté au lead (enrichissement, brief). Utilise votre clé OpenAI et votre base de connaissances (Configuration → Intégration IA).",
+              "Chaque email est réécrit par l'IA pour être unique et adapté au lead (approche, brief). Utilise votre clé OpenAI, la base globale (Configuration → Intégration IA) et la base spécifique à cette campagne ci-dessous.",
             )}
             valuePropName="checked"
           >
@@ -887,6 +954,74 @@ export default function CampaignsPage() {
             </Col>
           </Row>
           <Paragraph strong style={{ marginTop: 8 }}>
+            Base de connaissances IA (campagne)
+          </Paragraph>
+          <Form.Item
+            name="knowledgeText"
+            label={labelWithHelp(
+              "Consignes et contexte (texte)",
+              "Offres, ton, arguments commerciaux spécifiques à cette campagne. L'IA les utilise pour personnaliser les emails et les réponses automatiques.",
+            )}
+          >
+            <Input.TextArea rows={4} placeholder="Ex : nous ciblons les PME du retail, offre découverte 30 jours…" />
+          </Form.Item>
+          <Form.Item label={labelWithHelp("Documents Markdown", "Importez des fichiers .md (max 10, 8 000 caractères chacun) pour enrichir le contexte IA de cette campagne.")}>
+            <Upload
+              accept=".md,.txt,text/markdown,text/plain"
+              showUploadList={false}
+              beforeUpload={async (file) => {
+                if (campKnowledgeDocs.length >= 10) {
+                  message.warning("Maximum 10 documents par campagne.");
+                  return false;
+                }
+                const content = await file.text();
+                if (content.length > 8000) {
+                  message.warning("Document trop volumineux (max 8 000 caractères).");
+                  return false;
+                }
+                setCampKnowledgeDocs((prev) => [
+                  ...prev,
+                  {
+                    id: crypto.randomUUID(),
+                    name: file.name.replace(/\.md$/i, ""),
+                    content: content.trim(),
+                    createdAt: new Date().toISOString(),
+                  },
+                ]);
+                return false;
+              }}
+            >
+              <Button icon={<UploadOutlined />}>Ajouter un fichier .md</Button>
+            </Upload>
+          </Form.Item>
+          {campKnowledgeDocs.length > 0 && (
+            <List
+              size="small"
+              style={{ marginBottom: 16 }}
+              dataSource={campKnowledgeDocs}
+              renderItem={(doc) => (
+                <List.Item
+                  actions={[
+                    <Button
+                      key="del"
+                      type="text"
+                      danger
+                      size="small"
+                      icon={<DeleteOutlined />}
+                      onClick={() => setCampKnowledgeDocs((prev) => prev.filter((d) => d.id !== doc.id))}
+                    />,
+                  ]}
+                >
+                  <Space>
+                    <FileMarkdownOutlined />
+                    <Text>{doc.name}</Text>
+                    <Text type="secondary">({doc.content.length} car.)</Text>
+                  </Space>
+                </List.Item>
+              )}
+            />
+          )}
+          <Paragraph strong style={{ marginTop: 8 }}>
             Auto-répondeur IA (par campagne)
           </Paragraph>
           <Row gutter={12}>
@@ -894,12 +1029,11 @@ export default function CampaignsPage() {
               <Form.Item
                 name="arMode"
                 label={labelWithHelp("Mode auto-répondeur", "Définit comment répondre automatiquement aux emails reçus de leads de cette campagne. « Brouillon » : génère un brouillon pour validation humaine. « Auto » : envoie directement.")}
+                initialValue="off"
               >
                 <Select
-                  allowClear
-                  placeholder="Désactivé (global)"
                   options={[
-                    { label: "Désactivé (utiliser config globale)", value: "off" },
+                    { label: "Désactivé", value: "off" },
                     { label: "Brouillon (validation humaine)", value: "draft" },
                     { label: "Auto (envoi direct)", value: "auto" },
                   ]}
@@ -915,6 +1049,7 @@ export default function CampaignsPage() {
               </Form.Item>
             </Col>
           </Row>
+          </div>
         </Form>
       </Modal>
 

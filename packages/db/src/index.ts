@@ -19,10 +19,13 @@ export {
 export {
   recordOpenAiUsage,
   getOpenAiUsageSummary,
+  getOpenAiUsageSummaryOrg,
+  getOpenAiUsageSummaryForDashboard,
   type OpenAiUsageFeature,
   type OpenAiUsageSummary,
 } from "./openaiUsage";
 export { estimateOpenAiCostUsd, formatCostUsd, getModelPricing } from "./openaiPricing";
+export { syncTags } from "./tags";
 export {
   getOpenAiKnowledgeContext,
   injectKnowledgeIntoMessages,
@@ -30,6 +33,18 @@ export {
   normalizeKnowledgeDocs,
   type AiKnowledgeDoc,
 } from "./openaiKnowledge";
+export {
+  getCampaignKnowledgeContext,
+  injectCampaignKnowledgeIntoMessages,
+  parseCampaignKnowledgeFromConfig,
+  type CampaignKnowledgeConfig,
+} from "./campaignKnowledge";
+export {
+  getVapidPublicKey,
+  savePushSubscription,
+  removePushSubscription,
+  sendWebPushToUser,
+} from "./webPush";
 export { encrypt, decrypt, encryptOrNull, decryptOrNull } from "./piiCrypto";
 export {
   sendTransactionalEmail,

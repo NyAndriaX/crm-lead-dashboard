@@ -27,6 +27,7 @@ import { isScrapedLeadDuplicateInCrm } from "@/lib/scraping/dedup";
 import { buildLeadCreateFromScraped } from "@/lib/scraping/leadPayload";
 import { enrichLeadById } from "@/lib/services/enrichment";
 import { generateLeadAiBrief } from "@/lib/services/aiBrief";
+import { syncTags } from "@crm/db";
 
 /**
  * A1 (F1) — enrichit + génère un brief de qualification IA sur un lead
@@ -35,7 +36,7 @@ import { generateLeadAiBrief } from "@/lib/services/aiBrief";
  */
 const AUTO_ENRICH_CAP = Number(process.env.SCRAPING_AUTOENRICH_CAP ?? 50);
 
-async function autoEnrichAndBrief(leadId: string): Promise<void> {
+async function autoEnrichAndBrief(leadId: string, actorId?: string | null): Promise<void> {
   try {
     await enrichLeadById(leadId, ["email", "emailVerify", "company", "news"]);
     const lead = await prisma.lead.findUnique({
@@ -54,7 +55,7 @@ async function autoEnrichAndBrief(leadId: string): Promise<void> {
     const brief = await generateLeadAiBrief(
       { firstName: lead.firstName, lastName: lead.lastName, company: lead.company, sector: lead.sector, city: lead.city },
       lead.enrichment,
-      lead.assignedToId,
+      actorId ?? lead.assignedToId,
     );
     const enr = (lead.enrichment ?? {}) as Record<string, unknown>;
     await prisma.lead.update({
@@ -194,13 +195,22 @@ export async function updateMission(
   const data: Prisma.ScrapingMissionUpdateInput = {};
   if (input.name !== undefined) data.name = input.name;
   if (input.config !== undefined) {
-    const config = normalizeMissionConfig(input.config);
+    const existing = await prisma.scrapingMission.findUnique({
+      where: { id },
+      select: { config: true },
+    });
+    const prev =
+      existing?.config && typeof existing.config === "object" && !Array.isArray(existing.config)
+        ? (existing.config as Record<string, unknown>)
+        : {};
+    const merged = { ...prev, ...(input.config as Record<string, unknown>) };
+    const config = normalizeMissionConfig(merged);
     data.config = config as object;
     data.schedule = legacyScheduleField(config.schedulePlan);
   }
   await prisma.scrapingMission.update({ where: { id }, data });
-  if (input.config) {
-    await enqueueScheduledRun(id, normalizeMissionConfig(input.config));
+  if (input.config !== undefined && data.config) {
+    await enqueueScheduledRun(id, normalizeMissionConfig(data.config));
   }
 }
 
@@ -325,6 +335,17 @@ export async function importScraperPayloadToBuffer(
  * Re-vérifie le dédoublonnage au moment de l'injection (un lead a pu être
  * créé entre le scraping et la validation).
  */
+/** Fusionne tags mission + tags demandés à l'injection (dédupliqués). */
+export function resolveInjectionTags(
+  missionConfig: unknown,
+  requestTags: string[] | undefined,
+): string[] {
+  const cfg = normalizeMissionConfig(missionConfig);
+  const fromMission = cfg.injectionTags ?? [];
+  const fromRequest = (requestTags ?? []).map((t) => t.trim()).filter(Boolean);
+  return [...new Set([...fromMission, ...fromRequest])].slice(0, 20);
+}
+
 export async function injectAcceptedLeads(
   missionId: string,
   actorId?: string,
@@ -334,6 +355,13 @@ export async function injectAcceptedLeads(
   skippedDuplicate: number;
   skippedInvalid: number;
 }> {
+  const mission = await prisma.scrapingMission.findUnique({
+    where: { id: missionId },
+    select: { config: true },
+  });
+  const tags = resolveInjectionTags(mission?.config, injectionTags);
+  if (tags.length > 0) await syncTags(tags);
+
   const accepted = await prisma.scrapedLeadBuffer.findMany({
     where: { missionId, status: "accepted" },
   });
@@ -367,11 +395,12 @@ export async function injectAcceptedLeads(
     const base = buildLeadCreateFromScraped(
       raw,
       `Scraping: ${raw.source ?? "mission"}`,
-      injectionTags,
+      tags,
     );
     const lead = await prisma.lead.create({
       data: {
         ...base,
+        tags: base.tags as Prisma.InputJsonValue,
         emailEnc: encryptOrNull(email),
         emailHash: email ? emailHash(email) : null,
         phoneEnc: encryptOrNull(raw.phone ?? null),
@@ -394,8 +423,16 @@ export async function injectAcceptedLeads(
     // A1 (F1) — enrichissement + brief de qualification IA automatiques,
     // plafonné et best-effort (n'invalide jamais l'injection).
     if (injected <= AUTO_ENRICH_CAP) {
-      await autoEnrichAndBrief(lead.id);
+      await autoEnrichAndBrief(lead.id, actorId);
     }
+  }
+
+  if (tags.length > 0 && mission) {
+    const cfg = normalizeMissionConfig(mission.config);
+    await prisma.scrapingMission.update({
+      where: { id: missionId },
+      data: { config: { ...cfg, injectionTags: tags } as object },
+    });
   }
 
   return { injected, skippedDuplicate, skippedInvalid };

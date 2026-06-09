@@ -276,10 +276,7 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
                   {initials}
                 </Avatar>
                 {!screens.xs && (
-                  <div style={{ lineHeight: 1.3 }}>
-                    <Text strong style={{ fontSize: 13, display: "block" }}>{user.name.split(" ")[0]}</Text>
-                    <Text type="secondary" style={{ fontSize: 11 }}>{ROLE_LABELS[user.role]}</Text>
-                  </div>
+                  <Text type="secondary" style={{ fontSize: 12, fontWeight: 500 }}>{ROLE_LABELS[user.role]}</Text>
                 )}
               </Space>
             </Dropdown>

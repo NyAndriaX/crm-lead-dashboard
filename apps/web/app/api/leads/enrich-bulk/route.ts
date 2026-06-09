@@ -50,7 +50,7 @@ export const POST = handler(async (req) => {
     await notifyUser({
       userId: session.sub,
       type: "enrichment_done",
-      title: "Enrichissement terminé",
+      title: "Approche terminée",
       body: `${input.totalSelected ?? input.ids.length} lead(s) traité(s).`,
       link: "/leads",
     });

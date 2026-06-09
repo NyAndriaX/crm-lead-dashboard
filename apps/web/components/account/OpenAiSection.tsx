@@ -43,12 +43,6 @@ const MODEL_OPTIONS = [
   { value: "gpt-4.1", label: "gpt-4.1" },
 ];
 
-const AUTO_RESPONDER_OPTIONS = [
-  { value: "off", label: "Désactivé" },
-  { value: "draft", label: "Brouillon IA (validation humaine)" },
-  { value: "auto", label: "Envoi automatique" },
-];
-
 export function OpenAiSection() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -84,8 +78,6 @@ export function OpenAiSection() {
       form.setFieldsValue({
         enabled: data.data.enabled,
         model: data.data.model,
-        autoResponderMode: data.data.autoResponderMode ?? "off",
-        autoResponderMeetingUrl: data.data.autoResponderMeetingUrl ?? "",
         knowledgeText: data.data.knowledgeText ?? "",
         apiKey: "",
       });
@@ -121,8 +113,6 @@ export function OpenAiSection() {
       const { data } = await api.put<{ data: ConfigState }>("/me/openai-config", {
         enabled: values.enabled,
         model: values.model,
-        autoResponderMode: values.autoResponderMode,
-        autoResponderMeetingUrl: values.autoResponderMeetingUrl?.trim() || null,
         knowledgeText: values.knowledgeText?.trim() || null,
         knowledgeDocs,
         ...(values.apiKey?.trim() ? { apiKey: values.apiKey.trim() } : {}),
@@ -224,7 +214,8 @@ export function OpenAiSection() {
         description={
           <span>
             Variantes IA dans les templates, brief de qualification des leads, personnalisation des campagnes et relances,
-            catégorisation des réponses et auto-répondeur — pour les actions que vous lancez ou dont vous êtes le créateur / assigné.
+            catégorisation des réponses — pour les actions que vous lancez ou dont vous êtes le créateur / assigné.
+            L&apos;auto-répondeur se configure par campagne (Communication → Emailing).
           </span>
         }
       />
@@ -287,8 +278,8 @@ export function OpenAiSection() {
         />
       )}
 
-      <Form form={form} layout="vertical" initialValues={{ enabled: false, model: "gpt-4o-mini", autoResponderMode: "off" }}>
-        <Form.Item name="enabled" label={labelWithHelp("Activer l'IA pour mon compte", "Active toutes les fonctionnalités IA liées à votre compte : personnalisation des campagnes, briefs, variantes de templates et auto-répondeur.")} valuePropName="checked">
+      <Form form={form} layout="vertical" initialValues={{ enabled: false, model: "gpt-4o-mini" }}>
+        <Form.Item name="enabled" label={labelWithHelp("Activer l'IA pour mon compte", "Active toutes les fonctionnalités IA liées à votre compte : personnalisation des campagnes, briefs et variantes de templates.")} valuePropName="checked">
           <Switch checkedChildren="Oui" unCheckedChildren="Non" />
         </Form.Item>
         <Form.Item
@@ -304,20 +295,13 @@ export function OpenAiSection() {
         <Form.Item name="model" label={labelWithHelp("Modèle", "gpt-4o-mini est le plus économique ; gpt-4o offre une meilleure qualité pour les emails complexes.")}>
           <Select options={MODEL_OPTIONS} />
         </Form.Item>
-        <Form.Item
-          name="autoResponderMode"
-          label={labelWithHelp("Auto-répondeur (réponses leads)", "Répond automatiquement aux emails entrants des leads qui vous sont assignés (via IMAP). Mode brouillon = validation humaine avant envoi.")}
-          extra="S'applique aux leads qui vous sont assignés quand une réponse email est reçue via IMAP."
-        >
-          <Select options={AUTO_RESPONDER_OPTIONS} />
-        </Form.Item>
-        <Form.Item
-          name="autoResponderMeetingUrl"
-          label={labelWithHelp("Lien de prise de RDV (auto-répondeur)", "URL Calendly ou équivalent insérée dans les réponses IA lorsque le lead manifeste de l'intérêt.")}
-          extra="Utilisé dans les réponses IA « intéressé » / « rappel »."
-        >
-          <Input placeholder="https://calendly.com/votre-equipe/30min" />
-        </Form.Item>
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Auto-répondeur par campagne"
+          description="Configurez l'auto-répondeur IA dans chaque campagne emailing (Communication → Emailing → modifier la campagne). La base de connaissances globale ci-dessous s'applique à toutes vos actions IA ; chaque campagne peut avoir sa propre base dédiée."
+        />
 
         <Card
           size="small"
@@ -331,7 +315,7 @@ export function OpenAiSection() {
         >
           <Paragraph type="secondary" style={{ marginTop: 0, fontSize: 13 }}>
             Ajoutez du contexte métier (offres, argumentaire, ton, FAQ). L&apos;IA s&apos;en sert pour
-            personnaliser les emails de campagne, les relances et l&apos;auto-répondeur.
+            personnaliser les emails de campagne et les relances (en complément du contexte spécifique par campagne).
           </Paragraph>
           <Form.Item
             name="knowledgeText"

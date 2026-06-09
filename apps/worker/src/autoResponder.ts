@@ -6,7 +6,7 @@
  *  - "interesse" / "rappel" → email proposant un créneau de RDV
  *  - "hors_sujet" / "auto_reply" → rien
  *
- * Mode via paramètres du compte utilisateur assigné au lead (Mon compte → Intégration IA) :
+ * Mode via la configuration de la campagne d'origine (Communication → Emailing → campagne) :
  *  - "off"   (défaut) : ne fait rien
  *  - "draft" : génère le message + InboxMessage outbound marqué brouillon
  *              + notification pour validation humaine (PAS d'envoi SMTP)
@@ -19,8 +19,8 @@ import nodemailer from "nodemailer";
 import {
   prisma,
   notifyUser,
-  getAutoResponderSettings,
   resolveAutoResponderUserId,
+  DEFAULT_AUTO_RESPONDER_MEETING_URL,
   type AutoResponderMode,
 } from "@crm/db";
 import { aiComplete } from "./ai";
@@ -130,32 +130,26 @@ export async function maybeAutoRespond(args: {
     });
     if (!lead || lead.deletedAt) return { acted: false, mode: "off", reason: "lead_missing" };
 
-    // Vérifier si la campagne d'origine a un auto-répondeur dédié.
-    let campAutoResponder: { mode: string; meetingUrl?: string } | null = null;
-    if (args.campaignId) {
-      const camp = await prisma.campaign.findUnique({ where: { id: args.campaignId }, select: { config: true } });
-      const cfg = (camp?.config ?? {}) as Record<string, unknown>;
-      const ar = (cfg.autoResponder ?? null) as { mode?: string; meetingUrl?: string } | null;
-      if (ar?.mode && ar.mode !== "off") campAutoResponder = { mode: ar.mode, meetingUrl: ar.meetingUrl ?? "" };
+    if (!args.campaignId) {
+      return { acted: false, mode: "off", reason: "no_campaign" };
     }
 
-    let m: Mode;
-    let meetingUrl: string;
-    let responderUserId: string | null;
-
-    if (campAutoResponder) {
-      m = campAutoResponder.mode as Mode;
-      meetingUrl = campAutoResponder.meetingUrl ?? "";
-      responderUserId = await resolveAutoResponderUserId(lead.assignedToId);
-    } else {
-      responderUserId = await resolveAutoResponderUserId(lead.assignedToId);
-      const responder = await getAutoResponderSettings(responderUserId);
-      m = responder.mode;
-      meetingUrl = responder.meetingUrl;
-      if (m === "off") {
-        return { acted: false, mode: m, reason: lead.assignedToId ? "assignee_disabled" : "no_responder_user" };
-      }
+    const camp = await prisma.campaign.findUnique({
+      where: { id: args.campaignId },
+      select: { config: true, createdById: true },
+    });
+    const cfg = (camp?.config ?? {}) as Record<string, unknown>;
+    const ar = (cfg.autoResponder ?? null) as { mode?: string; meetingUrl?: string } | null;
+    if (!ar?.mode || ar.mode === "off") {
+      return { acted: false, mode: "off", reason: "campaign_auto_responder_off" };
     }
+
+    const m = ar.mode as Mode;
+    const meetingUrl = ar.meetingUrl?.trim() || DEFAULT_AUTO_RESPONDER_MEETING_URL;
+    const responderUserId =
+      camp?.createdById ??
+      lead.assignedToId ??
+      (await resolveAutoResponderUserId(lead.assignedToId));
 
     if (m === "off") return { acted: false, mode: m, reason: "auto_responder_off" };
     if (args.category === "hors_sujet" || args.category === "auto_reply") {
@@ -180,6 +174,7 @@ export async function maybeAutoRespond(args: {
     // Rédaction IA (fallback = template déterministe ci-dessus).
     const ai = await aiComplete({
       userId: responderUserId,
+      campaignId: args.campaignId,
       feature: "auto_reply",
       maxTokens: 500,
       temperature: 0.6,

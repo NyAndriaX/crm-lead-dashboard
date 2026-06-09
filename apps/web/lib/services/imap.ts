@@ -158,3 +158,77 @@ function describeImapError(e: unknown): string {
 
   return raw || serverText || err.code || "Erreur IMAP inconnue (connexion échouée sans détail du serveur).";
 }
+
+export type ImapSearchHit = {
+  uid: number;
+  subject: string | null;
+  from: string | null;
+  date: string | null;
+};
+
+/**
+ * Recherche live sur le serveur IMAP (commande SEARCH TEXT).
+ * Retourne les en-têtes des messages correspondants sans les importer en base.
+ */
+export async function searchImapMailbox(query: string, limit = 30): Promise<{
+  ok: boolean;
+  message: string;
+  hits: ImapSearchHit[];
+}> {
+  const q = query.trim();
+  if (!q) return { ok: false, message: "Requête vide", hits: [] };
+
+  const cfg = await prisma.imapConfig.findFirst({
+    where: { isActive: true },
+    orderBy: { lastSyncAt: "desc" },
+  });
+  if (!cfg) return { ok: false, message: "Aucun compte IMAP actif configuré", hits: [] };
+
+  const { decryptOrNull } = await import("@/lib/crypto");
+  const login = decryptOrNull(cfg.loginEnc);
+  const password = decryptOrNull(cfg.passwordEnc);
+  if (!login || !password) {
+    return { ok: false, message: "Identifiants IMAP illisibles", hits: [] };
+  }
+
+  const { ImapFlow } = await import("imapflow");
+  const client = new ImapFlow({
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.port === 993,
+    auth: { user: login, pass: password },
+    logger: false,
+    tls: { rejectUnauthorized: false },
+  });
+
+  try {
+    await client.connect();
+    const lock = await client.getMailboxLock("INBOX");
+    try {
+      const uids = await client.search({ text: q }, { uid: true });
+      const slice = (uids as number[]).slice(-limit).reverse();
+      const hits: ImapSearchHit[] = [];
+      if (slice.length > 0) {
+        for await (const msg of client.fetch(slice, { uid: true, envelope: true }, { uid: true })) {
+          hits.push({
+            uid: msg.uid,
+            subject: msg.envelope?.subject ?? null,
+            from: msg.envelope?.from?.[0]?.address ?? msg.envelope?.from?.[0]?.name ?? null,
+            date: msg.envelope?.date ? new Date(msg.envelope.date).toISOString() : null,
+          });
+        }
+      }
+      return {
+        ok: true,
+        message: `${hits.length} message(s) trouvé(s) sur le serveur IMAP`,
+        hits,
+      };
+    } finally {
+      lock.release();
+    }
+  } catch (e) {
+    return { ok: false, message: describeImapError(e), hits: [] };
+  } finally {
+    try { await client.logout(); } catch { /* ignore */ }
+  }
+}

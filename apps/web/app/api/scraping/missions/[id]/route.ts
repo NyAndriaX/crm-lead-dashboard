@@ -26,10 +26,12 @@ const configSchema = z.object({
   filter_country: z.boolean().optional(),
   requireEmail: z.boolean().optional(),
   dailyQuota: z.number().int().min(1).max(1000).nullable().optional(),
+  injectionTags: z.array(z.string().trim().min(1).max(64)).max(20).optional(),
   autoPipeline: z
     .object({
       enabled: z.boolean(),
       sequenceId: z.string().nullable().optional(),
+      tags: z.array(z.string().trim().min(1).max(64)).max(20).optional(),
     })
     .optional(),
   schedulePlan: schedulePlanSchema.optional(),
@@ -37,7 +39,7 @@ const configSchema = z.object({
 
 const updateSchema = z.object({
   name: z.string().trim().min(1).max(100).optional(),
-  config: configSchema.optional(),
+  config: configSchema.partial().optional(),
 });
 
 export const GET = handler<Ctx>(async (_req, { params }) => {

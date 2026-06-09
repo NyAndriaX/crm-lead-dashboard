@@ -10,7 +10,7 @@ import {
 import {
   DownloadOutlined, SaveOutlined, ReloadOutlined, PlusOutlined,
   DeleteOutlined, UserSwitchOutlined, TagsOutlined, ThunderboltOutlined,
-  RetweetOutlined, MoreOutlined, EditOutlined, EnvironmentOutlined,
+  RetweetOutlined, MoreOutlined, EditOutlined, EnvironmentOutlined, TeamOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType, TablePaginationConfig } from "antd/es/table";
 import type { SorterResult } from "antd/es/table/interface";
@@ -41,7 +41,7 @@ interface CreateLeadForm {
   assignedToId?: string;
 }
 
-type BulkAction = "delete" | "assign" | "status" | "tags-add" | "tags-remove" | "enroll-sequence";
+type BulkAction = "delete" | "assign" | "status" | "tags-add" | "tags-remove" | "enroll-sequence" | "create-segment";
 
 export default function LeadsPage() {
   const router = useRouter();
@@ -125,6 +125,25 @@ export default function LeadsPage() {
   async function submitBulkForm() {
     if (!bulkOpen) return;
     const values = await bulkForm.validateFields();
+    if (bulkOpen === "create-segment") {
+      setBulkLoading(true);
+      try {
+        await api.post("/segments", {
+          name: values.segmentName,
+          filters: { mode: "manual", leadIds: selectedIds },
+        });
+        message.success(`Segment « ${values.segmentName} » créé avec ${selectedIds.length} lead(s)`);
+        setBulkOpen(null);
+        bulkForm.resetFields();
+        setSelectedIds([]);
+      } catch (e) {
+        const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Création impossible";
+        message.error(msg);
+      } finally {
+        setBulkLoading(false);
+      }
+      return;
+    }
     await runBulk(bulkOpen, values);
   }
 
@@ -236,6 +255,7 @@ export default function LeadsPage() {
       case "tags-add": return "Ajouter des tags";
       case "tags-remove": return "Retirer des tags";
       case "enroll-sequence": return "Inscrire dans une séquence";
+      case "create-segment": return "Créer un segment";
       default: return "";
     }
   }
@@ -315,8 +335,11 @@ export default function LeadsPage() {
             <Tooltip title="Ajouter des tags">
               <Button icon={<TagsOutlined />} onClick={() => openBulk("tags-add")}>Ajouter tags</Button>
             </Tooltip>
-            <Tooltip title="Enrichir les leads sélectionnés (email, firmographie, LinkedIn, actu…)">
-              <Button icon={<ThunderboltOutlined />} onClick={() => setEnrichOpen(true)}>Enrichir</Button>
+            <Tooltip title="Lancer l'approche sur les leads sélectionnés (email, firmographie, LinkedIn, actu…)">
+              <Button icon={<ThunderboltOutlined />} onClick={() => setEnrichOpen(true)}>Approche</Button>
+            </Tooltip>
+            <Tooltip title="Créer un segment emailing à partir de la sélection">
+              <Button icon={<TeamOutlined />} onClick={() => openBulk("create-segment")}>Créer segment</Button>
             </Tooltip>
             <Dropdown
               menu={{
@@ -437,6 +460,16 @@ export default function LeadsPage() {
                 showSearch
                 filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
               />
+            </Form.Item>
+          )}
+          {bulkOpen === "create-segment" && (
+            <Form.Item
+              name="segmentName"
+              label="Nom du segment"
+              rules={[{ required: true, message: "Nom requis" }]}
+              extra={`${selectedIds.length} lead(s) seront inclus dans ce segment (sélection manuelle).`}
+            >
+              <Input placeholder="Ex : Prospects qualifiés — sélection mars" />
             </Form.Item>
           )}
         </Form>

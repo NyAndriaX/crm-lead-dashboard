@@ -1,10 +1,10 @@
 "use client";
 
 /**
- * Bloc Enrichissement sur la fiche lead (E-09).
+ * Bloc Approche sur la fiche lead (E-09).
  *
  * Affiche les données collectées par l'engine d'enrichissement, regroupées
- * par source, avec leur date. Bouton "Enrichir maintenant" + sélecteur des
+ * par source, avec leur date. Bouton "Lancer l'approche" + sélecteur des
  * providers à exécuter.
  */
 import { useState } from "react";
@@ -111,7 +111,7 @@ export function LeadEnrichmentCard({
     setLoading(true);
     try {
       await api.post(`/leads/${leadId}/enrich`, { providers });
-      message.success("Enrichissement terminé");
+      message.success("Approche terminée");
       onEnriched();
     } catch (e) {
       const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Échec de l'enrichissement";
@@ -123,12 +123,12 @@ export function LeadEnrichmentCard({
 
   return (
     <Card
-      title={<Space><ThunderboltOutlined style={{ color: "#fa8c16" }} /> Enrichissement</Space>}
+      title={<Space><ThunderboltOutlined style={{ color: "#fa8c16" }} /> Approche</Space>}
       size="small"
       style={{ marginTop: 16 }}
       extra={
         hasData ? (
-          <Tooltip title={`Dernier enrichissement : ${fmtDate(data.lastEnrichedAt)}`}>
+          <Tooltip title={`Dernière mise à jour : ${fmtDate(data.lastEnrichedAt)}`}>
             <Text type="secondary" style={{ fontSize: 11 }}>{fmtDate(data.lastEnrichedAt)}</Text>
           </Tooltip>
         ) : null
@@ -155,7 +155,7 @@ export function LeadEnrichmentCard({
           disabled={providers.length === 0}
           block
         >
-          {hasData ? "Ré-enrichir" : "Enrichir maintenant"}
+          {hasData ? "Relancer l'approche" : "Lancer l'approche"}
         </Button>
 
         {!hasData ? (

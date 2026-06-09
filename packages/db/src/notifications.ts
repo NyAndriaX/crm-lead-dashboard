@@ -6,6 +6,7 @@
  */
 import { prisma } from "./client";
 import { escapeHtml, sendTransactionalEmail } from "./transactionalEmail";
+import { sendWebPushToUser } from "./webPush";
 
 export type NotifyUserInput = {
   userId: string;
@@ -110,6 +111,19 @@ export async function notifyUser(input: NotifyUserInput): Promise<NotifyUserResu
   } catch (e) {
     console.warn(
       `[notify] email non envoyé userId=${input.userId} type=${input.type}:`,
+      e instanceof Error ? e.message : e,
+    );
+  }
+
+  try {
+    await sendWebPushToUser(input.userId, {
+      title: input.title,
+      body: input.body ?? null,
+      link: input.link ?? null,
+    });
+  } catch (e) {
+    console.warn(
+      `[notify] push non envoyé userId=${input.userId} type=${input.type}:`,
       e instanceof Error ? e.message : e,
     );
   }

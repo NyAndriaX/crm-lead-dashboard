@@ -19,10 +19,26 @@ export const updateSegmentSchema = createSegmentSchema.partial().refine((o) => o
 });
 export type UpdateSegmentInput = z.infer<typeof updateSegmentSchema>;
 
+const knowledgeDocSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().max(200),
+  content: z.string().max(8_000),
+  createdAt: z.string().optional(),
+});
+
 const campaignConfigSchema = z
   .object({
     throttleMinDelayMs: z.number().int().min(0).max(600_000).optional(),
     bodyHtmlOverride: z.string().max(500_000).optional().nullable(),
+    aiPersonalize: z.boolean().optional(),
+    knowledgeText: z.string().max(20_000).nullable().optional(),
+    knowledgeDocs: z.array(knowledgeDocSchema).max(10).optional(),
+    autoResponder: z
+      .object({
+        mode: z.enum(["off", "draft", "auto"]),
+        meetingUrl: z.string().max(500).optional(),
+      })
+      .optional(),
     ab: z
       .object({
         enabled: z.boolean().optional(),

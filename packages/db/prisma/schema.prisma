@@ -111,6 +111,7 @@ model User {
   leadViews     LeadView[]
   importJobs    ImportJob[]
   notifications Notification[]
+  pushSubscriptions PushSubscription[]
   templateBlocks TemplateBlock[]
   openAiUsageLogs OpenAiUsageLog[]
 
@@ -382,6 +383,7 @@ model Campaign {
   segment    Segment?     @relation(fields: [segmentId], references: [id])
   smtpConfig SmtpConfig?  @relation(fields: [smtpConfigId], references: [id])
   emailEvents EmailEvent[]
+  sequences  Sequence[]
 
   @@index([templateId])
   @@index([segmentId])
@@ -438,15 +440,19 @@ model InboxMessage {
 // ──────────────────────────────────────────────────────────────
 
 model Sequence {
-  id        String   @id @default(cuid())
-  name      String
-  steps     Json
-  maxSteps  Int?
-  isPaused  Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  name       String
+  steps      Json
+  maxSteps   Int?
+  isPaused   Boolean  @default(false)
+  campaignId String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
+  campaign      Campaign?      @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   sequenceLeads SequenceLead[]
+
+  @@index([campaignId])
 }
 
 model SequenceLead {
@@ -525,6 +531,20 @@ model Notification {
   user User @relation(fields: [userId], references: [id])
 
   @@index([userId, isRead, createdAt])
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, endpoint])
+  @@index([userId])
 }
 
 model Job {

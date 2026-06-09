@@ -2,11 +2,12 @@
 
 /**
  * Page Import CSV/XLSX — CRM-021 → CRM-027.
- * Wizard en 4 étapes :
+ * Wizard en 5 étapes :
  *  1. Upload du fichier
  *  2. Mapping colonnes ↔ champs lead
- *  3. Aperçu + confirmation
- *  4. Traitement en cours + résultat
+ *  3. Tags
+ *  4. Aperçu + confirmation
+ *  5. Traitement en cours + résultat
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -24,6 +25,7 @@ import { api } from "@/lib/client";
 import { IMPORTABLE_FIELD_LABELS, type ImportableField } from "@/lib/schemas/import";
 import { useIsMobile } from "@/lib/responsive";
 import { ImportTemplateGallery } from "@/components/import/ImportTemplateGallery";
+import { labelWithHelp } from "@/components/ui/FieldHelp";
 
 const { Title, Text, Paragraph } = Typography;
 const { Dragger } = Upload;
@@ -302,7 +304,7 @@ export default function ImportPage() {
           type="info"
           showIcon
         />
-        <Card title="Tags de l'import">
+        <Card title={labelWithHelp("Tags de l'import", "Ces tags seront appliqués à chaque lead créé par cet import. Utile pour segmenter et filtrer les leads importés.")}>
           <Select
             mode="tags"
             style={{ width: "100%" }}

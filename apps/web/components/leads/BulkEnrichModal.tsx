@@ -102,7 +102,7 @@ export function BulkEnrichModal({
 
   return (
     <Modal
-      title={<Space><ThunderboltOutlined style={{ color: "#fa8c16" }} /> Enrichir {total} lead(s)</Space>}
+      title={<Space><ThunderboltOutlined style={{ color: "#fa8c16" }} /> Approche — {total} lead(s)</Space>}
       open={open}
       onCancel={running ? undefined : onClose}
       maskClosable={!running}
@@ -120,7 +120,7 @@ export function BulkEnrichModal({
                 disabled={providers.length === 0}
                 onClick={() => void start()}
               >
-                Lancer l'enrichissement
+                Lancer l&apos;approche
               </Button>,
             ]
       }
@@ -161,7 +161,7 @@ export function BulkEnrichModal({
           <Alert
             type={failed === 0 ? "success" : "warning"}
             showIcon
-            message="Enrichissement terminé"
+            message="Approche terminée"
             description={`${succeeded} lead(s) enrichi(s)${failed > 0 ? `, ${failed} échec(s)` : ""}. Une notification a été créée.`}
           />
         )}

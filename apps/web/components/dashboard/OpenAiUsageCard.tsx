@@ -71,7 +71,7 @@ export function OpenAiUsageCard({ usage }: { usage: OpenAiUsageData }) {
       }
     >
       <Text type="secondary" style={{ display: "block", marginBottom: 16 }}>
-        Tokens et coût estimé via votre clé API personnelle (emails, briefs, campagnes, etc.).
+        Tokens et coût estimé (emails, briefs, campagnes, scraping IA, etc.) — agrégé pour toute l&apos;équipe si vous êtes admin.
       </Text>
       <Row gutter={[24, 16]}>
         <Col xs={12} sm={6}>

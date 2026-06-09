@@ -8,7 +8,7 @@
 import { z } from "zod";
 import { handler, json, parseBody, parseQuery, requirePermission } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
-import { listBuffer, setBufferStatus, injectAcceptedLeads } from "@/lib/services/scraping";
+import { listBuffer, setBufferStatus, injectAcceptedLeads, resolveInjectionTags, getMission } from "@/lib/services/scraping";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +58,9 @@ export const POST = handler<Ctx>(async (req, { params }) => {
   const missionId = z.string().min(1).parse(id);
   const body = await req.json().catch(() => ({}));
   const { injectionTags } = injectSchema.parse(body);
-  const result = await injectAcceptedLeads(missionId, session.sub, injectionTags ?? []);
+  const mission = await getMission(missionId);
+  const mergedTags = resolveInjectionTags(mission?.config, injectionTags);
+  const result = await injectAcceptedLeads(missionId, session.sub, mergedTags);
   await audit({
     userId: session.sub,
     action: "scraping.results.inject",

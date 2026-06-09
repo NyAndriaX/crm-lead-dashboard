@@ -19,6 +19,7 @@ import {
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
+import { labelWithHelp } from "@/components/ui/FieldHelp";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -118,6 +119,7 @@ function ScrapingPageInner() {
   const [injectResult, setInjectResult] = useState<InjectResult | null>(null);
   const [injectionTags, setInjectionTags] = useState<string[]>([]);
   const [tagsRef, setTagsRef] = useState<{ name: string }[]>([]);
+  const tagsSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchMissions = useCallback(async () => {
     setLoading(true);
@@ -194,6 +196,7 @@ function ScrapingPageInner() {
       scheduleRunAt: plan.runAt ? dayjs(plan.runAt) : null,
       scheduleFrequency: plan.frequency ?? "daily",
       dailyQuota: m.config.dailyQuota ?? null,
+      injectionTags: m.config.injectionTags ?? [],
     });
     setFormOpen(true);
   }
@@ -213,6 +216,9 @@ function ScrapingPageInner() {
         requireEmail: Boolean(v.requireEmail),
         schedulePlan: buildSchedulePlan(v),
         dailyQuota: v.dailyQuota ?? null,
+        injectionTags: Array.isArray(v.injectionTags)
+          ? v.injectionTags.map((t: string) => t.trim()).filter(Boolean)
+          : [],
       },
     };
     try {
@@ -273,6 +279,28 @@ function ScrapingPageInner() {
     setResultsTarget(m);
     setInjectionTags(m.config.injectionTags ?? []);
     void loadBuffer(m.id);
+  }
+
+  const persistInjectionTags = useCallback((missionId: string, tags: string[]) => {
+    if (tagsSaveTimer.current) clearTimeout(tagsSaveTimer.current);
+    tagsSaveTimer.current = setTimeout(() => {
+      void api
+        .put(`/scraping/missions/${missionId}`, { config: { injectionTags: tags } })
+        .then(() => {
+          setResultsTarget((prev) =>
+            prev && prev.id === missionId
+              ? { ...prev, config: { ...prev.config, injectionTags: tags } }
+              : prev,
+          );
+          void fetchMissions();
+        })
+        .catch(() => message.error("Impossible d'enregistrer les tags d'injection"));
+    }, 500);
+  }, [fetchMissions]);
+
+  function handleInjectionTagsChange(tags: string[]) {
+    setInjectionTags(tags);
+    if (resultsTarget) persistInjectionTags(resultsTarget.id, tags);
   }
 
   async function reviewSelected(status: "accepted" | "rejected") {
@@ -650,6 +678,19 @@ function ScrapingPageInner() {
           <Form.Item name="dailyQuota" label="Quota / exécution" tooltip="Plafond de leads scrapés par exécution (optionnel)">
             <InputNumber min={1} max={1000} style={{ width: "100%" }} placeholder="ex. 100 (illimité si vide)" />
           </Form.Item>
+
+          <Form.Item
+            name="injectionTags"
+            label={labelWithHelp("Tags à l'injection", "Tags appliqués automatiquement aux leads lors de l'injection dans le CRM (en plus du tag système « scraping »).")}
+          >
+            <Select
+              mode="tags"
+              style={{ width: "100%" }}
+              placeholder="Sélectionner ou créer des tags…"
+              options={tagsRef.map((t) => ({ label: t.name, value: t.name }))}
+              tokenSeparators={[","]}
+            />
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -747,7 +788,7 @@ function ScrapingPageInner() {
         }
       >
         {/* Tags à l'injection */}
-        <Card size="small" style={{ marginBottom: 16 }} title="Tags à l'injection CRM">
+        <Card size="small" style={{ marginBottom: 16 }} title={labelWithHelp("Tags à l'injection CRM", "Tags appliqués aux leads lors de l'injection post-scraping, en plus des tags système « scraping ».")}>
           <Paragraph type="secondary" style={{ marginTop: 0, fontSize: 12 }}>
             Tags appliqués aux leads lors de l'injection (en plus des tags système « scraping »).
           </Paragraph>
@@ -756,7 +797,7 @@ function ScrapingPageInner() {
             style={{ width: "100%" }}
             placeholder="Sélectionner ou créer des tags…"
             value={injectionTags}
-            onChange={setInjectionTags}
+            onChange={handleInjectionTagsChange}
             options={tagsRef.map((t) => ({ label: t.name, value: t.name }))}
             tokenSeparators={[","]}
           />
@@ -894,7 +935,7 @@ function ScrapingPageInner() {
             expandedRowRender: (r) => (
               <div style={{ padding: "4px 0 8px", maxWidth: 720 }}>
                 <Text type="secondary" style={{ fontSize: 11, display: "block", marginBottom: 4 }}>
-                  Enrichissement entreprise
+                  Approche entreprise
                 </Text>
                 <Text style={{ fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
                   {r.raw.enrichment}

@@ -50,9 +50,16 @@ export async function openAiChatCompletion(args: {
     const content = json.choices?.[0]?.message?.content?.trim();
     if (!content) return { ok: false, error: "empty_response" };
 
-    const prompt = json.usage?.prompt_tokens ?? 0;
-    const completion = json.usage?.completion_tokens ?? 0;
-    const total = json.usage?.total_tokens ?? prompt + completion;
+    let prompt = json.usage?.prompt_tokens ?? 0;
+    let completion = json.usage?.completion_tokens ?? 0;
+    let total = json.usage?.total_tokens ?? prompt + completion;
+
+    if (args.track && total <= 0) {
+      const promptChars = args.messages.reduce((s, m) => s + m.content.length, 0);
+      prompt = Math.max(1, Math.ceil(promptChars / 4));
+      completion = Math.max(1, Math.ceil(content.length / 4));
+      total = prompt + completion;
+    }
 
     if (args.track && total > 0) {
       await recordOpenAiUsage({

@@ -39,6 +39,15 @@ const ICON_BY_TYPE: Record<string, React.ReactNode> = {
   scraping_error: <CloseCircleOutlined style={{ color: "#ff4d4f" }} />,
 };
 
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = window.atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const min = Math.floor(diff / 60_000);
@@ -87,6 +96,36 @@ export function NotificationsBell({ borderColor, textColor }: { borderColor: str
     const id = setInterval(fetchCount, 60_000);
     return () => clearInterval(id);
   }, [fetchCount]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    void (async () => {
+      try {
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") return;
+        const { data } = await api.get<{ data: { publicKey: string | null; enabled: boolean } }>(
+          "/notifications/push/vapid-public-key",
+        );
+        if (!data.data.enabled || !data.data.publicKey) return;
+        const reg = await navigator.serviceWorker.register("/sw.js");
+        await navigator.serviceWorker.ready;
+        const existing = await reg.pushManager.getSubscription();
+        const sub = existing ?? await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(data.data.publicKey) as BufferSource,
+        });
+        const json = sub.toJSON();
+        if (json.endpoint && json.keys?.p256dh && json.keys?.auth) {
+          await api.post("/notifications/push/subscribe", {
+            endpoint: json.endpoint,
+            keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
+          });
+        }
+      } catch {
+        /* push optionnel — ne bloque pas l'app */
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     if (open) void fetchList();

@@ -8,7 +8,7 @@ import {
   type MissionConfig,
   type ScrapedLead,
 } from "@crm/db";
-import { prisma, notifyUser } from "@crm/db";
+import { prisma, notifyUser, syncTags, type Prisma } from "@crm/db";
 import type { WorkerJobContext } from "@crm/queue";
 import { runScrapingMission } from "./scraping/adapters";
 import { checkScrapedLeadDuplicate, trackScrapedLeadSeen } from "./scraping/dedup";
@@ -158,6 +158,7 @@ export async function runScraping(ctx: WorkerJobContext): Promise<unknown> {
         const raw = (row.raw ?? {}) as ScrapedLead;
         const em = (raw.email ?? "").trim() || null;
       const extraTags = [...(cfg.injectionTags ?? []), ...(cfg.autoPipeline?.tags ?? []), "scraping-auto"];
+      if (extraTags.length > 0) await syncTags(extraTags);
       const base = buildLeadCreateFromScraped(
         raw,
         `Scraping auto: ${mission.name}`,
@@ -167,6 +168,7 @@ export async function runScraping(ctx: WorkerJobContext): Promise<unknown> {
           const created = await prisma.lead.create({
             data: {
               ...base,
+              tags: base.tags as Prisma.InputJsonValue,
               emailEnc: encryptOrNull(em),
               emailHash: em ? emailHash(em) : null,
               phoneEnc: encryptOrNull(raw.phone ?? null),

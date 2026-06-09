@@ -17,6 +17,7 @@ export type SequenceInput = {
   steps: SequenceStepInput[];
   maxSteps?: number | null;
   isPaused?: boolean;
+  campaignId?: string | null;
 };
 
 export type SequenceUpdateInput = Partial<SequenceInput>;
@@ -44,12 +45,23 @@ export async function listSequences() {
     cur[c.status] = c._count._all;
     countMap.set(c.sequenceId, cur);
   }
+  const campaignIds = [...new Set(rows.map((r) => r.campaignId).filter(Boolean))] as string[];
+  const campaigns = campaignIds.length
+    ? await prisma.campaign.findMany({
+        where: { id: { in: campaignIds } },
+        select: { id: true, name: true },
+      })
+    : [];
+  const campById = new Map(campaigns.map((c) => [c.id, c]));
+
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
     steps: r.steps as unknown,
     maxSteps: r.maxSteps,
     isPaused: r.isPaused,
+    campaignId: r.campaignId,
+    campaign: r.campaignId ? campById.get(r.campaignId) ?? null : null,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
     stats: countMap.get(r.id) ?? {},
@@ -65,6 +77,7 @@ export async function getSequence(id: string) {
     steps: row.steps as unknown,
     maxSteps: row.maxSteps,
     isPaused: row.isPaused,
+    campaignId: row.campaignId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -77,6 +90,7 @@ export async function createSequence(input: SequenceInput) {
       steps: normalizeSteps(input.steps) as object,
       maxSteps: input.maxSteps ?? null,
       isPaused: input.isPaused ?? false,
+      campaignId: input.campaignId ?? null,
     },
   });
 }
@@ -87,6 +101,7 @@ export async function updateSequence(id: string, input: SequenceUpdateInput) {
   if (input.steps !== undefined) data.steps = normalizeSteps(input.steps) as object;
   if (input.maxSteps !== undefined) data.maxSteps = input.maxSteps;
   if (input.isPaused !== undefined) data.isPaused = input.isPaused;
+  if (input.campaignId !== undefined) data.campaignId = input.campaignId;
   return prisma.sequence.update({ where: { id }, data });
 }
 

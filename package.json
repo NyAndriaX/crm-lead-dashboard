@@ -25,6 +25,11 @@
     "lint": "yarn workspaces run lint",
     "typecheck": "yarn workspaces run typecheck",
     "test": "yarn workspaces run test",
+    "test:all": "yarn workspaces run test && yarn test:e2e",
+    "test:e2e": "dotenv -e .env -- playwright test",
+    "test:e2e:ui": "dotenv -e .env -- playwright test --ui",
+    "test:e2e:report": "playwright show-report e2e/report",
+    "test:e2e:install": "playwright install chromium",
     "db:generate": "yarn workspace @crm/db generate",
     "db:push": "dotenv -e .env -- yarn workspace @crm/db push",
     "db:reset": "dotenv -e .env -- yarn workspace @crm/db reset",
@@ -34,6 +39,7 @@
     "test:azure-email": "NODE_OPTIONS=--dns-result-order=ipv4first dotenv -e .env -- node scripts/test-azure-email.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.1",
     "dotenv-cli": "^7.4.4",
     "typescript": "^5.6.3"
   }

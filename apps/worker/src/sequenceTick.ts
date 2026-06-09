@@ -127,11 +127,12 @@ async function shouldStop(args: {
 async function sendStep(args: {
   sequenceLeadId: string;
   sequenceId: string;
+  campaignId?: string | null;
   lead: LeadRow;
   step: StepConfig;
   stepIndex: number;
 }): Promise<{ sent: boolean; error?: string }> {
-  const { sequenceLeadId, sequenceId, lead, step, stepIndex } = args;
+  const { sequenceLeadId, sequenceId, campaignId, lead, step, stepIndex } = args;
 
   if (!lead.emailEnc) return { sent: false, error: "no_email" };
   const email = decryptOrNull(lead.emailEnc);
@@ -174,6 +175,7 @@ async function sendStep(args: {
   if (step.aiPersonalize) {
     const ai = await aiPersonalizeEmail({
       userId: lead.assignedToId,
+      campaignId,
       subject,
       html: bodyHtml,
       lead: {
@@ -330,6 +332,7 @@ export async function runSequenceTick(_ctx: WorkerJobContext): Promise<unknown> 
     const result = await sendStep({
       sequenceLeadId: sl.id,
       sequenceId: sl.sequenceId,
+      campaignId: sequence.campaignId,
       lead,
       step,
       stepIndex: sl.currentStep,

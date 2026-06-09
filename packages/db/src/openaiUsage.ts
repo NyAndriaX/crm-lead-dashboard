@@ -64,29 +64,13 @@ export type OpenAiUsageSummary = {
   byModel: { model: string; tokens: number; count: number; costUsd: number }[];
 };
 
-export async function getOpenAiUsageSummary(userId: string): Promise<OpenAiUsageSummary | null> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { openAiEnabled: true, openAiApiKeyEnc: true, openAiModel: true },
-  });
-  if (!user?.openAiApiKeyEnc) {
-    return {
-      enabled: user?.openAiEnabled ?? false,
-      configured: false,
-      model: user?.openAiModel ?? null,
-      totalTokens: 0,
-      promptTokens: 0,
-      completionTokens: 0,
-      requestCount: 0,
-      totalCostUsd: 0,
-      monthTokens: 0,
-      monthRequestCount: 0,
-      monthCostUsd: 0,
-      last7Days: [],
-      byFeature: [],
-      byModel: [],
-    };
-  }
+async function buildUsageSummary(args: {
+  whereUserId?: string;
+  enabled: boolean;
+  configured: boolean;
+  model: string | null;
+}): Promise<OpenAiUsageSummary> {
+  const userFilter = args.whereUserId ? { userId: args.whereUserId } : {};
 
   const monthStart = new Date();
   monthStart.setDate(1);
@@ -94,32 +78,32 @@ export async function getOpenAiUsageSummary(userId: string): Promise<OpenAiUsage
 
   const [allTime, monthAgg, byFeatureRaw, byModelRaw, logs7d] = await Promise.all([
     prisma.openAiUsageLog.aggregate({
-      where: { userId },
+      where: userFilter,
       _sum: { promptTokens: true, completionTokens: true, totalTokens: true, estimatedCostUsd: true },
       _count: { id: true },
     }),
     prisma.openAiUsageLog.aggregate({
-      where: { userId, createdAt: { gte: monthStart } },
+      where: { ...userFilter, createdAt: { gte: monthStart } },
       _sum: { totalTokens: true, estimatedCostUsd: true },
       _count: { id: true },
     }),
     prisma.openAiUsageLog.groupBy({
       by: ["feature"],
-      where: { userId, createdAt: { gte: monthStart } },
+      where: { ...userFilter, createdAt: { gte: monthStart } },
       _sum: { totalTokens: true, estimatedCostUsd: true },
       _count: { id: true },
       orderBy: { _sum: { totalTokens: "desc" } },
     }),
     prisma.openAiUsageLog.groupBy({
       by: ["model"],
-      where: { userId, createdAt: { gte: monthStart } },
+      where: { ...userFilter, createdAt: { gte: monthStart } },
       _sum: { totalTokens: true, estimatedCostUsd: true },
       _count: { id: true },
       orderBy: { _sum: { totalTokens: "desc" } },
     }),
     prisma.openAiUsageLog.findMany({
       where: {
-        userId,
+        ...userFilter,
         createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
       },
       select: { totalTokens: true, createdAt: true },
@@ -142,18 +126,21 @@ export async function getOpenAiUsageSummary(userId: string): Promise<OpenAiUsage
     };
   });
 
+  const totalCostUsd = allTime._sum.estimatedCostUsd ?? 0;
+  const monthCostUsd = monthAgg._sum.estimatedCostUsd ?? 0;
+
   return {
-    enabled: user.openAiEnabled,
-    configured: true,
-    model: user.openAiModel,
+    enabled: args.enabled,
+    configured: args.configured,
+    model: args.model,
     totalTokens: allTime._sum.totalTokens ?? 0,
     promptTokens: allTime._sum.promptTokens ?? 0,
     completionTokens: allTime._sum.completionTokens ?? 0,
     requestCount: allTime._count.id,
-    totalCostUsd: allTime._sum.estimatedCostUsd ?? 0,
+    totalCostUsd,
     monthTokens: monthAgg._sum.totalTokens ?? 0,
     monthRequestCount: monthAgg._count.id,
-    monthCostUsd: monthAgg._sum.estimatedCostUsd ?? 0,
+    monthCostUsd,
     last7Days,
     byFeature: byFeatureRaw.map((r) => ({
       feature: r.feature,
@@ -170,4 +157,67 @@ export async function getOpenAiUsageSummary(userId: string): Promise<OpenAiUsage
         costUsd: r._sum.estimatedCostUsd ?? 0,
       })),
   };
+}
+
+export async function getOpenAiUsageSummary(userId: string): Promise<OpenAiUsageSummary | null> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { openAiEnabled: true, openAiApiKeyEnc: true, openAiModel: true },
+  });
+  const logCount = await prisma.openAiUsageLog.count({ where: { userId } });
+  if (!user?.openAiApiKeyEnc && logCount === 0) {
+    return {
+      enabled: user?.openAiEnabled ?? false,
+      configured: false,
+      model: user?.openAiModel ?? null,
+      totalTokens: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      requestCount: 0,
+      totalCostUsd: 0,
+      monthTokens: 0,
+      monthRequestCount: 0,
+      monthCostUsd: 0,
+      last7Days: [],
+      byFeature: [],
+      byModel: [],
+    };
+  }
+
+  return buildUsageSummary({
+    whereUserId: userId,
+    enabled: user?.openAiEnabled ?? false,
+    configured: Boolean(user?.openAiApiKeyEnc) || logCount > 0,
+    model: user?.openAiModel ?? null,
+  });
+}
+
+/** Vue agrégée pour administrateurs (tous les utilisateurs). */
+export async function getOpenAiUsageSummaryOrg(): Promise<OpenAiUsageSummary> {
+  const [configuredCount, logCount, anyUser] = await Promise.all([
+    prisma.user.count({ where: { openAiApiKeyEnc: { not: null } } }),
+    prisma.openAiUsageLog.count(),
+    prisma.user.findFirst({
+      where: { openAiApiKeyEnc: { not: null } },
+      select: { openAiModel: true, openAiEnabled: true },
+      orderBy: { updatedAt: "desc" },
+    }),
+  ]);
+
+  return buildUsageSummary({
+    enabled: anyUser?.openAiEnabled ?? configuredCount > 0,
+    configured: configuredCount > 0 || logCount > 0,
+    model: anyUser?.openAiModel ?? null,
+  });
+}
+
+/** Dashboard : org-wide pour admin/manager, sinon utilisateur courant. */
+export async function getOpenAiUsageSummaryForDashboard(
+  userId: string,
+  role: string,
+): Promise<OpenAiUsageSummary | null> {
+  if (role === "ADMIN" || role === "MANAGER") {
+    return getOpenAiUsageSummaryOrg();
+  }
+  return getOpenAiUsageSummary(userId);
 }

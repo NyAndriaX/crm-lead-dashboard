@@ -4,12 +4,18 @@
  * Utilise la clé OpenAI de l'utilisateur propriétaire de l'action (créateur
  * de campagne, assigné du lead, etc.). Sans clé → fallback déterministe.
  */
-import { openAiChatCompletion, resolveOpenAiCredentials, injectKnowledgeIntoMessages } from "@crm/db";
+import {
+  openAiChatCompletion,
+  resolveOpenAiCredentials,
+  injectKnowledgeIntoMessages,
+  injectCampaignKnowledgeIntoMessages,
+} from "@crm/db";
 
 export type AiMessage = { role: "system" | "user"; content: string };
 
 export async function aiComplete(args: {
   userId?: string | null;
+  campaignId?: string | null;
   feature?: string;
   messages: AiMessage[];
   maxTokens?: number;
@@ -20,7 +26,8 @@ export async function aiComplete(args: {
   const credentials = await resolveOpenAiCredentials(args.userId);
   if (!credentials) return { text: args.fallback(), source: "fallback" };
 
-  const messages = await injectKnowledgeIntoMessages(args.userId, args.messages);
+  let messages = await injectKnowledgeIntoMessages(args.userId, args.messages);
+  messages = await injectCampaignKnowledgeIntoMessages(args.campaignId, messages);
 
   const res = await openAiChatCompletion({
     credentials,
@@ -55,6 +62,7 @@ export type LeadLite = {
  */
 export async function aiPersonalizeEmail(args: {
   userId?: string | null;
+  campaignId?: string | null;
   subject: string;
   html: string;
   lead: LeadLite;
@@ -70,6 +78,7 @@ export async function aiPersonalizeEmail(args: {
 
   const { text, source } = await aiComplete({
     userId: args.userId,
+    campaignId: args.campaignId,
     feature: args.kind === "relance" ? "sequence_personalize" : "email_personalize",
     maxTokens: 900,
     temperature: 0.7,

@@ -12,6 +12,7 @@ import {
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
 import { SequencesDashboardPanel } from "@/components/sequences/SequencesDashboardPanel";
+import { labelWithHelp } from "@/components/ui/FieldHelp";
 
 const { Title, Text } = Typography;
 
@@ -23,12 +24,15 @@ type Step = {
   stopOnReply?: boolean;
   aiPersonalize?: boolean;
 };
+type CampaignOption = { id: string; name: string };
 type SequenceRow = {
   id: string;
   name: string;
   steps: Step[];
   maxSteps: number | null;
   isPaused: boolean;
+  campaignId?: string | null;
+  campaign?: { id: string; name: string } | null;
   createdAt: string;
   updatedAt: string;
   stats: Record<string, number>;
@@ -71,6 +75,7 @@ export default function SequencesPage() {
   const [allLeads, setAllLeads] = useState<LeadOption[]>([]);
   const [enrollIds, setEnrollIds] = useState<string[]>([]);
   const [enrolling, setEnrolling] = useState(false);
+  const [campaigns, setCampaigns] = useState<CampaignOption[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -88,6 +93,7 @@ export default function SequencesPage() {
   useEffect(() => {
     api.get<{ data: TemplateOption[] }>("/templates").then((r) => setTemplates(r.data.data)).catch(() => {});
     api.get<{ data: SmtpOption[] }>("/smtp-configs?active=true").then((r) => setSmtps(r.data.data)).catch(() => {});
+    api.get<{ data: CampaignOption[] }>("/campaigns").then((r) => setCampaigns(r.data.data ?? [])).catch(() => {});
   }, []);
 
   function openCreate() {
@@ -97,6 +103,7 @@ export default function SequencesPage() {
     form.setFieldsValue({
       name: "",
       maxSteps: null,
+      campaignId: null,
       steps: [{ delayDays: 0, templateId: null, stopOnReply: true }],
     });
     setEditorOpen(true);
@@ -107,6 +114,7 @@ export default function SequencesPage() {
     form.setFieldsValue({
       name: seq.name,
       maxSteps: seq.maxSteps,
+      campaignId: seq.campaignId ?? null,
       smtpConfigId: (seq as SequenceRow & { smtpConfigId?: string }).smtpConfigId ?? null,
       steps: seq.steps?.length ? seq.steps : [{ delayDays: 0, templateId: null, stopOnReply: true }],
     });
@@ -119,6 +127,7 @@ export default function SequencesPage() {
       const body = {
         name: values.name,
         maxSteps: values.maxSteps ?? null,
+        campaignId: (values.campaignId as string) || null,
         smtpConfigId: (values.smtpConfigId as string) || null,
         steps: (values.steps as Step[]).map((s) => ({
           delayDays: Number(s.delayDays ?? 0),
@@ -235,6 +244,14 @@ export default function SequencesPage() {
       ),
     },
     {
+      title: "Campagne",
+      key: "campaign",
+      width: 160,
+      ellipsis: true,
+      render: (_: unknown, r: SequenceRow) =>
+        r.campaign?.name ? <Tag color="blue">{r.campaign.name}</Tag> : <Text type="secondary">—</Text>,
+    },
+    {
       title: "État",
       key: "state",
       width: 120,
@@ -345,8 +362,20 @@ export default function SequencesPage() {
         <Form layout="vertical" form={form}>
           {/* Étape 0 : paramètres généraux */}
           <div style={{ display: editorStep === 0 ? "block" : "none" }}>
-            <Form.Item label="Nom de la séquence" name="name" rules={[{ required: true, message: "Nom requis" }]}>
+            <Form.Item label={labelWithHelp("Nom de la séquence", "Identifiant interne pour retrouver cette relance dans la liste.")} name="name" rules={[{ required: true, message: "Nom requis" }]}>
               <Input placeholder="Ex : Relance 3 étapes — prospects froids" />
+            </Form.Item>
+            <Form.Item
+              label={labelWithHelp("Campagne liée (optionnel)", "Associe cette séquence de relance à une campagne emailing. Hérite du contexte IA et de l'auto-répondeur de la campagne.")}
+              name="campaignId"
+            >
+              <Select
+                allowClear
+                placeholder="Aucune campagne"
+                showSearch
+                optionFilterProp="label"
+                options={campaigns.map((c) => ({ value: c.id, label: c.name }))}
+              />
             </Form.Item>
             <Form.Item
               label="SMTP d'envoi (optionnel — utilise le SMTP actif par défaut)"

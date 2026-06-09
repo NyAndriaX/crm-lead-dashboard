@@ -25,10 +25,12 @@ const configSchema = z.object({
   filter_country: z.boolean().optional().default(true),
   requireEmail: z.boolean().optional().default(true),
   dailyQuota: z.number().int().min(1).max(1000).nullable().optional(),
+  injectionTags: z.array(z.string().trim().min(1).max(64)).max(20).optional(),
   autoPipeline: z
     .object({
       enabled: z.boolean(),
       sequenceId: z.string().nullable().optional(),
+      tags: z.array(z.string().trim().min(1).max(64)).max(20).optional(),
     })
     .optional(),
   schedulePlan: schedulePlanSchema.optional(),

@@ -281,6 +281,7 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
     if (cfg?.aiPersonalize) {
       const ai = await aiPersonalizeEmail({
         userId: campaign.createdById,
+        campaignId,
         subject,
         html: body,
         lead: {

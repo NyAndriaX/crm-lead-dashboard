@@ -18,6 +18,7 @@ const createSchema = z.object({
   steps: z.array(stepSchema).min(1).max(20),
   maxSteps: z.number().int().min(1).max(20).nullable().optional(),
   isPaused: z.boolean().optional(),
+  campaignId: z.string().trim().min(1).nullable().optional(),
 });
 
 export const GET = handler(async () => {

@@ -11,7 +11,7 @@
  * (substring) + debounce 300 ms côté client. Le text index Mongo (`@@fulltext`) reste
  * disponible pour un `findRaw({ $text })` ranké si besoin ultérieur.
  */
-import { Prisma, prisma, notifyUser, type Lead, buildLeadWhereFromSegmentFilters, LEAD_NOT_DELETED, asStringArray, isEmailHashBlocked, gdprBlockMessage } from "@crm/db";
+import { Prisma, prisma, notifyUser, syncTags, type Lead, buildLeadWhereFromSegmentFilters, LEAD_NOT_DELETED, asStringArray, isEmailHashBlocked, gdprBlockMessage } from "@crm/db";
 import { decryptOrNull, emailHash, encryptOrNull, normalizeEmail } from "../crypto";
 import type {
   AssignLeadInput, ChangeStatusInput, CreateLeadInput, LeadFilters, ListLeadsQuery,
@@ -285,18 +285,6 @@ export async function setLeadTags(id: string, input: SetTagsInput, actorId?: str
   await prisma.leadHistory.create({ data: { leadId: id, userId: actorId, type: "tags_set", payload: { from: current.tags, to: tags } } });
   await syncTags(tags);
   return toDTO(lead);
-}
-
-/** Crée à la volée les tags absents de la collection `tags` (référentiel). */
-export async function syncTags(names: string[]): Promise<void> {
-  const wanted = Array.from(new Set(names.map((n) => n.trim()).filter(Boolean)));
-  if (wanted.length === 0) return;
-  const existing = await prisma.tag.findMany({ where: { name: { in: wanted } }, select: { name: true } });
-  const have = new Set(existing.map((t) => t.name));
-  const missing = wanted.filter((n) => !have.has(n));
-  for (const name of missing) {
-    try { await prisma.tag.create({ data: { name } }); } catch { /* course concurrente : unique violation ignorée */ }
-  }
 }
 
 export async function softDeleteLead(id: string, actorId?: string): Promise<void> {

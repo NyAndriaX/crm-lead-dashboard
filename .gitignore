@@ -39,6 +39,11 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 
+# e2e (playwright)
+e2e/test-results/
+e2e/report/
+playwright/.cache/
+
 # misc
 coverage/
 .turbo/

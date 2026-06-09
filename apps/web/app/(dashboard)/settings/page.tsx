@@ -1996,7 +1996,7 @@ const WEIGHT_GROUPS = [
       { key: "hasWebsite", label: "Site web renseigné", max: 20 },
       { key: "hasSector", label: "Secteur renseigné", max: 20 },
       { key: "hasLocation", label: "Localisation (ville/pays)", max: 20 },
-      { key: "enriched", label: "Enrichissement présent", max: 20 },
+      { key: "enriched", label: "Approche présente", max: 20 },
     ],
   },
   {
@@ -2038,12 +2038,12 @@ interface ImportJobRow {
   errorReport: string | null;
   createdAt: string;
   userId: string;
-  user: { firstName: string | null; lastName: string | null; email: string | null } | null;
+  user: { id: string; name: string } | null;
 }
 
 const IMPORT_STATUS_COLOR: Record<string, string> = {
-  PENDING: "default", RUNNING: "processing", DONE: "success",
-  FAILED: "error", CANCELLED: "warning",
+  pending: "default", running: "processing", done: "success",
+  failed: "error", cancelled: "warning",
 };
 
 function ImportsHistoryTab() {
@@ -2074,7 +2074,7 @@ function ImportsHistoryTab() {
       title: "Statut",
       dataIndex: "status",
       width: 110,
-      render: (s: string) => <Tag color={IMPORT_STATUS_COLOR[s] ?? "default"}>{s}</Tag>,
+      render: (s: string) => <Tag color={IMPORT_STATUS_COLOR[s.toLowerCase()] ?? "default"}>{s}</Tag>,
     },
     {
       title: "Lignes",
@@ -2096,7 +2096,7 @@ function ImportsHistoryTab() {
       render: (_: unknown, r: ImportJobRow) => {
         const u = r.user;
         if (!u) return <Text type="secondary">—</Text>;
-        return <Text>{[u.firstName, u.lastName].filter(Boolean).join(" ") || u.email || r.userId}</Text>;
+        return <Text>{u.name || r.userId}</Text>;
       },
     },
     {

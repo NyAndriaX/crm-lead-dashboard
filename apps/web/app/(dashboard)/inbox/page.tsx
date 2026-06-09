@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Table, Input, Select, Tag, Space, Button, Badge, Drawer, Typography, Divider, Form,
-  message, Tooltip, Switch, Empty, Card, Popconfirm,
+  message, Tooltip, Switch, Empty, Card, Popconfirm, Modal,
 } from "antd";
 import { ReloadOutlined, MailOutlined, CheckOutlined, SendOutlined, TagsOutlined, ThunderboltOutlined, DeleteOutlined, SyncOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
@@ -70,6 +70,9 @@ export default function InboxPage() {
   const [aiRetrying, setAiRetrying] = useState(false);
   const [aiNotice, setAiNotice] = useState<{ kind: "success" | "error" | "warning"; text: string } | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [imapSearching, setImapSearching] = useState(false);
+  const [imapModalOpen, setImapModalOpen] = useState(false);
+  const [imapHits, setImapHits] = useState<{ uid: number; subject: string | null; from: string | null; date: string | null }[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -114,6 +117,28 @@ export default function InboxPage() {
       form.setFieldsValue({ subject: replySubj });
     } catch {
       message.error("Impossible d'ouvrir le message.");
+    }
+  }
+
+  async function searchImapServer() {
+    const q = search.trim();
+    if (!q) {
+      message.warning("Saisissez un terme de recherche.");
+      return;
+    }
+    setImapSearching(true);
+    try {
+      const { data } = await api.post<{
+        data: { ok: boolean; message: string; hits: typeof imapHits };
+      }>("/inbox/imap-search", { query: q });
+      setImapHits(data.data.hits);
+      setImapModalOpen(true);
+      if (data.data.ok) message.success(data.data.message);
+      else message.warning(data.data.message);
+    } catch {
+      message.error("Recherche IMAP impossible.");
+    } finally {
+      setImapSearching(false);
     }
   }
 
@@ -326,6 +351,11 @@ export default function InboxPage() {
             checked={unreadOnly}
             onChange={(v) => { setUnreadOnly(v); setPage(1); }}
           />
+          <Tooltip title="Rechercher directement sur le serveur IMAP (commande SEARCH)">
+            <Button onClick={() => void searchImapServer()} loading={imapSearching}>
+              Recherche IMAP
+            </Button>
+          </Tooltip>
           <Tooltip title="Synchroniser les emails depuis le serveur IMAP maintenant">
             <Button icon={<SyncOutlined spin={syncing} />} onClick={() => void triggerImapSync()} loading={syncing}>
               Sync IMAP
@@ -479,6 +509,45 @@ export default function InboxPage() {
           </Space>
         )}
       </Drawer>
+
+      <Modal
+        title="Résultats recherche IMAP (serveur distant)"
+        open={imapModalOpen}
+        onCancel={() => setImapModalOpen(false)}
+        footer={[
+          <Button key="sync" type="primary" onClick={() => { setImapModalOpen(false); void triggerImapSync(); }}>
+            Synchroniser puis rafraîchir
+          </Button>,
+          <Button key="close" onClick={() => setImapModalOpen(false)}>Fermer</Button>,
+        ]}
+        width={720}
+      >
+        {imapHits.length === 0 ? (
+          <Empty description="Aucun message trouvé sur le serveur IMAP pour cette requête." />
+        ) : (
+          <Table
+            size="small"
+            rowKey="uid"
+            pagination={false}
+            dataSource={imapHits}
+            columns={[
+              { title: "UID", dataIndex: "uid", width: 70 },
+              { title: "Sujet", dataIndex: "subject", ellipsis: true, render: (v) => v ?? "—" },
+              { title: "De", dataIndex: "from", width: 180, ellipsis: true, render: (v) => v ?? "—" },
+              {
+                title: "Date",
+                dataIndex: "date",
+                width: 150,
+                render: (v: string | null) => (v ? new Date(v).toLocaleString("fr-FR") : "—"),
+              },
+            ]}
+          />
+        )}
+        <Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0, fontSize: 12 }}>
+          La recherche locale (champ ci-dessus) parcourt les messages déjà synchronisés en base.
+          La recherche IMAP interroge directement la boîte mail distante.
+        </Paragraph>
+      </Modal>
     </Space>
   );
 }

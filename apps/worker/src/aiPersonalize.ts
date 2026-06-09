@@ -30,6 +30,7 @@ function applyVars(
  */
 export async function aiPersonalizeBody(args: {
   userId?: string | null;
+  campaignId?: string | null;
   subject: string;
   bodyHtml: string;
   lead: LeadLite;
@@ -49,6 +50,7 @@ export async function aiPersonalizeBody(args: {
   const isRelance = /relance/i.test(args.stage);
   const { text, source } = await aiComplete({
     userId: args.userId,
+    campaignId: args.campaignId,
     feature: isRelance ? "sequence_personalize" : "email_personalize",
     maxTokens: 800,
     temperature: 0.7,
