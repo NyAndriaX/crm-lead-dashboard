@@ -109,6 +109,34 @@ docker logs -f crm
 
 Healthcheck intégré : `GET /api/health` sur le port 3000.
 
+### Dokploy — échec build `yarn install` / `ESOCKETTIMEDOUT`
+
+Si les logs montrent :
+
+```text
+There appears to be trouble with your network connection. Retrying...
+error Error: https://registry.npmjs.org/... ESOCKETTIMEDOUT
+```
+
+ce n’est **pas un bug applicatif** : le **serveur Dokploy** n’arrive pas à télécharger les paquets npm assez vite pendant `docker build` (connexion sortante lente ou instable).
+
+**Actions :**
+
+1. **Relancer le déploiement** (souvent transitoire).
+2. **Pousser le commit** avec `.yarnrc` + Dockerfile durci (timeout 10 min, retries, IPv4 prioritaire).
+3. Sur le VPS hôte Dokploy, vérifier l’accès npm :
+   ```bash
+   curl -I https://registry.npmjs.org/
+   ```
+4. Si ça échoue souvent : configurer le DNS Docker (`/etc/docker/daemon.json` → `"dns": ["8.8.8.8","1.1.1.1"]`) puis `systemctl restart docker`.
+5. **Alternative fiable** : builder l’image en **GitLab CI** et déployer l’image déjà buildée (registry) au lieu de builder sur le VPS.
+
+Variables build Dokploy optionnelles :
+
+| Variable | Valeur |
+|---|---|
+| `NODE_OPTIONS` | `--dns-result-order=ipv4first` |
+
 ## 4. Bare-metal (sans Docker)
 
 ```bash
