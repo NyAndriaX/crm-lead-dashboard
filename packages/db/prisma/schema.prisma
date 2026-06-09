@@ -459,8 +459,8 @@ model InboxMessage {
   fromEnc     Bytes
   toEnc       Bytes
   subject     String?
-  bodyText    String?  @db.Text
-  bodyHtml    String?  @db.Text
+  bodyText    String?  @db.LongText
+  bodyHtml    String?  @db.LongText
   category    String?
   isAutoReply Boolean  @default(false)
   isRead      Boolean  @default(false)
