@@ -4,23 +4,30 @@ import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Card, Descriptions, Timeline, Tag, Select, Button, Space, Typography, Progress,
-  message, Skeleton, Result, Row, Col, Modal, Empty, Popconfirm,
+  message, Skeleton, Result, Row, Col, Modal, Empty, Popconfirm, Form, Input,
+  InputNumber, List, Upload,
 } from "antd";
-import { ArrowLeftOutlined, ReloadOutlined, MailOutlined, ThunderboltOutlined, DeleteOutlined } from "@ant-design/icons";
+import {
+  ArrowLeftOutlined, ReloadOutlined, MailOutlined, ThunderboltOutlined, DeleteOutlined,
+  EuroOutlined, UploadOutlined, FileOutlined,
+} from "@ant-design/icons";
 import { api } from "@/lib/client";
 import SafeHtml from "@/components/SafeHtml";
 import { LeadEnrichmentCard } from "@/components/leads/LeadEnrichmentCard";
 import { STATUS_LABELS, STATUS_COLORS, allowedTransitions } from "@/lib/leadStatus";
+import { LEAD_NOTE_LEGAL_BASES, legalBasisLabel } from "@/lib/leadLegalBasis";
 import { useBreakpoint, useIsMobile } from "@/lib/responsive";
 import type { LeadStatus } from "@crm/db";
 
 const { Title, Text, Paragraph } = Typography;
+const { TextArea } = Input;
 
 interface LeadDTO {
   id: string; email: string | null; phone: string | null;
   firstName: string | null; lastName: string | null; company: string | null; website: string | null;
   sector: string | null; city: string | null; country: string | null; source: string | null;
   status: LeadStatus; emailStatus: string; score: number; tags: string[]; notes: string | null;
+  businessPotentialEur: number | null; pipelineStageId: string | null;
   assignedToId: string | null; lastActionAt: string | null; lastReplyAt: string | null;
   enrichment: unknown;
   createdAt: string; updatedAt: string;
@@ -44,6 +51,9 @@ const HISTORY_LABELS: Record<string, string> = {
   created: "Lead créé", updated: "Modifié", status_change: "Changement de statut",
   assigned: "Assigné", unassigned: "Désassigné", tags_set: "Tags modifiés",
   soft_deleted: "Archivé", restored: "Restauré", recalc_score: "Score recalculé",
+  note_added: "Note ajoutée", note_deleted: "Note supprimée",
+  document_added: "Document ajouté", document_deleted: "Document supprimé",
+  stage_change: "Changement de colonne", stage_and_status_change: "Colonne + statut",
 };
 
 function fullName(l: LeadDTO) {
@@ -63,18 +73,26 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const [tagsRef, setTagsRef] = useState<TagRef[]>([]);
   const [aiRetryingId, setAiRetryingId] = useState<string | null>(null);
   const [aiNotice, setAiNotice] = useState<{ kind: "success" | "error" | "warning"; text: string } | null>(null);
+  const [stages, setStages] = useState<{ id: string; name: string }[]>([]);
+  const [leadNotes, setLeadNotes] = useState<{ id: string; content: string; legalBasis: string | null; authorName: string | null; createdAt: string }[]>([]);
+  const [documents, setDocuments] = useState<{ id: string; fileName: string; sizeBytes: number }[]>([]);
+  const [potential, setPotential] = useState<number | null>(null);
+  const [noteForm] = Form.useForm();
   const isMobile = useIsMobile();
   const screens = useBreakpoint();
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: l }, { data: h }, { data: t }] = await Promise.all([
+      const [{ data: l }, { data: h }, { data: t }, { data: n }, { data: d }] = await Promise.all([
         api.get<LeadDTO>(`/leads/${id}`),
         api.get<{ data: HistoryEntry[] }>(`/leads/${id}/history`),
         api.get<{ data: ThreadMessage[] }>(`/leads/${id}/thread`),
+        api.get<{ data: typeof leadNotes }>(`/leads/${id}/notes`),
+        api.get<{ data: typeof documents }>(`/leads/${id}/documents`),
       ]);
-      setLead(l); setTags(l.tags); setHistory(h.data); setThread(t.data);
+      setLead(l); setTags(l.tags); setPotential(l.businessPotentialEur);
+      setHistory(h.data); setThread(t.data); setLeadNotes(n.data); setDocuments(d.data);
     } catch (e) {
       if ((e as { response?: { status?: number } }).response?.status === 404) setNotFound(true);
       else message.error("Impossible de charger le lead.");
@@ -84,12 +102,38 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { api.get<{ data: UserLite[] }>("/users").then((r) => setUsers(r.data.data)).catch(() => {}); }, []);
   useEffect(() => { api.get<{ data: TagRef[] }>("/tags").then((r) => setTagsRef(r.data.data ?? [])).catch(() => {}); }, []);
+  useEffect(() => {
+    api.get<{ data: { id: string; name: string }[] }>("/pipeline-stages").then((r) => setStages(r.data.data)).catch(() => {});
+  }, []);
 
   async function changeStatus(to: LeadStatus) {
     try {
       const { data } = await api.post<LeadDTO>(`/leads/${id}/status`, { status: to });
-      setLead(data); message.success(`Statut → ${STATUS_LABELS[to]}`); void load();
+      setLead(data); message.success(`Statut → ${STATUS_LABELS[to]} (pipeline synchronisé)`); void load();
     } catch (e) { message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Échec du changement de statut."); }
+  }
+  async function changePipelineStage(stageId: string) {
+    try {
+      await api.post(`/leads/${id}/pipeline-stage`, { stageId });
+      message.success("Colonne pipeline mise à jour"); void load();
+    } catch (e) {
+      message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Échec");
+    }
+  }
+  async function savePotential() {
+    try {
+      const { data } = await api.put<LeadDTO>(`/leads/${id}`, { businessPotentialEur: potential });
+      setLead(data); message.success("Potentiel enregistré");
+    } catch { message.error("Enregistrement impossible"); }
+  }
+  async function addNote() {
+    const values = await noteForm.validateFields();
+    try {
+      await api.post(`/leads/${id}/notes`, values);
+      noteForm.resetFields();
+      message.success("Note ajoutée");
+      void load();
+    } catch { message.error("Impossible d'ajouter la note"); }
   }
   async function assign(userId: string | null) {
     try {
@@ -167,6 +211,15 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
             onChange={changeStatus}
             options={allowedTransitions(lead.status).map((s) => ({ value: s, label: STATUS_LABELS[s] }))}
           />
+          {stages.length > 0 && (
+            <Select
+              placeholder="Colonne pipeline"
+              style={{ width: isMobile ? "100%" : 200 }}
+              value={lead.pipelineStageId ?? undefined}
+              onChange={changePipelineStage}
+              options={stages.map((s) => ({ value: s.id, label: s.name }))}
+            />
+          )}
           <Button danger onClick={confirmDelete} block={isMobile}>Archiver</Button>
         </Space>
       </div>
@@ -305,6 +358,18 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
           <Card title="Score" size="small" style={{ marginBottom: 16 }} extra={<Button size="small" icon={<ReloadOutlined />} onClick={recalc}>Recalculer</Button>}>
             <Progress percent={lead.score} status={lead.score >= 70 ? "success" : lead.score >= 40 ? "active" : "normal"} />
           </Card>
+          <Card title={<><EuroOutlined /> Potentiel (EUR)</>} size="small" style={{ marginBottom: 16 }}>
+            <Space.Compact style={{ width: "100%" }}>
+              <InputNumber
+                min={0}
+                precision={2}
+                style={{ width: "100%" }}
+                value={potential ?? undefined}
+                onChange={(v) => setPotential(v ?? null)}
+              />
+              <Button type="primary" onClick={() => void savePotential()}>OK</Button>
+            </Space.Compact>
+          </Card>
           <Card title="Assignation" size="small" style={{ marginBottom: 16 }}>
             <Select<string>
               allowClear placeholder="Aucun commercial" style={{ width: "100%" }}
@@ -387,6 +452,60 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                 Enregistrer les tags
               </Button>
             </Space>
+          </Card>
+
+          <Card title="Notes & base légale RGPD" size="small" style={{ marginBottom: 16 }}>
+            <Form form={noteForm} layout="vertical">
+              <Form.Item name="content" rules={[{ required: true, message: "Requis" }]}>
+                <TextArea rows={2} placeholder="Nouvelle note…" />
+              </Form.Item>
+              <Form.Item name="legalBasis" label="Base légale">
+                <Select allowClear placeholder="RGPD" options={LEAD_NOTE_LEGAL_BASES.map((b) => ({ value: b.value, label: b.label }))} />
+              </Form.Item>
+              <Button size="small" type="dashed" block onClick={() => void addNote()}>Ajouter</Button>
+            </Form>
+            <List
+              size="small"
+              style={{ marginTop: 8 }}
+              dataSource={leadNotes}
+              locale={{ emptyText: "Aucune note" }}
+              renderItem={(n) => (
+                <List.Item>
+                  <List.Item.Meta
+                    title={<Text style={{ fontSize: 11 }}>{legalBasisLabel(n.legalBasis)} · {new Date(n.createdAt).toLocaleString("fr-FR")}</Text>}
+                    description={n.content}
+                  />
+                </List.Item>
+              )}
+            />
+          </Card>
+
+          <Card title={<><FileOutlined /> Documents</>} size="small" style={{ marginBottom: 16 }}>
+            <Upload
+              customRequest={async ({ file, onSuccess, onError }) => {
+                try {
+                  const fd = new FormData();
+                  fd.append("file", file as File);
+                  await api.post(`/leads/${id}/documents`, fd, { headers: { "Content-Type": "multipart/form-data" } });
+                  message.success("Document ajouté");
+                  void load();
+                  onSuccess?.(file);
+                } catch (e) { onError?.(e as Error); }
+              }}
+              showUploadList={false}
+            >
+              <Button size="small" icon={<UploadOutlined />}>Joindre</Button>
+            </Upload>
+            <List
+              size="small"
+              dataSource={documents}
+              locale={{ emptyText: "Aucun document" }}
+              renderItem={(d) => (
+                <List.Item>
+                  <a href={`/api/leads/${id}/documents/${d.id}`} download={d.fileName}>{d.fileName}</a>
+                </List.Item>
+              )}
+            />
           </Card>
 
           <LeadEnrichmentCard

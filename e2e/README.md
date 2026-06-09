@@ -41,6 +41,9 @@ Variables optionnelles (`.env`) :
 | `segments.api.spec.ts` | CRUD segments + preview |
 | `sequences.api.spec.ts` | CRUD séquences de relance |
 | `pipeline.api.spec.ts` | Colonnes pipeline + déplacement lead |
+| `pipeline-lead-features.api.spec.ts` | Potentiel EUR, notes RGPD, documents, sync statut, analytics pipeline |
+| `pipeline-drawer.ui.spec.ts` | Clic carte pipeline → drawer (sans quitter `/pipeline`) |
+| `analytics-pipeline.ui.spec.ts` | Onglet Analytics Pipeline + métriques potentiel EUR |
 | `lead-views.api.spec.ts` | Vues personnalisées leads |
 | `campaigns.api.spec.ts` | Liste + création campagne (si SMTP dispo) |
 | `notifications-analytics.api.spec.ts` | Notifications, analytics, imports |

@@ -18,10 +18,10 @@ import {
   FilterOutlined, ProjectOutlined, ReloadOutlined, SearchOutlined, TrophyOutlined,
   UserOutlined, RiseOutlined, ClockCircleOutlined, PlusOutlined, DeleteOutlined,
 } from "@ant-design/icons";
-import Link from "next/link";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { api } from "@/lib/client";
 import { labelWithHelp } from "@/components/ui/FieldHelp";
+import { LeadPipelineDrawer } from "@/components/leads/LeadPipelineDrawer";
 
 const { Text, Title, Paragraph } = Typography;
 
@@ -45,6 +45,7 @@ type Lead = {
   status: string;
   score: number;
   tags: string[];
+  businessPotentialEur?: number | null;
   assignedToId: string | null;
   pipelineStageId: string | null;
   lastActionAt: string | null;
@@ -59,10 +60,13 @@ type StageMetric = {
   count: number;
   avgDaysInStage: number | null;
   conversionRateFromPrevious: number | null;
+  totalBusinessPotentialEur?: number;
+  avgBusinessPotentialEur?: number | null;
 };
 
 type Metrics = {
   totalLeads: number;
+  totalBusinessPotentialEur?: number;
   stages: StageMetric[];
   winRate: number | null;
 };
@@ -116,6 +120,7 @@ export default function PipelinePage() {
   const [reassignTo, setReassignTo] = useState<string | undefined>();
   const [stageSaving, setStageSaving] = useState(false);
   const [createForm] = Form.useForm();
+  const [drawerLeadId, setDrawerLeadId] = useState<string | null>(null);
 
   const fetchLeads = useCallback(async () => {
     const params = new URLSearchParams();
@@ -296,7 +301,16 @@ export default function PipelinePage() {
   }
 
   return (
-    <div style={{ padding: "16px 24px", height: "100%", display: "flex", flexDirection: "column" }}>
+    <div
+      style={{
+        padding: "16px 24px",
+        height: "calc(100vh - 64px)",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+        boxSizing: "border-box",
+      }}
+    >
       <div style={{ marginBottom: 16 }}>
         <Space align="center" style={{ width: "100%", justifyContent: "space-between" }}>
           <Space>
@@ -335,6 +349,15 @@ export default function PipelinePage() {
                 suffix="%"
                 valueStyle={{ fontSize: 22, color: "#52c41a" }}
                 prefix={<TrophyOutlined />}
+              />
+            )}
+            {(metrics.totalBusinessPotentialEur ?? 0) > 0 && (
+              <Statistic
+                title="Potentiel pipeline"
+                value={metrics.totalBusinessPotentialEur}
+                suffix="€"
+                valueStyle={{ fontSize: 22, color: "#fa8c16" }}
+                prefix={<RiseOutlined />}
               />
             )}
             <Statistic
@@ -423,12 +446,21 @@ export default function PipelinePage() {
         <DragDropContext onDragEnd={onDragEnd}>
           <div
             style={{
-              display: "flex",
-              gap: 12,
-              overflowX: "auto",
-              padding: "4px 0 12px",
               flex: 1,
               minHeight: 0,
+              overflowX: "auto",
+              overflowY: "hidden",
+              paddingBottom: 8,
+            }}
+          >
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              height: "100%",
+              minHeight: 420,
+              padding: "4px 4px 12px",
+              alignItems: "stretch",
             }}
           >
             {stages.map((stage) => {
@@ -440,6 +472,7 @@ export default function PipelinePage() {
                   style={{
                     flex: "0 0 320px",
                     minWidth: 320,
+                    maxHeight: "100%",
                     display: "flex",
                     flexDirection: "column",
                     background: "#fafafa",
@@ -494,6 +527,13 @@ export default function PipelinePage() {
                             </Text>
                           </Tooltip>
                         )}
+                        {(metric.totalBusinessPotentialEur ?? 0) > 0 && (
+                          <Tooltip title="Potentiel commercial total dans cette colonne">
+                            <Text type="secondary" style={{ fontSize: 11 }}>
+                              <RiseOutlined /> {metric.totalBusinessPotentialEur?.toLocaleString("fr-FR")} €
+                            </Text>
+                          </Tooltip>
+                        )}
                       </Space>
                     )}
                   </div>
@@ -534,10 +574,12 @@ export default function PipelinePage() {
                                     boxShadow: dragSnap.isDragging
                                       ? "0 4px 12px rgba(0,0,0,0.15)"
                                       : undefined,
-                                    cursor: "grab",
+                                    cursor: dragSnap.isDragging ? "grabbing" : "pointer",
+                                  }}
+                                  onClick={() => {
+                                    if (!dragSnap.isDragging) setDrawerLeadId(lead.id);
                                   }}
                                 >
-                                  <Link href={`/leads/${lead.id}`} style={{ color: "inherit" }}>
                                     <Space align="start" size={8} style={{ width: "100%" }}>
                                       <Avatar
                                         size="small"
@@ -571,6 +613,11 @@ export default function PipelinePage() {
                                             </Tooltip>
                                           )}
                                         </Space>
+                                        {(lead.businessPotentialEur ?? 0) > 0 && (
+                                          <Text type="secondary" style={{ fontSize: 11, display: "block", marginTop: 4 }}>
+                                            {lead.businessPotentialEur!.toLocaleString("fr-FR")} €
+                                          </Text>
+                                        )}
                                         {lead.tags && lead.tags.length > 0 && (
                                           <Space size={2} wrap style={{ marginTop: 4 }}>
                                             {lead.tags.slice(0, 2).map((t) => (
@@ -587,7 +634,6 @@ export default function PipelinePage() {
                                         )}
                                       </div>
                                     </Space>
-                                  </Link>
                                 </Card>
                               </div>
                             )}
@@ -634,8 +680,17 @@ export default function PipelinePage() {
               </button>
             )}
           </div>
+          </div>
         </DragDropContext>
       )}
+
+      <LeadPipelineDrawer
+        leadId={drawerLeadId}
+        open={!!drawerLeadId}
+        onClose={() => setDrawerLeadId(null)}
+        stages={stages}
+        onUpdated={() => void fetchAll()}
+      />
 
       <Modal
         title={<Space><PlusOutlined /><span>Nouvelle colonne</span></Space>}

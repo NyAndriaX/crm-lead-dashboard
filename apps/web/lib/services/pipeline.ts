@@ -23,12 +23,27 @@ export type PipelineStageItem = {
 const STATUS_BY_STAGE_NAME: Record<string, LeadStatus> = {
   "Nouveau": "NOUVEAU",
   "Contacté": "CONTACTE",
+  "Contacte": "CONTACTE",
   "Qualifié": "QUALIFIE",
+  "Qualifie": "QUALIFIE",
   "Négociation": "EN_DISCUSSION",
+  "Negociation": "EN_DISCUSSION",
   "En discussion": "EN_DISCUSSION",
   "Gagné": "CONVERTI",
+  "Gagne": "CONVERTI",
+  "Converti": "CONVERTI",
   "Perdu": "PERDU",
 };
+
+function statusForStageName(name: string): LeadStatus | undefined {
+  const exact = STATUS_BY_STAGE_NAME[name];
+  if (exact) return exact;
+  const lower = name.trim().toLowerCase();
+  for (const [k, v] of Object.entries(STATUS_BY_STAGE_NAME)) {
+    if (k.toLowerCase() === lower) return v;
+  }
+  return undefined;
+}
 
 /**
  * Repli statut → étape. Un lead sans `pipelineStageId` explicite (importé,
@@ -36,7 +51,7 @@ const STATUS_BY_STAGE_NAME: Record<string, LeadStatus> = {
  * son statut, sinon il n'apparaîtrait jamais dans le Kanban / les métriques.
  * Le `pipelineStageId` explicite (drag-drop) reste toujours prioritaire.
  */
-const STAGE_NAMES_BY_STATUS: Record<LeadStatus, string[]> = {
+export const STAGE_NAMES_BY_STATUS: Record<LeadStatus, string[]> = {
   NOUVEAU: ["Nouveau"],
   CONTACTE: ["Contacté", "Contacte"],
   QUALIFIE: ["Qualifié", "Qualifie"],
@@ -44,6 +59,63 @@ const STAGE_NAMES_BY_STATUS: Record<LeadStatus, string[]> = {
   CONVERTI: ["Gagné", "Gagne", "Converti"],
   PERDU: ["Perdu"],
 };
+
+export function resolveStageIdForStatus(
+  status: LeadStatus,
+  stages: { id: string; name: string }[],
+): string | null {
+  for (const name of STAGE_NAMES_BY_STATUS[status] ?? []) {
+    const found = stages.find((s) => s.name.trim().toLowerCase() === name.toLowerCase());
+    if (found) return found.id;
+  }
+  return null;
+}
+
+/** Synchronise la colonne pipeline quand le statut CRM change (fiche lead). */
+export async function syncPipelineStageForStatus(
+  leadId: string,
+  status: LeadStatus,
+  userId?: string | null,
+): Promise<{ stageId: string | null; changed: boolean }> {
+  const stages = await prisma.pipelineStage.findMany({ orderBy: { order: "asc" } });
+  const stageId = resolveStageIdForStatus(status, stages);
+  if (!stageId) return { stageId: null, changed: false };
+
+  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+  if (!lead || lead.deletedAt || lead.pipelineStageId === stageId) {
+    return { stageId, changed: false };
+  }
+
+  const previousStageId = lead.pipelineStageId;
+  await prisma.$transaction([
+    prisma.lead.update({
+      where: { id: leadId },
+      data: { pipelineStageId: stageId, lastActionAt: new Date() },
+    }),
+    prisma.leadPipeline.upsert({
+      where: { leadId },
+      create: { leadId, stageId, position: 0, enteredAt: new Date() },
+      update: { stageId, enteredAt: new Date() },
+    }),
+  ]);
+
+  const stage = stages.find((s) => s.id === stageId);
+  await prisma.leadHistory.create({
+    data: {
+      leadId,
+      userId: userId ?? null,
+      type: "stage_change",
+      payload: {
+        fromStageId: previousStageId,
+        toStageId: stageId,
+        toStageName: stage?.name ?? null,
+        source: "status_sync",
+      } as object,
+    },
+  });
+
+  return { stageId, changed: true };
+}
 
 function resolveEffectiveStageId(
   lead: { status: LeadStatus; pipelineStageId: string | null },
@@ -172,7 +244,7 @@ export async function moveLeadToStage(args: {
   const previousStatus = lead.status;
 
   // Inférence du nouveau status depuis le nom de l'étape (si mapping standard).
-  const nextStatus = STATUS_BY_STAGE_NAME[stage.name];
+  const nextStatus = statusForStageName(stage.name);
   const statusChanged = Boolean(nextStatus && nextStatus !== previousStatus);
 
   const position = args.position ?? 0;
@@ -235,20 +307,55 @@ export type StageMetric = {
   count: number;
   avgDaysInStage: number | null;
   conversionRateFromPrevious: number | null;
+  totalBusinessPotentialEur: number;
+  avgBusinessPotentialEur: number | null;
 };
 
 export type PipelineMetrics = {
   totalLeads: number;
+  totalBusinessPotentialEur: number;
   stages: StageMetric[];
   /** Taux de conversion global : leads en "Gagné" / total. */
   winRate: number | null;
 };
+
+function decimalToNumber(v: unknown): number {
+  if (v == null) return 0;
+  if (typeof v === "number") return v;
+  if (typeof v === "object" && v !== null && "toNumber" in v && typeof (v as { toNumber: () => number }).toNumber === "function") {
+    return (v as { toNumber: () => number }).toNumber();
+  }
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+async function businessPotentialByStage(
+  stages: { id: string; name: string }[],
+): Promise<Map<string, { total: number; count: number }>> {
+  const leads = await prisma.lead.findMany({
+    where: { deletedAt: null },
+    select: { status: true, pipelineStageId: true, businessPotentialEur: true },
+  });
+  const map = new Map<string, { total: number; count: number }>(
+    stages.map((s) => [s.id, { total: 0, count: 0 }]),
+  );
+  for (const l of leads) {
+    const sid = resolveEffectiveStageId(l, stages);
+    if (!sid || !map.has(sid)) continue;
+    const bucket = map.get(sid)!;
+    bucket.count += 1;
+    const eur = decimalToNumber(l.businessPotentialEur);
+    if (eur > 0) bucket.total += eur;
+  }
+  return map;
+}
 
 export async function pipelineMetrics(): Promise<PipelineMetrics> {
   const stages = await prisma.pipelineStage.findMany({ orderBy: { order: "asc" } });
 
   // Count par stage avec repli statut → étape (leads non supprimés).
   const countByStage = await effectiveCountByStage(stages);
+  const revenueByStage = await businessPotentialByStage(stages);
 
   // Durée moyenne dans chaque étape : moyenne de (now - LeadPipeline.enteredAt) pour les leads
   // actuellement présents dans cette étape (vue "santé du pipeline").
@@ -284,6 +391,7 @@ export async function pipelineMetrics(): Promise<PipelineMetrics> {
         conversionRateFromPrevious = prevCount > 0 ? Math.round((count / prevCount) * 1000) / 10 : null;
       }
     }
+    const rev = revenueByStage.get(s.id) ?? { total: 0, count: 0 };
     return {
       id: s.id,
       name: s.name,
@@ -292,13 +400,17 @@ export async function pipelineMetrics(): Promise<PipelineMetrics> {
       count,
       avgDaysInStage: avgDur(s.id),
       conversionRateFromPrevious,
+      totalBusinessPotentialEur: Math.round(rev.total * 100) / 100,
+      avgBusinessPotentialEur:
+        rev.count > 0 ? Math.round((rev.total / rev.count) * 100) / 100 : null,
     };
   });
 
   const totalLeads = stageMetrics.reduce((a, b) => a + b.count, 0);
+  const totalBusinessPotentialEur = stageMetrics.reduce((a, b) => a + b.totalBusinessPotentialEur, 0);
   const wonStage = stages.find((s) => s.name === "Gagné" || s.name === "Converti");
   const won = wonStage ? (countByStage.get(wonStage.id) ?? 0) : 0;
   const winRate = totalLeads > 0 ? Math.round((won / totalLeads) * 1000) / 10 : null;
 
-  return { totalLeads, stages: stageMetrics, winRate };
+  return { totalLeads, totalBusinessPotentialEur, stages: stageMetrics, winRate };
 }

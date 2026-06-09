@@ -22,6 +22,7 @@ export const createLeadSchema = z.object({
   status: leadStatus.optional(),
   tags: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
   notes: z.string().max(10_000).optional().nullable(),
+  businessPotentialEur: z.coerce.number().min(0).max(999_999_999).optional().nullable(),
   assignedToId: objectId.optional().nullable(),
 });
 export type CreateLeadInput = z.infer<typeof createLeadSchema>;

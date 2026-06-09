@@ -656,6 +656,121 @@ function ExportView({ period }: { period: Period }) {
   );
 }
 
+// ─── Pipeline & potentiel commercial ─────────────────────────────────────────
+
+type PipelineStageMetric = {
+  id: string;
+  name: string;
+  color: string | null;
+  count: number;
+  totalBusinessPotentialEur: number;
+  avgBusinessPotentialEur: number | null;
+  conversionRateFromPrevious: number | null;
+  avgDaysInStage: number | null;
+};
+
+type PipelineAnalytics = {
+  totalLeads: number;
+  totalBusinessPotentialEur: number;
+  winRate: number | null;
+  stages: PipelineStageMetric[];
+};
+
+function PipelineView() {
+  const [data, setData] = useState<PipelineAnalytics | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    void (async () => {
+      setLoading(true);
+      try {
+        const res = await api.get<{ data: PipelineAnalytics }>("/analytics/pipeline");
+        setData(res.data.data);
+      } catch {
+        message.error("Impossible de charger les métriques pipeline.");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  if (loading) return <div style={{ padding: 48, textAlign: "center" }}><Spin /></div>;
+  if (!data) return <Empty description="Aucune donnée pipeline" />;
+
+  const cols: ColumnsType<PipelineStageMetric> = [
+    { title: "Étape", dataIndex: "name", render: (n: string, r) => <Tag color={r.color ?? "blue"}>{n}</Tag> },
+    { title: "Leads", dataIndex: "count", width: 80 },
+    {
+      title: "Potentiel total",
+      dataIndex: "totalBusinessPotentialEur",
+      render: (v: number) => `${(v ?? 0).toLocaleString("fr-FR")} €`,
+    },
+    {
+      title: "Potentiel moyen",
+      dataIndex: "avgBusinessPotentialEur",
+      render: (v: number | null) => (v != null ? `${v.toLocaleString("fr-FR")} €` : "—"),
+    },
+    {
+      title: "Conv. étape préc.",
+      dataIndex: "conversionRateFromPrevious",
+      render: (v: number | null) => (v != null ? `${v}%` : "—"),
+    },
+    {
+      title: "Durée moy.",
+      dataIndex: "avgDaysInStage",
+      render: (v: number | null) => (v != null ? `${v} j` : "—"),
+    },
+  ];
+
+  return (
+    <Space direction="vertical" size="large" style={{ width: "100%" }}>
+      <Row gutter={16}>
+        <Col xs={24} sm={8}>
+          <Card><Statistic title="Leads en pipeline" value={data.totalLeads} prefix={<TeamOutlined />} /></Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card>
+            <Statistic
+              title="Potentiel commercial total"
+              value={data.totalBusinessPotentialEur}
+              suffix="€"
+              prefix={<DollarOutlined />}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card>
+            <Statistic
+              title="Taux de conversion"
+              value={data.winRate ?? 0}
+              suffix="%"
+              prefix={<TrophyOutlined />}
+            />
+          </Card>
+        </Col>
+      </Row>
+      <Card title="Détail par colonne du pipeline">
+        <Table rowKey="id" columns={cols} dataSource={data.stages} pagination={false} size="small" />
+      </Card>
+      {data.stages.some((s) => s.totalBusinessPotentialEur > 0) && (
+        <Card title="Potentiel par étape">
+          <Column
+            data={data.stages.map((s) => ({
+              stage: s.name,
+              potentiel: s.totalBusinessPotentialEur,
+            }))}
+            xField="stage"
+            yField="potentiel"
+            color="#fa8c16"
+            label={{ position: "top" }}
+            height={280}
+          />
+        </Card>
+      )}
+    </Space>
+  );
+}
+
 // ─── Page principale ─────────────────────────────────────────────────────────
 
 export default function AnalyticsPage() {
@@ -706,6 +821,11 @@ export default function AnalyticsPage() {
             key: "sales",
             label: <Space><UserOutlined /> Performance</Space>,
             children: <SalesView period={period} />,
+          },
+          {
+            key: "pipeline",
+            label: <Space><RiseOutlined /> Pipeline</Space>,
+            children: <PipelineView />,
           },
           {
             key: "export",

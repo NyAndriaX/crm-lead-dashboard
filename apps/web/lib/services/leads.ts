@@ -22,6 +22,7 @@ import { ApiError } from "../api";
 import { canTransition, STOPS_SEQUENCES } from "../leadStatus";
 import { computeScore, getWeightsFromDb } from "../scoring";
 import { enqueue } from "../jobs";
+import { syncPipelineStageForStatus } from "./pipeline";
 
 const SORTABLE = ["createdAt", "updatedAt", "score", "lastActionAt", "company", "firstName", "lastName"];
 
@@ -43,6 +44,7 @@ export interface LeadDTO {
   score: number;
   tags: string[];
   notes: string | null;
+  businessPotentialEur: number | null;
   assignedToId: string | null;
   pipelineStageId: string | null;
   enrichment: unknown;
@@ -71,6 +73,10 @@ export function toDTO(l: Lead): LeadDTO {
     score: l.score,
     tags: asStringArray(l.tags),
     notes: l.notes,
+    businessPotentialEur:
+      l.businessPotentialEur != null
+        ? Math.round(Number(l.businessPotentialEur) * 100) / 100
+        : null,
     assignedToId: l.assignedToId,
     pipelineStageId: l.pipelineStageId,
     enrichment: l.enrichment ?? null,
@@ -209,6 +215,10 @@ export async function updateLead(id: string, input: UpdateLeadInput, actorId?: s
   for (const k of ["firstName", "lastName", "company", "website", "sector", "city", "country", "source", "notes"] as const) {
     if (input[k] !== undefined) (data as Record<string, unknown>)[k] = input[k];
   }
+  if (input.businessPotentialEur !== undefined) {
+    data.businessPotentialEur =
+      input.businessPotentialEur == null ? null : input.businessPotentialEur;
+  }
   if (input.tags !== undefined) data.tags = input.tags;
   if (input.assignedToId !== undefined) {
     data.assignedTo =
@@ -248,7 +258,9 @@ export async function changeStatus(id: string, input: ChangeStatusInput, actorId
   });
   // Entrée dans un statut qui stoppe les relances → on planifie l'arrêt des séquences (CRM-041/047).
   if (STOPS_SEQUENCES.includes(input.status)) await enqueue("sequences-stop", { leadId: id, reason: `status:${input.status}` });
-  return toDTO(lead);
+  await syncPipelineStageForStatus(id, input.status, actorId);
+  const refreshed = await prisma.lead.findUnique({ where: { id } });
+  return toDTO(refreshed ?? lead);
 }
 
 /** Assignation à un commercial + notification (CRM-016). `assignedToId = null` pour désassigner. */

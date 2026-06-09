@@ -63,8 +63,17 @@ export async function cleanupE2eRun(runId: string): Promise<void> {
   });
   if (leads.length) {
     const ids = leads.map((l) => l.id);
+    await prisma.leadNote.deleteMany({ where: { leadId: { in: ids } } });
+    await prisma.leadDocument.deleteMany({ where: { leadId: { in: ids } } });
+    await prisma.leadPipeline.deleteMany({ where: { leadId: { in: ids } } });
     await prisma.sequenceLead.deleteMany({ where: { leadId: { in: ids } } });
     await prisma.leadHistory.deleteMany({ where: { leadId: { in: ids } } });
+    await prisma.emailEvent.deleteMany({ where: { leadId: { in: ids } } });
+    await prisma.inboxMessage.deleteMany({ where: { leadId: { in: ids } } });
+    await prisma.lead.updateMany({
+      where: { id: { in: ids } },
+      data: { pipelineStageId: null },
+    });
     await prisma.lead.deleteMany({ where: { id: { in: ids } } });
   }
 

@@ -114,6 +114,8 @@ model User {
   pushSubscriptions PushSubscription[]
   templateBlocks TemplateBlock[]
   openAiUsageLogs OpenAiUsageLog[]
+  leadNotes       LeadNote[]
+  leadDocuments   LeadDocument[]
 
   @@index([teamId])
 }
@@ -179,6 +181,7 @@ model Lead {
   score       Int         @default(0)
   tags        Json        @default("[]")
   notes       String?     @db.Text
+  businessPotentialEur Decimal? @db.Decimal(14, 2) // potentiel commercial EUR
   assignedToId String?
   pipelineStageId String?
   enrichment  Json?
@@ -192,6 +195,8 @@ model Lead {
   assignedTo     User?            @relation("LeadAssignee", fields: [assignedToId], references: [id])
   pipelineStage  PipelineStage?   @relation(fields: [pipelineStageId], references: [id])
   history        LeadHistory[]
+  leadNotes      LeadNote[]
+  documents      LeadDocument[]
   pipeline       LeadPipeline?
   inboxMessages  InboxMessage[]
   emailEvents    EmailEvent[]
@@ -213,6 +218,39 @@ model LeadHistory {
   createdAt DateTime @default(now())
 
   lead Lead @relation(fields: [leadId], references: [id])
+
+  @@index([leadId, createdAt])
+}
+
+// Notes horodatées sur un lead avec base légale RGPD associée.
+model LeadNote {
+  id         String   @id @default(cuid())
+  leadId     String
+  userId     String?
+  content    String   @db.Text
+  legalBasis String?  @db.VarChar(64) // base légale RGPD
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  lead Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([leadId, createdAt])
+}
+
+// Documents joints à un lead (stockage fichier local).
+model LeadDocument {
+  id          String   @id @default(cuid())
+  leadId      String
+  userId      String?
+  fileName    String
+  mimeType    String
+  sizeBytes   Int
+  storagePath String
+  createdAt   DateTime @default(now())
+
+  lead Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id])
 
   @@index([leadId, createdAt])
 }
