@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Card, Col, Row, Space, Statistic, Table, Tag, Typography } from "antd";
+import { Card, Col, Row, Select, Space, Statistic, Table, Tag, Typography } from "antd";
 import { ApiOutlined, SettingOutlined } from "@ant-design/icons";
 import { Column } from "@ant-design/charts";
 import { openAiFeatureLabel } from "@/lib/openaiUsageLabels";
@@ -26,6 +26,9 @@ export type OpenAiUsageData = {
   monthTokens: number;
   monthRequestCount: number;
   monthCostUsd: number;
+  periodYear?: number;
+  periodMonth?: number;
+  periodLabel?: string;
   last7Days: { date: string; tokens: number }[];
   byFeature: { feature: string; tokens: number; count: number; costUsd: number }[];
   byModel: { model: string; tokens: number; count: number; costUsd: number }[];
@@ -37,7 +40,22 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
-export function OpenAiUsageCard({ usage }: { usage: OpenAiUsageData }) {
+const MONTHS = Array.from({ length: 12 }, (_, i) => ({
+  value: i + 1,
+  label: new Date(2000, i, 1).toLocaleDateString("fr-FR", { month: "long" }),
+}));
+
+export function OpenAiUsageCard({
+  usage,
+  periodYear,
+  periodMonth,
+  onPeriodChange,
+}: {
+  usage: OpenAiUsageData;
+  periodYear?: number;
+  periodMonth?: number;
+  onPeriodChange?: (year: number, month: number) => void;
+}) {
   if (!usage.configured) return null;
 
   const colConfig = {
@@ -62,12 +80,35 @@ export function OpenAiUsageCard({ usage }: { usage: OpenAiUsageData }) {
         </Space>
       }
       extra={
-        <Link href="/settings?tab=openai">
-          <Space size={4}>
-            <SettingOutlined />
-            <span>Configurer</span>
-          </Space>
-        </Link>
+        <Space wrap>
+          {onPeriodChange && (
+            <>
+              <Select
+                size="small"
+                style={{ width: 100 }}
+                value={periodYear ?? usage.periodYear ?? new Date().getFullYear()}
+                options={Array.from({ length: 5 }, (_, i) => {
+                  const y = new Date().getFullYear() - i;
+                  return { value: y, label: String(y) };
+                })}
+                onChange={(y) => onPeriodChange(y, periodMonth ?? usage.periodMonth ?? new Date().getMonth() + 1)}
+              />
+              <Select
+                size="small"
+                style={{ width: 130 }}
+                value={periodMonth ?? usage.periodMonth ?? new Date().getMonth() + 1}
+                options={MONTHS}
+                onChange={(m) => onPeriodChange(periodYear ?? usage.periodYear ?? new Date().getFullYear(), m)}
+              />
+            </>
+          )}
+          <Link href="/settings?tab=openai">
+            <Space size={4}>
+              <SettingOutlined />
+              <span>Configurer</span>
+            </Space>
+          </Link>
+        </Space>
       }
     >
       <Text type="secondary" style={{ display: "block", marginBottom: 16 }}>
@@ -75,7 +116,7 @@ export function OpenAiUsageCard({ usage }: { usage: OpenAiUsageData }) {
       </Text>
       <Row gutter={[24, 16]}>
         <Col xs={12} sm={6}>
-          <Statistic title="Ce mois" value={formatTokens(usage.monthTokens)} suffix="tokens" />
+          <Statistic title={usage.periodLabel ?? "Ce mois"} value={formatTokens(usage.monthTokens)} suffix="tokens" />
         </Col>
         <Col xs={12} sm={6}>
           <Statistic title="Coût ce mois" value={formatCostUsd(usage.monthCostUsd ?? 0)} />

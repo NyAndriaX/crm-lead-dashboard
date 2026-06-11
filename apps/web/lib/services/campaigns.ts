@@ -1,4 +1,4 @@
-import { prisma } from "@crm/db";
+import { prisma, strictCreatorWhere, type DataScope } from "@crm/db";
 import { ApiError } from "../api";
 import { enqueue } from "../jobs";
 import type { CreateCampaignInput, UpdateCampaignInput } from "../schemas/campaign";
@@ -13,8 +13,9 @@ const defaultStats = () =>
     unsubscribes: 0,
   }) as Record<string, number>;
 
-export async function listCampaigns() {
+export async function listCampaigns(scope: DataScope) {
   return prisma.campaign.findMany({
+    where: strictCreatorWhere(scope.userId),
     orderBy: { updatedAt: "desc" },
     include: {
       template: { select: { id: true, name: true, subject: true } },
@@ -24,9 +25,9 @@ export async function listCampaigns() {
   });
 }
 
-export async function getCampaign(id: string) {
-  const c = await prisma.campaign.findUnique({
-    where: { id },
+export async function getCampaign(id: string, scope: DataScope) {
+  const c = await prisma.campaign.findFirst({
+    where: { id, ...strictCreatorWhere(scope.userId) },
     include: {
       template: true,
       segment: true,
@@ -37,7 +38,17 @@ export async function getCampaign(id: string) {
   return c;
 }
 
-export async function createCampaign(input: CreateCampaignInput, createdById: string) {
+async function assertOwnedSmtp(smtpConfigId: string | null | undefined, scope: DataScope) {
+  if (!smtpConfigId) return;
+  const smtp = await prisma.smtpConfig.findFirst({
+    where: { id: smtpConfigId, ownerUserId: scope.userId },
+    select: { id: true },
+  });
+  if (!smtp) throw new ApiError(403, "Compte SMTP non autorisé", "forbidden");
+}
+
+export async function createCampaign(input: CreateCampaignInput, scope: DataScope) {
+  await assertOwnedSmtp(input.smtpConfigId, scope);
   return prisma.campaign.create({
     data: {
       name: input.name,
@@ -50,7 +61,7 @@ export async function createCampaign(input: CreateCampaignInput, createdById: st
       dailyLimit: input.dailyLimit ?? null,
       stats: defaultStats() as object,
       ...(input.config != null ? { config: input.config as object } : {}),
-      createdById,
+      createdById: scope.userId,
     },
     include: {
       template: { select: { id: true, name: true } },
@@ -60,8 +71,9 @@ export async function createCampaign(input: CreateCampaignInput, createdById: st
   });
 }
 
-export async function updateCampaign(id: string, input: UpdateCampaignInput) {
-  const cur = await getCampaign(id);
+export async function updateCampaign(id: string, input: UpdateCampaignInput, scope: DataScope) {
+  const cur = await getCampaign(id, scope);
+  if (input.smtpConfigId !== undefined) await assertOwnedSmtp(input.smtpConfigId, scope);
   if (cur.status !== "DRAFT" && cur.status !== "SCHEDULED" && cur.status !== "PAUSED") {
     throw new ApiError(409, "Campagne non modifiable dans cet état", "invalid_status");
   }
@@ -87,8 +99,8 @@ export async function updateCampaign(id: string, input: UpdateCampaignInput) {
 
 const DELETABLE_STATUSES = new Set(["DRAFT", "CANCELLED", "DONE", "PAUSED"]);
 
-export async function deleteCampaign(id: string) {
-  const cur = await getCampaign(id);
+export async function deleteCampaign(id: string, scope: DataScope) {
+  const cur = await getCampaign(id, scope);
   if (!DELETABLE_STATUSES.has(cur.status)) {
     throw new ApiError(
       409,
@@ -102,16 +114,16 @@ export async function deleteCampaign(id: string) {
   ]);
 }
 
-export async function pauseCampaign(id: string) {
-  const cur = await getCampaign(id);
+export async function pauseCampaign(id: string, scope: DataScope) {
+  const cur = await getCampaign(id, scope);
   if (!["SCHEDULED", "SENDING"].includes(cur.status)) {
     throw new ApiError(409, "Campagne non pausable", "invalid_status");
   }
   return prisma.campaign.update({ where: { id }, data: { status: "PAUSED" } });
 }
 
-export async function scheduleCampaign(id: string, scheduledAt?: Date) {
-  const c = await getCampaign(id);
+export async function scheduleCampaign(id: string, scope: DataScope, scheduledAt?: Date) {
+  const c = await getCampaign(id, scope);
   if (c.status !== "DRAFT" && c.status !== "PAUSED") {
     throw new ApiError(409, "Seul un brouillon ou une campagne en pause peut être planifié", "invalid_status");
   }
@@ -134,12 +146,12 @@ export async function scheduleCampaign(id: string, scheduledAt?: Date) {
   return updated;
 }
 
-export async function resumeCampaign(id: string) {
-  const cur = await getCampaign(id);
+export async function resumeCampaign(id: string, scope: DataScope) {
+  const cur = await getCampaign(id, scope);
   if (cur.status !== "PAUSED") throw new ApiError(409, "Reprise impossible", "invalid_status");
   await prisma.campaign.update({ where: { id }, data: { status: "SENDING" } });
   await enqueue("campaign-send", { campaignId: id, offset: 0 }, { runAt: new Date(), priority: 2 });
-  return getCampaign(id);
+  return getCampaign(id, scope);
 }
 
 export type CampaignStatsAgg = {

@@ -20,6 +20,8 @@ import { SecuritySection } from "@/components/admin/SecuritySection";
 import { PipelineStagesSection } from "@/components/admin/PipelineStagesSection";
 import { WebhooksSection } from "@/components/admin/WebhooksSection";
 import { RgpdSection } from "@/components/admin/RgpdSection";
+import { KnowledgeBasesSection } from "@/components/admin/KnowledgeBasesSection";
+import { BrandingSection } from "@/components/admin/BrandingSection";
 import { SettingsTabsLayout, type SettingsTabItem } from "@/components/admin/SettingsTabsLayout";
 import {
   Card, Typography, Table, Button, Tag, Space, Form, InputNumber, Row, Col,
@@ -32,7 +34,7 @@ import {
   TeamOutlined, CalendarOutlined, SettingOutlined, LockOutlined, DeleteOutlined,
   MailOutlined, CloudOutlined, CodeOutlined, EyeOutlined, CopyOutlined, BookOutlined,
   AppstoreOutlined, ApiOutlined, FileProtectOutlined, InboxOutlined, BarChartOutlined,
-  ThunderboltOutlined,
+  ThunderboltOutlined, BgColorsOutlined, DatabaseOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
@@ -2396,12 +2398,28 @@ const SETTINGS_TABS: SettingsTabItem[] = [
     children: <ImportsHistoryTab />,
   },
   {
+    key: "knowledge-bases",
+    label: "Bases de connaissances",
+    group: "Plateforme",
+    description: "Documents Markdown réutilisables dans campagnes, relances et réponses.",
+    icon: <DatabaseOutlined />,
+    children: <KnowledgeBasesSection />,
+  },
+  {
     key: "openai",
     label: "Intégration IA",
     group: "Plateforme",
     description: "Clé OpenAI, auto-répondeur et consommation par utilisateur.",
     icon: <ThunderboltOutlined />,
     children: <OpenAiSection />,
+  },
+  {
+    key: "branding",
+    label: "Identité du site",
+    group: "Plateforme",
+    description: "Nom et icône affichés dans la barre latérale.",
+    icon: <BgColorsOutlined />,
+    children: <BrandingSection />,
   },
   {
     key: "audit",

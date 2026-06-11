@@ -10,7 +10,7 @@ import {
 import {
   DownloadOutlined, SaveOutlined, ReloadOutlined, PlusOutlined,
   DeleteOutlined, UserSwitchOutlined, TagsOutlined, ThunderboltOutlined,
-  RetweetOutlined, MoreOutlined, EditOutlined, EnvironmentOutlined, TeamOutlined,
+  RetweetOutlined, MoreOutlined, EditOutlined, EnvironmentOutlined, TeamOutlined, MailOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType, TablePaginationConfig } from "antd/es/table";
 import type { SorterResult } from "antd/es/table/interface";
@@ -38,10 +38,10 @@ interface CreateLeadForm {
   email?: string; phone?: string; firstName?: string; lastName?: string;
   company?: string; website?: string; sector?: string; city?: string;
   country?: string; source?: string; status?: string; notes?: string;
-  assignedToId?: string;
+  assignedToId?: string; tags?: string[];
 }
 
-type BulkAction = "delete" | "assign" | "status" | "tags-add" | "tags-remove" | "enroll-sequence" | "create-segment";
+type BulkAction = "delete" | "assign" | "status" | "tags-add" | "tags-remove" | "enroll-sequence" | "create-segment" | "exclude-campaign";
 
 export default function LeadsPage() {
   const router = useRouter();
@@ -54,6 +54,7 @@ export default function LeadsPage() {
   const [filters, setFilters] = useState<Filters>({});
   const [views, setViews] = useState<LeadView[]>([]);
   const [tagsRef, setTagsRef] = useState<TagDTO[]>([]);
+  const [campaignsRef, setCampaignsRef] = useState<{ id: string; name: string; status: string }[]>([]);
   const [sequences, setSequences] = useState<SequenceLite[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkOpen, setBulkOpen] = useState<BulkAction | null>(null);
@@ -87,6 +88,11 @@ export default function LeadsPage() {
   useEffect(() => { api.get<{ data: LeadView[] }>("/lead-views").then((r) => setViews(r.data.data)).catch(() => {}); }, []);
   useEffect(() => { api.get<{ data: UserLite[] }>("/users").then((r) => setUsers(r.data.data)).catch(() => {}); }, []);
   useEffect(() => { api.get<{ data: TagDTO[] }>("/tags").then((r) => setTagsRef(r.data.data ?? [])).catch(() => {}); }, []);
+  useEffect(() => {
+    api.get<{ data: { id: string; name: string; status: string }[] }>("/campaigns")
+      .then((r) => setCampaignsRef((r.data.data ?? []).filter((c) => ["SCHEDULED", "SENDING", "PAUSED"].includes(c.status))))
+      .catch(() => {});
+  }, []);
   useEffect(() => {
     api.get<{ data: SequenceLite[] }>("/sequences").then((r) => setSequences(r.data.data ?? [])).catch(() => {});
   }, []);
@@ -230,6 +236,7 @@ export default function LeadsPage() {
         phone: values.phone || null,
         assignedToId: values.assignedToId || null,
         website: values.website || null,
+        tags: values.tags ?? [],
       });
       message.success("Lead créé avec succès");
       form.resetFields();
@@ -256,6 +263,7 @@ export default function LeadsPage() {
       case "tags-remove": return "Retirer des tags";
       case "enroll-sequence": return "Inscrire dans une séquence";
       case "create-segment": return "Créer un segment";
+      case "exclude-campaign": return "Retirer de la campagne en cours";
       default: return "";
     }
   }
@@ -346,6 +354,7 @@ export default function LeadsPage() {
                 items: [
                   { key: "tags-remove", label: <Space><TagsOutlined /> Retirer des tags</Space>, onClick: () => openBulk("tags-remove") },
                   { key: "enroll-sequence", label: <Space><RetweetOutlined /> Inscrire dans une séquence</Space>, onClick: () => openBulk("enroll-sequence") },
+                  { key: "exclude-campaign", label: <Space><MailOutlined /> Retirer de campagne email</Space>, onClick: () => openBulk("exclude-campaign") },
                 ],
               }}
             >
@@ -445,6 +454,14 @@ export default function LeadsPage() {
                   value: t.name,
                   label: <Tag color={t.color ?? "default"} style={{ margin: 0 }}>{t.name}</Tag>,
                 }))}
+              />
+            </Form.Item>
+          )}
+          {bulkOpen === "exclude-campaign" && (
+            <Form.Item name="campaignId" label="Campagne active" rules={[{ required: true }]}>
+              <Select
+                placeholder="Choisir une campagne en cours…"
+                options={campaignsRef.map((c) => ({ value: c.id, label: `${c.name} (${c.status})` }))}
               />
             </Form.Item>
           )}
@@ -569,6 +586,14 @@ export default function LeadsPage() {
               options={users.map((u) => ({ value: u.id, label: `${u.name} (${u.email})` }))}
               showSearch
               filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
+            />
+          </Form.Item>
+          <Form.Item name="tags" label="Tags">
+            <Select
+              mode="tags"
+              placeholder="Ajouter des tags…"
+              tokenSeparators={[","]}
+              options={tagsRef.map((t) => ({ value: t.name, label: t.name }))}
             />
           </Form.Item>
           <Form.Item name="notes" label="Notes">

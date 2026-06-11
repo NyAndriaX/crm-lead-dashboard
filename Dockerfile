@@ -1,6 +1,8 @@
 # Alias de docker/Dockerfile.app — web + worker (RUN_MODE=all par défaut).
 #   docker build -t crm-app .
 # Voir aussi apps/web/Dockerfile et apps/worker/Dockerfile (identiques).
+#
+# Au démarrage (ENTRYPOINT) : db push → init-prod → migrate-data-owners --apply
 FROM node:20-bookworm-slim AS base
 WORKDIR /app
 

@@ -267,22 +267,45 @@ export function RgpdSection() {
                         key: "actions",
                         width: 140,
                         render: (_, r) => (
-                          <Popconfirm
-                            title="Réintégrer ce lead ?"
-                            description="Le lead redeviendra visible et contactable dans le CRM."
-                            okText="Réintégrer"
-                            cancelText="Annuler"
-                            onConfirm={() => void restoreArchived(r.id)}
-                          >
-                            <Button
-                              type="link"
-                              size="small"
-                              icon={<RollbackOutlined />}
-                              loading={restoringId === r.id}
+                          <Space>
+                            <Popconfirm
+                              title="Réintégrer ce lead ?"
+                              description="Le lead redeviendra visible et contactable dans le CRM."
+                              okText="Réintégrer"
+                              cancelText="Annuler"
+                              onConfirm={() => void restoreArchived(r.id)}
                             >
-                              Réintégrer
-                            </Button>
-                          </Popconfirm>
+                              <Button
+                                type="link"
+                                size="small"
+                                icon={<RollbackOutlined />}
+                                loading={restoringId === r.id}
+                              >
+                                Réintégrer
+                              </Button>
+                            </Popconfirm>
+                            <Popconfirm
+                              title="Passer en suppression RGPD ?"
+                              description="Le lead sera effacé définitivement et son email bloqué pour toute réintégration."
+                              okText="Supprimer RGPD"
+                              okButtonProps={{ danger: true }}
+                              cancelText="Annuler"
+                              onConfirm={async () => {
+                                try {
+                                  await api.post(`/rgpd/archived-leads/${encodeURIComponent(r.id)}/erase`);
+                                  message.success("Lead passé en suppression RGPD.");
+                                  void fetchArchived(archivedPage);
+                                  void fetchErased(1);
+                                } catch (e) {
+                                  message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur");
+                                }
+                              }}
+                            >
+                              <Button type="link" size="small" danger icon={<StopOutlined />}>
+                                RGPD
+                              </Button>
+                            </Popconfirm>
+                          </Space>
                         ),
                       },
                     ]}

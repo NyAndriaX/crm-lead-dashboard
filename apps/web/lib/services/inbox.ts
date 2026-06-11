@@ -4,7 +4,7 @@
  * Les champs `fromEnc` / `toEnc` sont stockés chiffrés AES-256-GCM. Ce service
  * déchiffre uniquement côté serveur, et n'expose JAMAIS le payload encrypté brut.
  */
-import { prisma, Prisma } from "@crm/db";
+import { prisma, Prisma, strictOwnerWhere, type DataScope } from "@crm/db";
 import { ApiError } from "@/lib/api";
 import { decryptOrNull } from "@/lib/crypto";
 
@@ -97,7 +97,7 @@ function mapItem(row: {
   };
 }
 
-export async function listInbox(filter: InboxFilter): Promise<{
+export async function listInbox(scope: DataScope, filter: InboxFilter): Promise<{
   data: InboxItem[];
   total: number;
   page: number;
@@ -107,6 +107,7 @@ export async function listInbox(filter: InboxFilter): Promise<{
   const pageSize = Math.min(100, Math.max(1, filter.pageSize ?? 25));
 
   const where: Prisma.InboxMessageWhereInput = {
+    ...strictOwnerWhere(scope.userId),
     direction: "inbound",
     isAutoReply: false,
     deletedAt: null,
@@ -153,9 +154,9 @@ export async function listInbox(filter: InboxFilter): Promise<{
   };
 }
 
-export async function getInboxMessage(id: string): Promise<InboxThreadItem | null> {
-  const row = await prisma.inboxMessage.findUnique({
-    where: { id },
+export async function getInboxMessage(id: string, scope: DataScope): Promise<InboxThreadItem | null> {
+  const row = await prisma.inboxMessage.findFirst({
+    where: { id, ...strictOwnerWhere(scope.userId) },
     include: {
       lead: {
         select: { id: true, firstName: true, lastName: true, company: true, status: true },
@@ -170,9 +171,9 @@ export async function getInboxMessage(id: string): Promise<InboxThreadItem | nul
   };
 }
 
-export async function getLeadThread(leadId: string): Promise<InboxThreadItem[]> {
+export async function getLeadThread(leadId: string, scope: DataScope): Promise<InboxThreadItem[]> {
   const rows = await prisma.inboxMessage.findMany({
-    where: { leadId, deletedAt: null },
+    where: { leadId, deletedAt: null, ...strictOwnerWhere(scope.userId) },
     include: {
       lead: {
         select: { id: true, firstName: true, lastName: true, company: true, status: true },
@@ -187,19 +188,22 @@ export async function getLeadThread(leadId: string): Promise<InboxThreadItem[]> 
   }));
 }
 
-export async function markInboxRead(id: string, isRead: boolean): Promise<void> {
+export async function markInboxRead(id: string, isRead: boolean, scope: DataScope): Promise<void> {
+  const row = await getInboxMessage(id, scope);
+  if (!row) throw new ApiError(404, "Message introuvable", "not_found");
   await prisma.inboxMessage.update({ where: { id }, data: { isRead } });
 }
 
-export async function assignInboxToLead(id: string, leadId: string | null): Promise<void> {
+export async function assignInboxToLead(id: string, leadId: string | null, scope: DataScope): Promise<void> {
+  const row = await getInboxMessage(id, scope);
+  if (!row) throw new ApiError(404, "Message introuvable", "not_found");
   await prisma.inboxMessage.update({ where: { id }, data: { leadId } });
 }
 
-export async function countUnreadInbox(): Promise<number> {
-  // Aligné sur la vue "replies" : ne compte que les vraies réponses non lues
-  // (rattachées à un lead, hors auto-replies) — pas toute la boîte mail.
+export async function countUnreadInbox(scope: DataScope): Promise<number> {
   return prisma.inboxMessage.count({
     where: {
+      ...strictOwnerWhere(scope.userId),
       direction: "inbound",
       isRead: false,
       leadId: { not: null },
@@ -209,9 +213,9 @@ export async function countUnreadInbox(): Promise<number> {
   });
 }
 
-export async function deleteInboxMessage(id: string): Promise<void> {
-  const row = await prisma.inboxMessage.findUnique({
-    where: { id },
+export async function deleteInboxMessage(id: string, scope: DataScope): Promise<void> {
+  const row = await prisma.inboxMessage.findFirst({
+    where: { id, ...strictOwnerWhere(scope.userId) },
     select: { id: true, leadId: true, deletedAt: true },
   });
   if (!row || row.deletedAt) throw new ApiError(404, "Message introuvable", "not_found");

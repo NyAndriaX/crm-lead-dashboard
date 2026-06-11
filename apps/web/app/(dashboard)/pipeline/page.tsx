@@ -17,6 +17,7 @@ import {
 import {
   FilterOutlined, ProjectOutlined, ReloadOutlined, SearchOutlined, TrophyOutlined,
   UserOutlined, RiseOutlined, ClockCircleOutlined, PlusOutlined, DeleteOutlined,
+  HolderOutlined,
 } from "@ant-design/icons";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { api } from "@/lib/client";
@@ -51,7 +52,7 @@ type Lead = {
   lastActionAt: string | null;
 };
 
-type UserOption = { id: string; name: string; email: string };
+type UserOption = { id: string; name: string; email: string; role?: string };
 
 type StageMetric = {
   id: string;
@@ -121,6 +122,11 @@ export default function PipelinePage() {
   const [stageSaving, setStageSaving] = useState(false);
   const [createForm] = Form.useForm();
   const [drawerLeadId, setDrawerLeadId] = useState<string | null>(null);
+  const [reorderOpen, setReorderOpen] = useState(false);
+  const [reorderIds, setReorderIds] = useState<string[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [pipelineOwnerId, setPipelineOwnerId] = useState<string | undefined>(undefined);
+  const [pipelineReadOnly, setPipelineReadOnly] = useState(false);
 
   const fetchLeads = useCallback(async () => {
     const params = new URLSearchParams();
@@ -141,12 +147,14 @@ export default function PipelinePage() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
+      const ownerQs = pipelineOwnerId ? `?ownerUserId=${encodeURIComponent(pipelineOwnerId)}` : "";
       const [stagesRes, metricsRes, usersRes] = await Promise.all([
-        api.get<{ data: Stage[] }>("/pipeline-stages"),
-        api.get<{ data: Metrics }>("/pipeline/metrics"),
+        api.get<{ data: Stage[]; readOnly?: boolean; ownerUserId?: string }>(`/pipeline-stages${ownerQs}`),
+        api.get<{ data: Metrics }>(`/pipeline/metrics${ownerQs}`),
         api.get<{ data: UserOption[] }>("/users"),
       ]);
       setStages(stagesRes.data.data);
+      setPipelineReadOnly(Boolean(stagesRes.data.readOnly));
       setMetrics(metricsRes.data.data);
       setUsers(usersRes.data.data);
       await fetchLeads();
@@ -155,14 +163,20 @@ export default function PipelinePage() {
     } finally {
       setLoading(false);
     }
-  }, [fetchLeads]);
+  }, [fetchLeads, pipelineOwnerId]);
 
   useEffect(() => { void fetchAll(); }, [fetchAll]);
 
   useEffect(() => {
-    api.get<{ permissions: string[] }>("/auth/me")
-      .then(({ data }) => setCanManagePipeline(data.permissions.includes("pipeline:manage")))
-      .catch(() => setCanManagePipeline(false));
+    api.get<{ permissions: string[]; role?: string }>("/auth/me")
+      .then(({ data }) => {
+        setCanManagePipeline(data.permissions.includes("pipeline:manage"));
+        setIsAdmin(data.role === "ADMIN");
+      })
+      .catch(() => {
+        setCanManagePipeline(false);
+        setIsAdmin(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -216,6 +230,7 @@ export default function PipelinePage() {
   );
 
   async function onDragEnd(result: DropResult) {
+    if (pipelineReadOnly) return;
     const { destination, source, draggableId } = result;
     if (!destination) return;
     if (destination.droppableId === source.droppableId && destination.index === source.index) return;
@@ -282,6 +297,33 @@ export default function PipelinePage() {
     }
   }
 
+  function openReorder() {
+    setReorderIds(stages.map((s) => s.id));
+    setReorderOpen(true);
+  }
+
+  async function saveReorder() {
+    setStageSaving(true);
+    try {
+      await api.put("/pipeline-stages/reorder", { orderedIds: reorderIds });
+      message.success("Ordre des colonnes enregistré");
+      setReorderOpen(false);
+      await fetchAll();
+    } catch (e) {
+      message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur");
+    } finally {
+      setStageSaving(false);
+    }
+  }
+
+  function onReorderDragEnd(result: DropResult) {
+    if (!result.destination) return;
+    const items = Array.from(reorderIds);
+    const [removed] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, removed!);
+    setReorderIds(items);
+  }
+
   async function confirmDeleteStage() {
     if (!deleteTarget) return;
     setStageSaving(true);
@@ -322,16 +364,43 @@ export default function PipelinePage() {
               </Tag>
             )}
           </Space>
-          <Space>
-            {canManagePipeline && (
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-                Ajouter une colonne
-              </Button>
+          <Space wrap>
+            {isAdmin && (
+              <Select
+                allowClear
+                placeholder="Mon pipeline"
+                style={{ minWidth: 220 }}
+                value={pipelineOwnerId}
+                onChange={(v) => setPipelineOwnerId(v)}
+                options={users
+                  .filter((u) => u.role && u.role !== "ADMIN")
+                  .map((u) => ({ value: u.id, label: `Pipeline : ${u.name}` }))}
+              />
+            )}
+            {canManagePipeline && !pipelineReadOnly && (
+              <>
+                <Button icon={<HolderOutlined />} onClick={openReorder}>
+                  Réorganiser les colonnes
+                </Button>
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+                  Ajouter une colonne
+                </Button>
+              </>
             )}
             <Button icon={<ReloadOutlined />} onClick={() => fetchAll()}>Actualiser</Button>
           </Space>
         </Space>
       </div>
+
+      {pipelineReadOnly && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="Vue en lecture seule"
+          description="Vous consultez le pipeline d'un collaborateur. Ses emails, IMAP et paramètres OpenAI restent privés."
+        />
+      )}
 
       {metrics && (
         <Card size="small" style={{ marginBottom: 16 }}>
@@ -710,6 +779,55 @@ export default function PipelinePage() {
             <ColorPicker presets={[{ label: "Couleurs", colors: DEFAULT_COLORS }]} showText />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="Réorganiser les colonnes"
+        open={reorderOpen}
+        onOk={() => void saveReorder()}
+        onCancel={() => setReorderOpen(false)}
+        confirmLoading={stageSaving}
+        okText="Enregistrer l'ordre"
+      >
+        <DragDropContext onDragEnd={onReorderDragEnd}>
+          <Droppable droppableId="stage-reorder">
+            {(provided) => (
+              <div ref={provided.innerRef} {...provided.droppableProps}>
+                {reorderIds.map((sid, index) => {
+                  const stage = stages.find((s) => s.id === sid);
+                  if (!stage) return null;
+                  return (
+                    <Draggable key={sid} draggableId={sid} index={index}>
+                      {(drag) => (
+                        <div
+                          ref={drag.innerRef}
+                          {...drag.draggableProps}
+                          {...drag.dragHandleProps}
+                          style={{
+                            ...drag.draggableProps.style,
+                            padding: "10px 12px",
+                            marginBottom: 8,
+                            background: "#fafafa",
+                            border: "1px solid #f0f0f0",
+                            borderRadius: 8,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                          }}
+                        >
+                          <HolderOutlined />
+                          <div style={{ width: 10, height: 10, borderRadius: "50%", background: stage.color ?? "#d9d9d9" }} />
+                          <Text>{stage.name}</Text>
+                        </div>
+                      )}
+                    </Draggable>
+                  );
+                })}
+                {provided.placeholder}
+              </div>
+            )}
+          </Droppable>
+        </DragDropContext>
       </Modal>
 
       <Modal

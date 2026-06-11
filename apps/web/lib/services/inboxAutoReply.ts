@@ -39,6 +39,7 @@ function resultMessage(args: {
 export async function retryInboxAutoReply(args: {
   inboxMessageId: string;
   sessionUserId: string;
+  knowledgeBaseId?: string | null;
 }): Promise<{
   ok: boolean;
   acted: boolean;
@@ -75,6 +76,12 @@ export async function retryInboxAutoReply(args: {
     await prisma.inboxMessage.update({ where: { id: msg.id }, data: { category } });
   }
 
+  const lastCampaign = await prisma.emailEvent.findFirst({
+    where: { leadId: msg.leadId, campaignId: { not: null } },
+    orderBy: { occurredAt: "desc" },
+    select: { campaignId: true },
+  });
+
   const r = await maybeAutoRespond({
     leadId: msg.leadId,
     category,
@@ -82,6 +89,8 @@ export async function retryInboxAutoReply(args: {
     inboundBodyText: msg.bodyText,
     inboundBodyHtml: msg.bodyHtml,
     inboundMessageId: msg.messageId,
+    campaignId: lastCampaign?.campaignId ?? null,
+    knowledgeBaseId: args.knowledgeBaseId ?? null,
   });
 
   return {

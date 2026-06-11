@@ -10,8 +10,9 @@
  *  - Lead.lastActionAt = now.
  */
 import { z } from "zod";
-import { handler, json, parseBody, requirePermission, ApiError } from "@/lib/api";
+import { handler, json, parseBody, requirePermission } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
+import { scopeError, toScope } from "@/lib/scope";
 import { moveLeadToStage } from "@/lib/services/pipeline";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +26,7 @@ const schema = z.object({
 
 export const POST = handler<Ctx>(async (req, { params }) => {
   const session = await requirePermission("pipeline:manage");
+  const scope = toScope(session);
   const { id: rawId } = await params;
   const leadId = z.string().min(1).parse(rawId);
   const input = await parseBody(req, schema);
@@ -34,6 +36,7 @@ export const POST = handler<Ctx>(async (req, { params }) => {
       leadId,
       stageId: input.stageId,
       position: input.position,
+      scope,
       userId: session.sub,
     });
     await audit({
@@ -46,7 +49,6 @@ export const POST = handler<Ctx>(async (req, { params }) => {
     });
     return json({ data: result });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    throw new ApiError(400, msg, "move_failed");
+    scopeError(e);
   }
 });

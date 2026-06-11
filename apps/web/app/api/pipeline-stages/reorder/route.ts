@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { handler, json, parseBody, requirePermission } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
+import { toScope } from "@/lib/scope";
 import { reorderStages } from "@/lib/services/pipeline";
 
 export const dynamic = "force-dynamic";
@@ -12,8 +13,9 @@ const schema = z.object({
 /** PUT /api/pipeline-stages/reorder — réordonne les étapes (drag-drop des colonnes). */
 export const PUT = handler(async (req) => {
   const session = await requirePermission("pipeline:manage");
+  const scope = toScope(session);
   const input = await parseBody(req, schema);
-  await reorderStages(input.orderedIds);
+  await reorderStages(input.orderedIds, scope);
   await audit({
     userId: session.sub,
     action: "pipeline.stage.reorder",

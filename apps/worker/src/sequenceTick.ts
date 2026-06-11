@@ -16,7 +16,7 @@
  */
 import * as crypto from "node:crypto";
 import nodemailer from "nodemailer";
-import { prisma } from "@crm/db";
+import { prisma, buildSmtpNodemailerAuth } from "@crm/db";
 import type { WorkerJobContext } from "@crm/queue";
 import { aiPersonalizeEmail } from "./ai";
 
@@ -96,9 +96,10 @@ async function completeSequenceLead(id: string): Promise<void> {
   });
 }
 
-async function pickActiveSmtp() {
+async function pickActiveSmtp(ownerUserId: string | null) {
+  if (!ownerUserId) return null;
   return prisma.smtpConfig.findFirst({
-    where: { isActive: true },
+    where: { isActive: true, ownerUserId },
     orderBy: { sentToday: "asc" },
   });
 }
@@ -148,19 +149,28 @@ async function sendStep(args: {
   }
   if (!subject || !bodyHtml) return { sent: false, error: "step_incomplete" };
 
-  const smtpRow = await pickActiveSmtp();
+  const seqMeta = await prisma.sequence.findUnique({
+    where: { id: sequenceId },
+    select: { createdById: true },
+  });
+  const smtpOwnerId = seqMeta?.createdById ?? lead.assignedToId;
+  const smtpRow = await pickActiveSmtp(smtpOwnerId);
   if (!smtpRow) return { sent: false, error: "no_smtp" };
+  let smtpAuth: Awaited<ReturnType<typeof buildSmtpNodemailerAuth>>;
+  try {
+    smtpAuth = await buildSmtpNodemailerAuth(smtpRow, decryptOrNull);
+  } catch {
+    return { sent: false, error: "smtp_credentials_unreadable" };
+  }
   const login = decryptOrNull(smtpRow.loginEnc);
-  const pass = decryptOrNull(smtpRow.passwordEnc);
-  if (!login || !pass) return { sent: false, error: "smtp_credentials_unreadable" };
-  const fromAddr = smtpRow.fromEmail ?? login;
+  const fromAddr = smtpRow.fromEmail ?? smtpRow.oauthMailSender ?? login ?? "no-reply@crm";
   const fromName = smtpRow.fromName ?? "CRM";
 
   const transporter = nodemailer.createTransport({
     host: smtpRow.host,
     port: smtpRow.port,
     secure: smtpRow.port === 465,
-    auth: { user: login, pass },
+    auth: smtpAuth,
     tls: { rejectUnauthorized: false },
   });
 
@@ -174,8 +184,9 @@ async function sendStep(args: {
   // A2 (F6) — réécriture IA unique par destinataire pour la relance.
   if (step.aiPersonalize) {
     const ai = await aiPersonalizeEmail({
-      userId: lead.assignedToId,
+      userId: smtpOwnerId,
       campaignId,
+      sequenceId,
       subject,
       html: bodyHtml,
       lead: {
@@ -234,6 +245,7 @@ async function sendStep(args: {
     await prisma.inboxMessage.create({
       data: {
         leadId: lead.id,
+        ownerUserId: smtpOwnerId,
         messageId: messageIdKey,
         inReplyTo: lastOutbound?.messageId ?? null,
         direction: "outbound",

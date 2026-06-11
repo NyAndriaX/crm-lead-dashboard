@@ -20,7 +20,10 @@ import {
   prisma,
   notifyUser,
   resolveAutoResponderUserId,
+  getAutoResponderSettings,
   DEFAULT_AUTO_RESPONDER_MEETING_URL,
+  buildSmtpNodemailerAuth,
+  parseCampaignKnowledgeFromConfig,
   type AutoResponderMode,
 } from "@crm/db";
 import { aiComplete } from "./ai";
@@ -57,6 +60,19 @@ function encryptValue(plaintext: string): Buffer {
 
 function stripHtmlToText(html: string): string {
   return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function normalizeAiEmailHtml(raw: string): string {
+  let html = raw.trim().replace(/^```html?\s*/i, "").replace(/```\s*$/i, "").trim();
+  if (!/<[a-z][\s\S]*>/i.test(html)) {
+    return html
+      .split(/\n{2,}/)
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .map((p) => `<p>${p.split(/\n/).map((l) => l.replace(/^[-*•]\s+/, "").trim()).join("<br/>")}</p>`)
+      .join("\n");
+  }
+  return html.replace(/<ul>\s*<li>([\s\S]*?)<\/li>\s*<\/ul>/gi, "<p>$1</p>");
 }
 
 function escapeHtml(s: string): string {
@@ -98,8 +114,12 @@ function fallbackReply(args: {
   return null; // hors_sujet / auto_reply → pas de réponse
 }
 
-async function pickActiveSmtp() {
-  return prisma.smtpConfig.findFirst({ where: { isActive: true }, orderBy: { sentToday: "asc" } });
+async function pickActiveSmtp(ownerUserId: string | null) {
+  if (!ownerUserId) return null;
+  return prisma.smtpConfig.findFirst({
+    where: { isActive: true, ownerUserId },
+    orderBy: { sentToday: "asc" },
+  });
 }
 
 /**
@@ -114,6 +134,7 @@ export async function maybeAutoRespond(args: {
   inboundBodyHtml: string | null;
   inboundMessageId: string | null;
   campaignId?: string | null;
+  knowledgeBaseId?: string | null;
 }): Promise<{ acted: boolean; mode: Mode; reason?: string }> {
   try {
     const lead = await prisma.lead.findUnique({
@@ -130,28 +151,44 @@ export async function maybeAutoRespond(args: {
     });
     if (!lead || lead.deletedAt) return { acted: false, mode: "off", reason: "lead_missing" };
 
-    if (!args.campaignId) {
-      return { acted: false, mode: "off", reason: "no_campaign" };
+    let m: Mode = "off";
+    let meetingUrl = DEFAULT_AUTO_RESPONDER_MEETING_URL;
+    let responderUserId: string | null = lead.assignedToId ?? (await resolveAutoResponderUserId(lead.assignedToId));
+    let campaignKnowledgeBaseId: string | null = null;
+
+    if (args.campaignId) {
+      const camp = await prisma.campaign.findUnique({
+        where: { id: args.campaignId },
+        select: { config: true, createdById: true },
+      });
+      const cfg = (camp?.config ?? {}) as Record<string, unknown>;
+      const ar = (cfg.autoResponder ?? null) as { mode?: string; meetingUrl?: string } | null;
+      campaignKnowledgeBaseId = parseCampaignKnowledgeFromConfig(camp?.config).knowledgeBaseId ?? null;
+      if (ar?.mode && ar.mode !== "off") {
+        m = ar.mode as Mode;
+        meetingUrl = ar.meetingUrl?.trim() || DEFAULT_AUTO_RESPONDER_MEETING_URL;
+        responderUserId = camp?.createdById ?? responderUserId;
+      }
     }
 
-    const camp = await prisma.campaign.findUnique({
-      where: { id: args.campaignId },
-      select: { config: true, createdById: true },
-    });
-    const cfg = (camp?.config ?? {}) as Record<string, unknown>;
-    const ar = (cfg.autoResponder ?? null) as { mode?: string; meetingUrl?: string } | null;
-    if (!ar?.mode || ar.mode === "off") {
-      return { acted: false, mode: "off", reason: "campaign_auto_responder_off" };
+    if (m === "off" && responderUserId) {
+      const userAr = await getAutoResponderSettings(responderUserId);
+      if (userAr.mode !== "off") {
+        m = userAr.mode;
+        meetingUrl = userAr.meetingUrl;
+      }
     }
 
-    const m = ar.mode as Mode;
-    const meetingUrl = ar.meetingUrl?.trim() || DEFAULT_AUTO_RESPONDER_MEETING_URL;
-    const responderUserId =
-      camp?.createdById ??
-      lead.assignedToId ??
-      (await resolveAutoResponderUserId(lead.assignedToId));
+    if (m === "off") return { acted: false, mode: "off", reason: "auto_responder_off" };
 
-    if (m === "off") return { acted: false, mode: m, reason: "auto_responder_off" };
+    let kbId = args.knowledgeBaseId ?? campaignKnowledgeBaseId ?? null;
+    if (!kbId && responderUserId) {
+      const u = await prisma.user.findUnique({
+        where: { id: responderUserId },
+        select: { openAiKnowledgeBaseId: true },
+      });
+      kbId = u?.openAiKnowledgeBaseId ?? null;
+    }
     if (args.category === "hors_sujet" || args.category === "auto_reply") {
       return { acted: false, mode: m, reason: "category_skipped" };
     }
@@ -175,6 +212,7 @@ export async function maybeAutoRespond(args: {
     const ai = await aiComplete({
       userId: responderUserId,
       campaignId: args.campaignId,
+      knowledgeBaseId: kbId,
       feature: "auto_reply",
       maxTokens: 500,
       temperature: 0.6,
@@ -189,6 +227,8 @@ export async function maybeAutoRespond(args: {
             "chaleureuse. Réponds en tenant compte des préoccupations/demandes spécifiques du client. " +
             "Ne rien inventer. Si catégorie 'pas_interesse' : remercie, n'insiste pas, laisse la porte " +
             `ouverte. Si 'interesse'/'rappel' : propose un RDV via ce lien : ${meetingUrl}. ` +
+            "Structure l'email en paragraphes HTML (<p>...</p>) avec retours à la ligne naturels. " +
+            "Pas de listes à puces sauf si le client en a utilisé. " +
             'Réponds UNIQUEMENT en JSON {"subject": string, "html": string}. Pas de markdown.',
         },
         {
@@ -206,13 +246,15 @@ export async function maybeAutoRespond(args: {
     try {
       const parsed = JSON.parse(ai.text) as { subject?: string; html?: string };
       if (parsed.subject) subject = parsed.subject;
-      if (parsed.html) html = parsed.html;
+      if (parsed.html) html = normalizeAiEmailHtml(parsed.html);
     } catch {
       /* garde le fallback */
     }
 
-    const smtp = await pickActiveSmtp();
-    const fromAddr = smtp ? smtp.fromEmail ?? decryptOrNull(smtp.loginEnc) ?? "no-reply@crm" : "no-reply@crm";
+    const smtp = await pickActiveSmtp(responderUserId);
+    const fromAddr = smtp
+      ? smtp.fromEmail ?? smtp.oauthMailSender ?? decryptOrNull(smtp.loginEnc) ?? "no-reply@crm"
+      : "no-reply@crm";
     const fromName = smtp?.fromName ?? "Équipe commerciale";
     const senderDomain = (String(fromAddr).split("@")[1] ?? "crm").replace(/[^a-zA-Z0-9.\-]/g, "");
     const messageId = `<crm-auto-${args.leadId}-${Date.now()}@${senderDomain}>`;
@@ -224,14 +266,13 @@ export async function maybeAutoRespond(args: {
 
     let sent = false;
     if (m === "auto" && smtp) {
-      const login = decryptOrNull(smtp.loginEnc);
-      const pass = decryptOrNull(smtp.passwordEnc);
-      if (login && pass) {
+      try {
+        const auth = await buildSmtpNodemailerAuth(smtp, decryptOrNull);
         const transporter = nodemailer.createTransport({
           host: smtp.host,
           port: smtp.port,
           secure: smtp.port === 465,
-          auth: { user: login, pass },
+          auth,
           tls: { rejectUnauthorized: false },
         });
         await transporter.sendMail({
@@ -244,6 +285,8 @@ export async function maybeAutoRespond(args: {
         });
         await prisma.smtpConfig.update({ where: { id: smtp.id }, data: { sentToday: { increment: 1 } } });
         sent = true;
+      } catch (e) {
+        console.warn("[autoResponder] SMTP OAuth/envoi échoué:", e instanceof Error ? e.message : e);
       }
     }
 
@@ -251,6 +294,7 @@ export async function maybeAutoRespond(args: {
     await prisma.inboxMessage.create({
       data: {
         leadId: args.leadId,
+        ownerUserId: responderUserId,
         messageId: messageId.replace(/^<|>$/g, ""),
         inReplyTo: args.inboundMessageId,
         direction: "outbound",

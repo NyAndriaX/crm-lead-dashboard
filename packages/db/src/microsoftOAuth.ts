@@ -145,6 +145,7 @@ export async function pollDeviceCodeToken(
     const body = new URLSearchParams({
       grant_type: "urn:ietf:params:oauth:grant-type:device_code",
       client_id: cfg.clientId,
+      client_secret: cfg.clientSecret,
       device_code: deviceCode,
     }).toString();
 

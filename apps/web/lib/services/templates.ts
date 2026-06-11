@@ -1,4 +1,5 @@
-import { prisma } from "@crm/db";
+import { prisma, strictCreatorWhere, type DataScope } from "@crm/db";
+import { ApiError } from "../api";
 
 export interface TemplateInput {
   name: string;
@@ -34,18 +35,28 @@ const TEMPLATE_SELECT = {
   updatedAt: true,
 } as const;
 
-export async function listTemplates() {
-  return prisma.template.findMany({ orderBy: { updatedAt: "desc" }, select: TEMPLATE_SELECT });
+export async function listTemplates(scope: DataScope) {
+  return prisma.template.findMany({
+    where: strictCreatorWhere(scope.userId),
+    orderBy: { updatedAt: "desc" },
+    select: TEMPLATE_SELECT,
+  });
 }
 
-export async function getTemplate(id: string) {
-  return prisma.template.findUnique({ where: { id }, select: TEMPLATE_SELECT });
+export async function getTemplate(id: string, scope: DataScope) {
+  const row = await prisma.template.findFirst({
+    where: { id, ...strictCreatorWhere(scope.userId) },
+    select: TEMPLATE_SELECT,
+  });
+  if (!row) throw new ApiError(404, "Template introuvable", "not_found");
+  return row;
 }
 
-export async function createTemplate(input: TemplateInput) {
+export async function createTemplate(input: TemplateInput, scope: DataScope) {
   return prisma.template.create({
     data: {
       name: input.name,
+      createdById: scope.userId,
       category: input.category ?? null,
       subject: input.subject,
       bodyHtml: input.bodyHtml,
@@ -58,7 +69,8 @@ export async function createTemplate(input: TemplateInput) {
   });
 }
 
-export async function updateTemplate(id: string, input: TemplateUpdateInput) {
+export async function updateTemplate(id: string, input: TemplateUpdateInput, scope: DataScope) {
+  await getTemplate(id, scope);
   return prisma.template.update({
     where: { id },
     data: {
@@ -74,14 +86,14 @@ export async function updateTemplate(id: string, input: TemplateUpdateInput) {
   });
 }
 
-export async function deleteTemplate(id: string) {
+export async function deleteTemplate(id: string, scope: DataScope) {
+  await getTemplate(id, scope);
   await prisma.template.delete({ where: { id } });
 }
 
-/** Duplique un template (y compris un préréglé catalogue) en modèle éditable non-préréglé. */
-export async function duplicateTemplate(sourceId: string) {
-  const src = await prisma.template.findUnique({ where: { id: sourceId } });
-  if (!src) return null;
+/** Duplique un template en modèle éditable non-préréglé. */
+export async function duplicateTemplate(sourceId: string, scope: DataScope) {
+  const src = await getTemplate(sourceId, scope);
   const prefix = "Copie — ";
   const maxName = 150;
   const raw = `${prefix}${src.name}`;
@@ -89,6 +101,7 @@ export async function duplicateTemplate(sourceId: string) {
   return prisma.template.create({
     data: {
       name,
+      createdById: scope.userId,
       category: src.category,
       subject: src.subject,
       bodyHtml: src.bodyHtml,

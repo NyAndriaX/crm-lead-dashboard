@@ -3,7 +3,7 @@
  * (module R-01 Inbox CRM). Symétrique au service SMTP : credentials AES-256-GCM,
  * jamais retournés en clair par les endpoints.
  */
-import { prisma } from "@crm/db";
+import { prisma, strictOwnerWhere, type DataScope } from "@crm/db";
 import { encryptOrNull } from "@/lib/crypto";
 
 export interface ImapConfigInput {
@@ -36,18 +36,22 @@ const PUBLIC_SELECT = {
   oauthMailbox: true,
 } as const;
 
-export async function listImapConfigs() {
+export async function listImapConfigs(scope: DataScope) {
   return prisma.imapConfig.findMany({
+    where: strictOwnerWhere(scope.userId),
     select: PUBLIC_SELECT,
     orderBy: { createdAt: "desc" },
   });
 }
 
-export async function getImapConfig(id: string) {
-  return prisma.imapConfig.findUnique({ where: { id }, select: PUBLIC_SELECT });
+export async function getImapConfig(id: string, scope: DataScope) {
+  return prisma.imapConfig.findFirst({
+    where: { id, ...strictOwnerWhere(scope.userId) },
+    select: PUBLIC_SELECT,
+  });
 }
 
-export async function createImapConfig(input: ImapConfigInput) {
+export async function createImapConfig(input: ImapConfigInput, scope: DataScope) {
   return prisma.imapConfig.create({
     data: {
       label: input.label,
@@ -56,12 +60,13 @@ export async function createImapConfig(input: ImapConfigInput) {
       loginEnc: encryptOrNull(input.login)!,
       passwordEnc: encryptOrNull(input.password)!,
       isActive: input.isActive ?? true,
+      ownerUserId: scope.userId,
     },
     select: PUBLIC_SELECT,
   });
 }
 
-export async function updateImapConfig(id: string, input: ImapConfigUpdateInput) {
+export async function updateImapConfig(id: string, input: ImapConfigUpdateInput, scope: DataScope) {
   const data: Record<string, unknown> = {
     ...(input.label !== undefined ? { label: input.label } : {}),
     ...(input.host !== undefined ? { host: input.host } : {}),
@@ -74,6 +79,8 @@ export async function updateImapConfig(id: string, input: ImapConfigUpdateInput)
   if (input.password !== undefined && input.password !== null && input.password !== "") {
     data.passwordEnc = encryptOrNull(input.password);
   }
+  const existing = await getImapConfig(id, scope);
+  if (!existing) throw new Error("IMAP introuvable");
   return prisma.imapConfig.update({
     where: { id },
     data,
@@ -81,7 +88,9 @@ export async function updateImapConfig(id: string, input: ImapConfigUpdateInput)
   });
 }
 
-export async function deleteImapConfig(id: string) {
+export async function deleteImapConfig(id: string, scope: DataScope) {
+  const existing = await getImapConfig(id, scope);
+  if (!existing) throw new Error("IMAP introuvable");
   await prisma.imapConfig.delete({ where: { id } });
 }
 
@@ -170,7 +179,7 @@ export type ImapSearchHit = {
  * Recherche live sur le serveur IMAP (commande SEARCH TEXT).
  * Retourne les en-têtes des messages correspondants sans les importer en base.
  */
-export async function searchImapMailbox(query: string, limit = 30): Promise<{
+export async function searchImapMailbox(scope: DataScope, query: string, limit = 30): Promise<{
   ok: boolean;
   message: string;
   hits: ImapSearchHit[];
@@ -179,7 +188,7 @@ export async function searchImapMailbox(query: string, limit = 30): Promise<{
   if (!q) return { ok: false, message: "Requête vide", hits: [] };
 
   const cfg = await prisma.imapConfig.findFirst({
-    where: { isActive: true },
+    where: { isActive: true, ...strictOwnerWhere(scope.userId) },
     orderBy: { lastSyncAt: "desc" },
   });
   if (!cfg) return { ok: false, message: "Aucun compte IMAP actif configuré", hits: [] };

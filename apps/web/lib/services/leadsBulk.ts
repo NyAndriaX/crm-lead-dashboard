@@ -200,3 +200,65 @@ export async function bulkEnrollInSequence(
   });
   return { requested: list.length, succeeded: toEnroll.length, failed: 0, errors: [] };
 }
+
+/** Retire des leads d'une campagne en cours (exclusion + marqueur SENT fictif). */
+export async function bulkExcludeFromCampaign(
+  ids: string[],
+  campaignId: string,
+): Promise<BulkResult> {
+  const list = clampIds(ids);
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+    select: { id: true, status: true, config: true },
+  });
+  if (!campaign) {
+    return {
+      requested: list.length, succeeded: 0, failed: list.length,
+      errors: [{ id: "*", error: "Campagne introuvable" }],
+    };
+  }
+  if (!["SCHEDULED", "SENDING", "PAUSED"].includes(campaign.status)) {
+    return {
+      requested: list.length, succeeded: 0, failed: list.length,
+      errors: [{ id: "*", error: "La campagne n'est pas active" }],
+    };
+  }
+
+  const cfg = (campaign.config ?? {}) as Record<string, unknown>;
+  const prev = Array.isArray(cfg.excludedLeadIds) ? (cfg.excludedLeadIds as string[]) : [];
+  const excludedLeadIds = Array.from(new Set([...prev, ...list]));
+  await prisma.campaign.update({
+    where: { id: campaignId },
+    data: { config: { ...cfg, excludedLeadIds } as object },
+  });
+
+  let succeeded = 0;
+  for (const leadId of list) {
+    const exists = await prisma.lead.findFirst({ where: { id: leadId, deletedAt: null }, select: { id: true } });
+    if (!exists) continue;
+    const already = await prisma.emailEvent.findFirst({
+      where: { campaignId, leadId, eventType: "SENT" },
+      select: { id: true },
+    });
+    if (!already) {
+      await prisma.emailEvent.create({
+        data: {
+          campaignId,
+          leadId,
+          eventType: "SENT",
+          meta: { excluded: true, reason: "manual_removal" } as object,
+        },
+      });
+    }
+    await prisma.leadHistory.create({
+      data: {
+        leadId,
+        type: "campaign_excluded",
+        payload: { campaignId, bulk: true } as object,
+      },
+    });
+    succeeded++;
+  }
+
+  return { requested: list.length, succeeded, failed: list.length - succeeded, errors: [] };
+}

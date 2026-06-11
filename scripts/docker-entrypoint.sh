@@ -66,6 +66,18 @@ init_prod() {
   fi
 }
 
+# Attribue ownerUserId / createdById aux données existantes (isolation multi-utilisateur).
+migrate_data_owners() {
+  echo "▶ migrate-data-owners..."
+  set +e
+  node packages/db/scripts/migrate-data-owners.mjs --apply
+  rc=$?
+  set -e
+  if [ "$rc" -ne 0 ]; then
+    echo "⚠ migrate-data-owners a échoué (code $rc) — poursuite du démarrage."
+  fi
+}
+
 # Démarre le worker en arrière-plan et vérifie qu'il reste vivant.
 start_worker_background() {
   echo "▶ worker (arrière-plan, tsx)..."
@@ -94,11 +106,14 @@ start_web_foreground() {
 case "$RUN_MODE" in
   db-init)
     yarn workspace @crm/db generate
+    db_push
     yarn workspace @crm/db init-prod
+    migrate_data_owners
     ;;
   web)
     db_push
     init_prod
+    migrate_data_owners
     start_web_foreground
     ;;
   worker)
@@ -107,6 +122,7 @@ case "$RUN_MODE" in
   all)
     db_push
     init_prod
+    migrate_data_owners
     start_worker_background
     echo "▶ next standalone :${PORT:-3000}..."
     node apps/web/server.js &

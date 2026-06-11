@@ -23,6 +23,7 @@ const upsertSchema = z.object({
     )
     .max(10)
     .optional(),
+  knowledgeBaseId: z.string().trim().min(1).nullable().optional(),
 });
 
 /** GET /api/me/openai-config — état de la config OpenAI du user courant (sans clé). */

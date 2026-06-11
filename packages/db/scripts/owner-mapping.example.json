@@ -1,0 +1,14 @@
+{
+  "_comment": "Copiez ce fichier en owner-mapping.json et adaptez les IDs avant : yarn db:migrate-owners --apply --mapping=./owner-mapping.json",
+  "imapConfig": {
+    "CUID_COMPTE_IMAP_ADMIN_A": "CUID_USER_ADMIN_A",
+    "CUID_COMPTE_IMAP_ADMIN_B": "CUID_USER_ADMIN_B"
+  },
+  "smtpConfig": {
+    "CUID_SMTP_ADMIN_A": "CUID_USER_ADMIN_A",
+    "CUID_SMTP_ADMIN_B": "CUID_USER_ADMIN_B"
+  },
+  "campaign": {
+    "CUID_CAMPAGNE_OPTIONNEL": "CUID_USER_PROPRIETAIRE"
+  }
+}

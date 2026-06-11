@@ -25,6 +25,7 @@ export type UpsertOpenAiConfigInput = {
   autoResponderMeetingUrl?: string | null;
   knowledgeText?: string | null;
   knowledgeDocs?: Array<{ id: string; name: string; content: string; createdAt?: string }>;
+  knowledgeBaseId?: string | null;
 };
 
 export async function upsertOpenAiConfig(userId: string, input: UpsertOpenAiConfigInput) {
@@ -42,6 +43,7 @@ export async function upsertOpenAiConfig(userId: string, input: UpsertOpenAiConf
     autoResponderMeetingUrl?: string | null;
     openAiKnowledgeText?: string | null;
     openAiKnowledgeDocs?: object;
+    openAiKnowledgeBaseId?: string | null;
   } = {};
 
   if (input.enabled !== undefined) data.openAiEnabled = input.enabled;
@@ -68,6 +70,9 @@ export async function upsertOpenAiConfig(userId: string, input: UpsertOpenAiConf
       })),
     );
     data.openAiKnowledgeDocs = normalized as object;
+  }
+  if (input.knowledgeBaseId !== undefined) {
+    data.openAiKnowledgeBaseId = input.knowledgeBaseId?.trim() || null;
   }
   if (input.clearApiKey) {
     data.openAiApiKeyEnc = null;

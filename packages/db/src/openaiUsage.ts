@@ -59,22 +59,39 @@ export type OpenAiUsageSummary = {
   monthTokens: number;
   monthRequestCount: number;
   monthCostUsd: number;
+  periodYear: number;
+  periodMonth: number;
+  periodLabel: string;
   last7Days: { date: string; tokens: number }[];
   byFeature: { feature: string; tokens: number; count: number; costUsd: number }[];
   byModel: { model: string; tokens: number; count: number; costUsd: number }[];
 };
+
+function periodBounds(year?: number, month?: number): { start: Date; end: Date; label: string } {
+  const now = new Date();
+  const y = year ?? now.getFullYear();
+  const m = month ?? now.getMonth() + 1;
+  const start = new Date(y, m - 1, 1, 0, 0, 0, 0);
+  const end = new Date(y, m, 1, 0, 0, 0, 0);
+  return {
+    start,
+    end,
+    label: start.toLocaleDateString("fr-FR", { month: "long", year: "numeric" }),
+  };
+}
 
 async function buildUsageSummary(args: {
   whereUserId?: string;
   enabled: boolean;
   configured: boolean;
   model: string | null;
+  year?: number;
+  month?: number;
 }): Promise<OpenAiUsageSummary> {
   const userFilter = args.whereUserId ? { userId: args.whereUserId } : {};
-
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
+  const period = periodBounds(args.year, args.month);
+  const monthStart = period.start;
+  const monthEnd = period.end;
 
   const [allTime, monthAgg, byFeatureRaw, byModelRaw, logs7d] = await Promise.all([
     prisma.openAiUsageLog.aggregate({
@@ -83,20 +100,20 @@ async function buildUsageSummary(args: {
       _count: { id: true },
     }),
     prisma.openAiUsageLog.aggregate({
-      where: { ...userFilter, createdAt: { gte: monthStart } },
+      where: { ...userFilter, createdAt: { gte: monthStart, lt: monthEnd } },
       _sum: { totalTokens: true, estimatedCostUsd: true },
       _count: { id: true },
     }),
     prisma.openAiUsageLog.groupBy({
       by: ["feature"],
-      where: { ...userFilter, createdAt: { gte: monthStart } },
+      where: { ...userFilter, createdAt: { gte: monthStart, lt: monthEnd } },
       _sum: { totalTokens: true, estimatedCostUsd: true },
       _count: { id: true },
       orderBy: { _sum: { totalTokens: "desc" } },
     }),
     prisma.openAiUsageLog.groupBy({
       by: ["model"],
-      where: { ...userFilter, createdAt: { gte: monthStart } },
+      where: { ...userFilter, createdAt: { gte: monthStart, lt: monthEnd } },
       _sum: { totalTokens: true, estimatedCostUsd: true },
       _count: { id: true },
       orderBy: { _sum: { totalTokens: "desc" } },
@@ -141,6 +158,9 @@ async function buildUsageSummary(args: {
     monthTokens: monthAgg._sum.totalTokens ?? 0,
     monthRequestCount: monthAgg._count.id,
     monthCostUsd,
+    periodYear: monthStart.getFullYear(),
+    periodMonth: monthStart.getMonth() + 1,
+    periodLabel: period.label,
     last7Days,
     byFeature: byFeatureRaw.map((r) => ({
       feature: r.feature,
@@ -159,29 +179,54 @@ async function buildUsageSummary(args: {
   };
 }
 
-export async function getOpenAiUsageSummary(userId: string): Promise<OpenAiUsageSummary | null> {
+export type OpenAiUsagePeriod = { year?: number; month?: number };
+
+function emptyUsageSummary(args: {
+  enabled: boolean;
+  configured: boolean;
+  model: string | null;
+  year?: number;
+  month?: number;
+}): OpenAiUsageSummary {
+  const period = periodBounds(args.year, args.month);
+  return {
+    enabled: args.enabled,
+    configured: args.configured,
+    model: args.model,
+    totalTokens: 0,
+    promptTokens: 0,
+    completionTokens: 0,
+    requestCount: 0,
+    totalCostUsd: 0,
+    monthTokens: 0,
+    monthRequestCount: 0,
+    monthCostUsd: 0,
+    periodYear: period.start.getFullYear(),
+    periodMonth: period.start.getMonth() + 1,
+    periodLabel: period.label,
+    last7Days: [],
+    byFeature: [],
+    byModel: [],
+  };
+}
+
+export async function getOpenAiUsageSummary(
+  userId: string,
+  period?: OpenAiUsagePeriod,
+): Promise<OpenAiUsageSummary | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { openAiEnabled: true, openAiApiKeyEnc: true, openAiModel: true },
   });
   const logCount = await prisma.openAiUsageLog.count({ where: { userId } });
   if (!user?.openAiApiKeyEnc && logCount === 0) {
-    return {
+    return emptyUsageSummary({
       enabled: user?.openAiEnabled ?? false,
       configured: false,
       model: user?.openAiModel ?? null,
-      totalTokens: 0,
-      promptTokens: 0,
-      completionTokens: 0,
-      requestCount: 0,
-      totalCostUsd: 0,
-      monthTokens: 0,
-      monthRequestCount: 0,
-      monthCostUsd: 0,
-      last7Days: [],
-      byFeature: [],
-      byModel: [],
-    };
+      year: period?.year,
+      month: period?.month,
+    });
   }
 
   return buildUsageSummary({
@@ -189,11 +234,13 @@ export async function getOpenAiUsageSummary(userId: string): Promise<OpenAiUsage
     enabled: user?.openAiEnabled ?? false,
     configured: Boolean(user?.openAiApiKeyEnc) || logCount > 0,
     model: user?.openAiModel ?? null,
+    year: period?.year,
+    month: period?.month,
   });
 }
 
 /** Vue agrégée pour administrateurs (tous les utilisateurs). */
-export async function getOpenAiUsageSummaryOrg(): Promise<OpenAiUsageSummary> {
+export async function getOpenAiUsageSummaryOrg(period?: OpenAiUsagePeriod): Promise<OpenAiUsageSummary> {
   const [configuredCount, logCount, anyUser] = await Promise.all([
     prisma.user.count({ where: { openAiApiKeyEnc: { not: null } } }),
     prisma.openAiUsageLog.count(),
@@ -208,16 +255,16 @@ export async function getOpenAiUsageSummaryOrg(): Promise<OpenAiUsageSummary> {
     enabled: anyUser?.openAiEnabled ?? configuredCount > 0,
     configured: configuredCount > 0 || logCount > 0,
     model: anyUser?.openAiModel ?? null,
+    year: period?.year,
+    month: period?.month,
   });
 }
 
-/** Dashboard : org-wide pour admin/manager, sinon utilisateur courant. */
+/** Dashboard : consommation OpenAI strictement personnelle (isolation par utilisateur). */
 export async function getOpenAiUsageSummaryForDashboard(
   userId: string,
-  role: string,
+  _role: string,
+  period?: OpenAiUsagePeriod,
 ): Promise<OpenAiUsageSummary | null> {
-  if (role === "ADMIN" || role === "MANAGER") {
-    return getOpenAiUsageSummaryOrg();
-  }
-  return getOpenAiUsageSummary(userId);
+  return getOpenAiUsageSummary(userId, period);
 }

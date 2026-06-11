@@ -4,6 +4,7 @@
  */
 import { prisma } from "./client";
 import { parseKnowledgeDocs, type AiKnowledgeDoc } from "./openaiKnowledge";
+import { getKnowledgeBaseContext } from "./knowledgeBase";
 import type { OpenAiMessage } from "./openaiChat";
 
 const MAX_CONTEXT_CHARS = 12_000;
@@ -11,6 +12,7 @@ const MAX_CONTEXT_CHARS = 12_000;
 export type CampaignKnowledgeConfig = {
   knowledgeText?: string | null;
   knowledgeDocs?: AiKnowledgeDoc[];
+  knowledgeBaseId?: string | null;
 };
 
 export function parseCampaignKnowledgeFromConfig(config: unknown): CampaignKnowledgeConfig {
@@ -19,6 +21,7 @@ export function parseCampaignKnowledgeFromConfig(config: unknown): CampaignKnowl
   return {
     knowledgeText: typeof c.knowledgeText === "string" ? c.knowledgeText : null,
     knowledgeDocs: parseKnowledgeDocs(c.knowledgeDocs),
+    knowledgeBaseId: typeof c.knowledgeBaseId === "string" ? c.knowledgeBaseId : null,
   };
 }
 
@@ -33,8 +36,10 @@ export async function getCampaignKnowledgeContext(
   });
   if (!camp) return null;
 
-  const { knowledgeText, knowledgeDocs } = parseCampaignKnowledgeFromConfig(camp.config);
+  const { knowledgeText, knowledgeDocs, knowledgeBaseId } = parseCampaignKnowledgeFromConfig(camp.config);
   const parts: string[] = [];
+  const kbShared = await getKnowledgeBaseContext(knowledgeBaseId, maxChars);
+  if (kbShared) parts.push(kbShared);
   const text = knowledgeText?.trim();
   if (text) parts.push(text.slice(0, maxChars));
   for (const doc of knowledgeDocs ?? []) {

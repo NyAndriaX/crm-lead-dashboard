@@ -3,7 +3,7 @@
  *
  * Body :
  *   { action: "delete" | "restore" | "assign" | "status" | "tags-add" |
- *             "tags-remove" | "enroll-sequence",
+ *             "tags-remove" | "enroll-sequence" | "exclude-campaign",
  *     ids: string[] (max 1000),
  *     payload: action-specific }
  *
@@ -14,7 +14,7 @@ import { handler, json, parseBody, requirePermission, ApiError } from "@/lib/api
 import { audit, clientIp } from "@/lib/audit";
 import {
   bulkSoftDelete, bulkRestore, bulkAssign, bulkSetStatus,
-  bulkAddTags, bulkRemoveTags, bulkEnrollInSequence,
+  bulkAddTags, bulkRemoveTags, bulkEnrollInSequence, bulkExcludeFromCampaign,
 } from "@/lib/services/leadsBulk";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +49,11 @@ const bodySchema = z.discriminatedUnion("action", [
     ids: idsSchema,
     sequenceId: z.string().min(1),
   }),
+  z.object({
+    action: z.literal("exclude-campaign"),
+    ids: idsSchema,
+    campaignId: z.string().min(1),
+  }),
 ]);
 
 export const POST = handler(async (req) => {
@@ -65,6 +70,9 @@ export const POST = handler(async (req) => {
       break;
     case "enroll-sequence":
       perm = "sequences:manage";
+      break;
+    case "exclude-campaign":
+      perm = "campaigns:write";
       break;
     default:
       perm = "leads:write";
@@ -93,6 +101,9 @@ export const POST = handler(async (req) => {
       break;
     case "enroll-sequence":
       result = await bulkEnrollInSequence(input.ids, input.sequenceId);
+      break;
+    case "exclude-campaign":
+      result = await bulkExcludeFromCampaign(input.ids, input.campaignId);
       break;
     default:
       throw new ApiError(400, "Action inconnue", "unknown_action");

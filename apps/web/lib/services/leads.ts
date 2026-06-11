@@ -11,7 +11,11 @@
  * (substring) + debounce 300 ms côté client. Le text index Mongo (`@@fulltext`) reste
  * disponible pour un `findRaw({ $text })` ranké si besoin ultérieur.
  */
-import { Prisma, prisma, notifyUser, syncTags, type Lead, buildLeadWhereFromSegmentFilters, LEAD_NOT_DELETED, asStringArray, isEmailHashBlocked, gdprBlockMessage } from "@crm/db";
+import {
+  Prisma, prisma, notifyUser, syncTags, type Lead, buildLeadWhereFromSegmentFilters,
+  LEAD_NOT_DELETED, asStringArray, isEmailHashBlocked, gdprBlockMessage,
+  buildLeadVisibilityWhere, assertLeadAccess, type DataScope,
+} from "@crm/db";
 import { decryptOrNull, emailHash, encryptOrNull, normalizeEmail } from "../crypto";
 import type {
   AssignLeadInput, ChangeStatusInput, CreateLeadInput, LeadFilters, ListLeadsQuery,
@@ -92,8 +96,10 @@ export function buildWhere(f: Partial<LeadFilters>): Prisma.LeadWhereInput {
   return buildLeadWhereFromSegmentFilters(f as import("@crm/db").LeadSegmentFilters);
 }
 
-export async function listLeads(q: ListLeadsQuery) {
-  const where = buildWhere(q);
+export async function listLeads(q: ListLeadsQuery, scope: DataScope) {
+  const where: Prisma.LeadWhereInput = {
+    AND: [buildWhere(q), buildLeadVisibilityWhere(scope)],
+  };
   const orderBy = parseSort(q.sort, SORTABLE, { createdAt: "desc" }) as Prisma.LeadOrderByWithRelationInput;
   const [total, rows] = await prisma.$transaction([
     prisma.lead.count({ where }),
@@ -105,7 +111,8 @@ export async function listLeads(q: ListLeadsQuery) {
   };
 }
 
-export async function getLead(id: string): Promise<LeadDTO> {
+export async function getLead(id: string, scope: DataScope): Promise<LeadDTO> {
+  await assertLeadAccess(scope, id);
   const lead = await prisma.lead.findUnique({ where: { id } });
   if (!lead) throw new ApiError(404, "Lead introuvable", "not_found");
   return toDTO(lead);
@@ -120,7 +127,8 @@ export interface LeadHistoryEntry {
 }
 
 /** Fiche détaillée (CRM-011) : lead + historique chronologique. */
-export async function getLeadDetail(id: string): Promise<{ lead: LeadDTO; history: LeadHistoryEntry[] }> {
+export async function getLeadDetail(id: string, scope: DataScope): Promise<{ lead: LeadDTO; history: LeadHistoryEntry[] }> {
+  await assertLeadAccess(scope, id);
   const lead = await prisma.lead.findUnique({ where: { id } });
   if (!lead) throw new ApiError(404, "Lead introuvable", "not_found");
   const history = await prisma.leadHistory.findMany({
@@ -169,7 +177,7 @@ async function assertEmailNotTaken(email: string, exceptId?: string) {
   if (existing) throw new ApiError(409, "Un lead avec cet email existe déjà", "duplicate_email");
 }
 
-export async function createLead(input: CreateLeadInput, actorId?: string): Promise<LeadDTO> {
+export async function createLead(input: CreateLeadInput, scope: DataScope): Promise<LeadDTO> {
   if (input.email) await assertEmailNotTaken(input.email);
   let lead = await prisma.lead.create({
     data: {
@@ -188,18 +196,20 @@ export async function createLead(input: CreateLeadInput, actorId?: string): Prom
       tags: input.tags ?? [],
       notes: input.notes ?? null,
       assignedToId: input.assignedToId ?? null,
+      ownerUserId: scope.userId,
       lastActionAt: new Date(),
       deletedAt: null,
     },
   });
   const score = computeScore(lead);
   if (score !== lead.score) lead = await prisma.lead.update({ where: { id: lead.id }, data: { score } });
-  await prisma.leadHistory.create({ data: { leadId: lead.id, userId: actorId, type: "created", payload: { source: input.source ?? null } } });
+  await prisma.leadHistory.create({ data: { leadId: lead.id, userId: scope.userId, type: "created", payload: { source: input.source ?? null } } });
   if (input.tags?.length) await syncTags(input.tags);
   return toDTO(lead);
 }
 
-export async function updateLead(id: string, input: UpdateLeadInput, actorId?: string): Promise<LeadDTO> {
+export async function updateLead(id: string, input: UpdateLeadInput, scope: DataScope): Promise<LeadDTO> {
+  await assertLeadAccess(scope, id);
   const current = await prisma.lead.findUnique({ where: { id } });
   if (!current || current.deletedAt) throw new ApiError(404, "Lead introuvable", "not_found");
   if (input.email !== undefined && input.email) await assertEmailNotTaken(input.email, id);
@@ -229,13 +239,14 @@ export async function updateLead(id: string, input: UpdateLeadInput, actorId?: s
   let lead = await prisma.lead.update({ where: { id }, data });
   const score = computeScore(lead, await scoringSignals(id));
   if (score !== lead.score) lead = await prisma.lead.update({ where: { id }, data: { score } });
-  await prisma.leadHistory.create({ data: { leadId: id, userId: actorId, type: "updated", payload: { fields: Object.keys(data) } } });
+  await prisma.leadHistory.create({ data: { leadId: id, userId: scope.userId, type: "updated", payload: { fields: Object.keys(data) } } });
   if (input.tags?.length) await syncTags(input.tags);
   return toDTO(lead);
 }
 
 /** Changement de statut avec validation des transitions (CRM-014). */
-export async function changeStatus(id: string, input: ChangeStatusInput, actorId?: string): Promise<LeadDTO> {
+export async function changeStatus(id: string, input: ChangeStatusInput, scope: DataScope): Promise<LeadDTO> {
+  await assertLeadAccess(scope, id);
   const current = await prisma.lead.findUnique({ where: { id } });
   if (!current || current.deletedAt) throw new ApiError(404, "Lead introuvable", "not_found");
   if (!canTransition(current.status, input.status)) {
@@ -254,17 +265,18 @@ export async function changeStatus(id: string, input: ChangeStatusInput, actorId
   const score = computeScore(lead, await scoringSignals(id));
   if (score !== lead.score) lead = await prisma.lead.update({ where: { id }, data: { score } });
   await prisma.leadHistory.create({
-    data: { leadId: id, userId: actorId, type: "status_change", payload: { from: current.status, to: input.status, reason: input.reason ?? null } },
+    data: { leadId: id, userId: scope.userId, type: "status_change", payload: { from: current.status, to: input.status, reason: input.reason ?? null } },
   });
   // Entrée dans un statut qui stoppe les relances → on planifie l'arrêt des séquences (CRM-041/047).
   if (STOPS_SEQUENCES.includes(input.status)) await enqueue("sequences-stop", { leadId: id, reason: `status:${input.status}` });
-  await syncPipelineStageForStatus(id, input.status, actorId);
+  await syncPipelineStageForStatus(id, input.status, scope, scope.userId);
   const refreshed = await prisma.lead.findUnique({ where: { id } });
   return toDTO(refreshed ?? lead);
 }
 
 /** Assignation à un commercial + notification (CRM-016). `assignedToId = null` pour désassigner. */
-export async function assignLead(id: string, input: AssignLeadInput, actorId?: string): Promise<LeadDTO> {
+export async function assignLead(id: string, input: AssignLeadInput, scope: DataScope): Promise<LeadDTO> {
+  await assertLeadAccess(scope, id);
   const current = await prisma.lead.findUnique({ where: { id } });
   if (!current || current.deletedAt) throw new ApiError(404, "Lead introuvable", "not_found");
   if (input.assignedToId) {
@@ -273,9 +285,9 @@ export async function assignLead(id: string, input: AssignLeadInput, actorId?: s
   }
   const lead = await prisma.lead.update({ where: { id }, data: { assignedToId: input.assignedToId, lastActionAt: new Date() } });
   await prisma.leadHistory.create({
-    data: { leadId: id, userId: actorId, type: input.assignedToId ? "assigned" : "unassigned", payload: { from: current.assignedToId, to: input.assignedToId } },
+    data: { leadId: id, userId: scope.userId, type: input.assignedToId ? "assigned" : "unassigned", payload: { from: current.assignedToId, to: input.assignedToId } },
   });
-  if (input.assignedToId && input.assignedToId !== actorId) {
+  if (input.assignedToId && input.assignedToId !== scope.userId) {
     const name = [current.firstName, current.lastName].filter(Boolean).join(" ") || current.company || "un lead";
     await notifyUser({
       userId: input.assignedToId,

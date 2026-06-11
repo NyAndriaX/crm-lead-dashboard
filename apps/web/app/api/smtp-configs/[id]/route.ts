@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { handler, json, noContent, parseBody, requirePermission, ApiError } from "@/lib/api";
+import { toScope } from "@/lib/scope";
 import { deleteSmtpConfig, getSmtpConfig, updateSmtpConfig } from "@/lib/services/smtp";
 
 export const dynamic = "force-dynamic";
@@ -18,28 +19,31 @@ const updateSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
-export const GET = handler<Ctx>(async (req, { params }) => {
-  await requirePermission("settings:manage");
+export const GET = handler<Ctx>(async (_req, { params }) => {
+  const s = await requirePermission("settings:manage");
+  const scope = toScope(s);
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
-  const config = await getSmtpConfig(id);
+  const config = await getSmtpConfig(id, scope);
   if (!config) throw new ApiError(404, "Configuration SMTP introuvable", "not_found");
   return json({ data: config });
 });
 
 export const PUT = handler<Ctx>(async (req, { params }) => {
-  await requirePermission("settings:manage");
+  const s = await requirePermission("settings:manage");
+  const scope = toScope(s);
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
   const input = await parseBody(req, updateSchema);
-  const config = await updateSmtpConfig(id, input);
+  const config = await updateSmtpConfig(id, input, scope);
   return json({ data: config });
 });
 
-export const DELETE = handler<Ctx>(async (req, { params }) => {
-  await requirePermission("settings:manage");
+export const DELETE = handler<Ctx>(async (_req, { params }) => {
+  const s = await requirePermission("settings:manage");
+  const scope = toScope(s);
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
-  await deleteSmtpConfig(id);
+  await deleteSmtpConfig(id, scope);
   return noContent();
 });

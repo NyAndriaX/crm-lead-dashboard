@@ -61,6 +61,7 @@ function emailHash(email: string): string {
 
 type ImapRow = {
   id: string;
+  ownerUserId: string | null;
   label: string;
   host: string;
   port: number;
@@ -335,7 +336,10 @@ async function onReplyReceived(args: {
   }
 }
 
-async function ingestParsedMessage(parsed: ParsedMail): Promise<{
+async function ingestParsedMessage(
+  parsed: ParsedMail,
+  mailbox: { imapConfigId: string; ownerUserId: string | null },
+): Promise<{
   saved: boolean;
   leadMatched: boolean;
 }> {
@@ -379,6 +383,8 @@ async function ingestParsedMessage(parsed: ParsedMail): Promise<{
   await prisma.inboxMessage.create({
     data: {
       leadId,
+      ownerUserId: mailbox.ownerUserId,
+      imapConfigId: mailbox.imapConfigId,
       messageId,
       inReplyTo,
       direction: "inbound",
@@ -480,7 +486,10 @@ async function syncOneAccount(row: ImapRow): Promise<{
           if (!msg.source) continue;
           try {
             const parsed = await simpleParser(msg.source);
-            const r = await ingestParsedMessage(parsed);
+            const r = await ingestParsedMessage(parsed, {
+              imapConfigId: row.id,
+              ownerUserId: row.ownerUserId,
+            });
             if (r.saved) saved++;
             if (r.leadMatched) matched++;
           } catch (e) {
@@ -510,6 +519,7 @@ export async function runImapSync(_ctx: WorkerJobContext): Promise<unknown> {
     where: { isActive: true },
     select: {
       id: true,
+      ownerUserId: true,
       label: true,
       host: true,
       port: true,

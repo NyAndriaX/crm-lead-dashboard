@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { handler, json, noContent, parseBody, requirePermission, ApiError } from "@/lib/api";
+import { toScope } from "@/lib/scope";
 import { deleteImapConfig, getImapConfig, updateImapConfig } from "@/lib/services/imap";
 
 export const dynamic = "force-dynamic";
@@ -16,27 +17,30 @@ const updateSchema = z.object({
 });
 
 export const GET = handler<Ctx>(async (_req, { params }) => {
-  await requirePermission("settings:manage");
+  const s = await requirePermission("settings:manage");
+  const scope = toScope(s);
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
-  const config = await getImapConfig(id);
+  const config = await getImapConfig(id, scope);
   if (!config) throw new ApiError(404, "Configuration IMAP introuvable", "not_found");
   return json({ data: config });
 });
 
 export const PUT = handler<Ctx>(async (req, { params }) => {
-  await requirePermission("settings:manage");
+  const s = await requirePermission("settings:manage");
+  const scope = toScope(s);
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
   const input = await parseBody(req, updateSchema);
-  const config = await updateImapConfig(id, input);
+  const config = await updateImapConfig(id, input, scope);
   return json({ data: config });
 });
 
 export const DELETE = handler<Ctx>(async (_req, { params }) => {
-  await requirePermission("settings:manage");
+  const s = await requirePermission("settings:manage");
+  const scope = toScope(s);
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
-  await deleteImapConfig(id);
+  await deleteImapConfig(id, scope);
   return noContent();
 });

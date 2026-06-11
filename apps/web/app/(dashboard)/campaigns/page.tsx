@@ -113,6 +113,7 @@ export default function CampaignsPage() {
   const [campKnowledgeDocs, setCampKnowledgeDocs] = useState<
     { id: string; name: string; content: string; createdAt: string }[]
   >([]);
+  const [knowledgeBases, setKnowledgeBases] = useState<{ id: string; name: string }[]>([]);
   const [campEditorStep, setCampEditorStep] = useState(0);
   const segMode = Form.useWatch("segMode", segForm) ?? "filter";
 
@@ -139,6 +140,7 @@ export default function CampaignsPage() {
   useEffect(() => {
     void load();
     api.get<{ data: { name: string }[] }>("/tags").then((r) => setTagsRef(r.data.data ?? [])).catch(() => {});
+    api.get<{ data: { id: string; name: string }[] }>("/knowledge-bases").then((r) => setKnowledgeBases(r.data.data ?? [])).catch(() => {});
     api.get<{ data: { id: string; firstName: string | null; lastName: string | null; company: string | null; email: string | null }[] }>(
       "/leads",
       { params: { pageSize: 200 } },
@@ -193,6 +195,7 @@ export default function CampaignsPage() {
           : { mode: "off" },
         knowledgeText: (v.knowledgeText as string)?.trim() || null,
         knowledgeDocs: campKnowledgeDocs,
+        knowledgeBaseId: v.knowledgeBaseId || null,
       };
       const payload = {
         name: v.name,
@@ -354,6 +357,7 @@ export default function CampaignsPage() {
         arMode: (ar.mode as string) ?? "off",
         arMeetingUrl: (ar.meetingUrl as string) ?? undefined,
         knowledgeText: (config.knowledgeText as string) ?? "",
+        knowledgeBaseId: (config.knowledgeBaseId as string) ?? undefined,
       });
       const docs = Array.isArray(config.knowledgeDocs) ? config.knowledgeDocs : [];
       setCampKnowledgeDocs(
@@ -555,11 +559,6 @@ export default function CampaignsPage() {
             gérez les bounces et les désabonnements (RFC 8058), et affinez la délivrabilité avec montée en charge et tests A/B.
           </Text>
         </div>
-        <Link href="/settings?tab=emailing&newTemplate=1">
-          <Button type="default" icon={<FileAddOutlined />}>
-            Créer un template
-          </Button>
-        </Link>
       </div>
 
       <Alert
@@ -633,6 +632,9 @@ export default function CampaignsPage() {
               onChange={(e) => setCampaignQuery(e.target.value)}
               style={{ width: 260 }}
             />
+            <Link href="/settings?tab=emailing&newTemplate=1">
+              <Button type="default" icon={<FileAddOutlined />}>Créer un template</Button>
+            </Link>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => { setCampEditorStep(0); setCampModal(true); setEditingCampaign(null); setCampKnowledgeDocs([]); campForm.resetFields(); }}>
               Nouvelle campagne
             </Button>
@@ -956,6 +958,16 @@ export default function CampaignsPage() {
           <Paragraph strong style={{ marginTop: 8 }}>
             Base de connaissances IA (campagne)
           </Paragraph>
+          <Form.Item
+            name="knowledgeBaseId"
+            label={labelWithHelp("Base de connaissances partagée", "Sélectionnez une base enregistrée dans Configuration → Bases de connaissances.")}
+          >
+            <Select
+              allowClear
+              placeholder="Choisir une base…"
+              options={knowledgeBases.map((kb) => ({ value: kb.id, label: kb.name }))}
+            />
+          </Form.Item>
           <Form.Item
             name="knowledgeText"
             label={labelWithHelp(

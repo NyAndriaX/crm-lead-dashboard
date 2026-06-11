@@ -69,10 +69,28 @@ async function main() {
 
   for (let i = 0; i < PIPELINE_STAGES.length; i++) {
     const stage = PIPELINE_STAGES[i];
-    const existing = await prisma.pipelineStage.findFirst({ where: { name: stage.name } });
+    const existing = await prisma.pipelineStage.findFirst({
+      where: { name: stage.name, ownerUserId: admin.id },
+    });
     if (!existing) {
       await prisma.pipelineStage.create({
-        data: { name: stage.name, order: i, color: stage.color },
+        data: { name: stage.name, order: i, color: stage.color, ownerUserId: admin.id },
+      });
+    }
+  }
+
+  // Pipeline par défaut pour les autres utilisateurs actifs (idempotent).
+  const others = await prisma.user.findMany({
+    where: { isActive: true, id: { not: admin.id } },
+    select: { id: true },
+  });
+  for (const u of others) {
+    const n = await prisma.pipelineStage.count({ where: { ownerUserId: u.id } });
+    if (n > 0) continue;
+    for (let i = 0; i < PIPELINE_STAGES.length; i++) {
+      const stage = PIPELINE_STAGES[i];
+      await prisma.pipelineStage.create({
+        data: { name: stage.name, order: i, color: stage.color, ownerUserId: u.id },
       });
     }
   }

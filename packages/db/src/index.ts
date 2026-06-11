@@ -1,6 +1,21 @@
 export { prisma } from "./client";
 export * from "@prisma/client";
 export {
+  type DataScope,
+  DataScopeError,
+  isAdminRole,
+  ownedByUser,
+  createdByUser,
+  strictOwnerWhere,
+  strictCreatorWhere,
+  buildLeadVisibilityWhere,
+  assertLeadAccess,
+  resolvePipelineOwnerId,
+  buildPipelineLeadsWhere,
+  ensureDefaultPipelineStages,
+  listNonAdminUsersForPipeline,
+} from "./dataScope";
+export {
   DEFAULT_OPENAI_MODEL,
   getOpenAiConfigPublic,
   resolveOpenAiCredentials,
@@ -39,6 +54,23 @@ export {
   parseCampaignKnowledgeFromConfig,
   type CampaignKnowledgeConfig,
 } from "./campaignKnowledge";
+export {
+  getSequenceKnowledgeContext,
+  injectSequenceKnowledgeIntoMessages,
+  parseSequenceKnowledgeFromConfig,
+  type SequenceKnowledgeConfig,
+} from "./sequenceKnowledge";
+export {
+  listKnowledgeBases,
+  getKnowledgeBase,
+  createKnowledgeBase,
+  updateKnowledgeBase,
+  deleteKnowledgeBase,
+  getKnowledgeBaseContext,
+  injectKnowledgeBaseIntoMessages,
+  type KnowledgeBaseItem,
+} from "./knowledgeBase";
+export { buildSmtpNodemailerAuth, type SmtpAuthRow } from "./smtpTransport";
 export {
   getVapidPublicKey,
   savePushSubscription,

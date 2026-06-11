@@ -25,6 +25,10 @@ type Step = {
   aiPersonalize?: boolean;
 };
 type CampaignOption = { id: string; name: string };
+type SequenceConfig = {
+  knowledgeBaseId?: string | null;
+  knowledgeText?: string | null;
+};
 type SequenceRow = {
   id: string;
   name: string;
@@ -32,6 +36,7 @@ type SequenceRow = {
   maxSteps: number | null;
   isPaused: boolean;
   campaignId?: string | null;
+  config?: SequenceConfig | null;
   campaign?: { id: string; name: string } | null;
   createdAt: string;
   updatedAt: string;
@@ -76,6 +81,7 @@ export default function SequencesPage() {
   const [enrollIds, setEnrollIds] = useState<string[]>([]);
   const [enrolling, setEnrolling] = useState(false);
   const [campaigns, setCampaigns] = useState<CampaignOption[]>([]);
+  const [knowledgeBases, setKnowledgeBases] = useState<{ id: string; name: string }[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -94,6 +100,7 @@ export default function SequencesPage() {
     api.get<{ data: TemplateOption[] }>("/templates").then((r) => setTemplates(r.data.data)).catch(() => {});
     api.get<{ data: SmtpOption[] }>("/smtp-configs?active=true").then((r) => setSmtps(r.data.data)).catch(() => {});
     api.get<{ data: CampaignOption[] }>("/campaigns").then((r) => setCampaigns(r.data.data ?? [])).catch(() => {});
+    api.get<{ data: { id: string; name: string }[] }>("/knowledge-bases").then((r) => setKnowledgeBases(r.data.data ?? [])).catch(() => {});
   }, []);
 
   function openCreate() {
@@ -104,6 +111,8 @@ export default function SequencesPage() {
       name: "",
       maxSteps: null,
       campaignId: null,
+      knowledgeBaseId: null,
+      knowledgeText: "",
       steps: [{ delayDays: 0, templateId: null, stopOnReply: true }],
     });
     setEditorOpen(true);
@@ -115,6 +124,8 @@ export default function SequencesPage() {
       name: seq.name,
       maxSteps: seq.maxSteps,
       campaignId: seq.campaignId ?? null,
+      knowledgeBaseId: seq.config?.knowledgeBaseId ?? null,
+      knowledgeText: seq.config?.knowledgeText ?? "",
       smtpConfigId: (seq as SequenceRow & { smtpConfigId?: string }).smtpConfigId ?? null,
       steps: seq.steps?.length ? seq.steps : [{ delayDays: 0, templateId: null, stopOnReply: true }],
     });
@@ -129,6 +140,10 @@ export default function SequencesPage() {
         maxSteps: values.maxSteps ?? null,
         campaignId: (values.campaignId as string) || null,
         smtpConfigId: (values.smtpConfigId as string) || null,
+        config: {
+          knowledgeBaseId: (values.knowledgeBaseId as string) || null,
+          knowledgeText: (values.knowledgeText as string)?.trim() || null,
+        },
         steps: (values.steps as Step[]).map((s) => ({
           delayDays: Number(s.delayDays ?? 0),
           templateId: s.templateId || null,
@@ -394,6 +409,23 @@ export default function SequencesPage() {
               tooltip="Limite le nombre total d'emails envoyés par lead dans cette séquence."
             >
               <InputNumber min={1} max={20} placeholder="Illimité" style={{ width: "100%" }} />
+            </Form.Item>
+            <Divider style={{ margin: "8px 0 16px" }}>Base de connaissances IA (relances)</Divider>
+            <Form.Item
+              name="knowledgeBaseId"
+              label={labelWithHelp("Base de connaissances partagée", "Sélectionnez une base enregistrée dans Configuration → Bases de connaissances. Utilisée pour la personnalisation IA des emails de relance.")}
+            >
+              <Select
+                allowClear
+                placeholder="Choisir une base…"
+                options={knowledgeBases.map((kb) => ({ value: kb.id, label: kb.name }))}
+              />
+            </Form.Item>
+            <Form.Item
+              name="knowledgeText"
+              label={labelWithHelp("Consignes spécifiques (texte)", "Contexte additionnel pour cette séquence : ton, arguments, objections…")}
+            >
+              <Input.TextArea rows={3} placeholder="Ex : relance douce après 7 jours, proposer un créneau de démo…" />
             </Form.Item>
           </div>
 

@@ -9,7 +9,7 @@ import {
 } from "antd";
 import {
   ArrowLeftOutlined, ReloadOutlined, MailOutlined, ThunderboltOutlined, DeleteOutlined,
-  EuroOutlined, UploadOutlined, FileOutlined,
+  EuroOutlined, UploadOutlined, FileOutlined, SaveOutlined, RocketOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
 import SafeHtml from "@/components/SafeHtml";
@@ -78,21 +78,34 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const [documents, setDocuments] = useState<{ id: string; fileName: string; sizeBytes: number }[]>([]);
   const [potential, setPotential] = useState<number | null>(null);
   const [noteForm] = Form.useForm();
+  const [editForm] = Form.useForm();
+  const [savingLead, setSavingLead] = useState(false);
+  const [leadCampaigns, setLeadCampaigns] = useState<{
+    campaigns: { campaignId: string; campaignName: string; campaignStatus: string; sentAt: string | null; opens: number; clicks: number }[];
+    sequences: { sequenceId: string; name: string; status: string; sentCount: number }[];
+  } | null>(null);
   const isMobile = useIsMobile();
   const screens = useBreakpoint();
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [{ data: l }, { data: h }, { data: t }, { data: n }, { data: d }] = await Promise.all([
+      const [{ data: l }, { data: h }, { data: t }, { data: n }, { data: d }, { data: camps }] = await Promise.all([
         api.get<LeadDTO>(`/leads/${id}`),
         api.get<{ data: HistoryEntry[] }>(`/leads/${id}/history`),
         api.get<{ data: ThreadMessage[] }>(`/leads/${id}/thread`),
         api.get<{ data: typeof leadNotes }>(`/leads/${id}/notes`),
         api.get<{ data: typeof documents }>(`/leads/${id}/documents`),
+        api.get<{ data: typeof leadCampaigns }>(`/leads/${id}/campaigns`).catch(() => ({ data: { data: null } })),
       ]);
       setLead(l); setTags(l.tags); setPotential(l.businessPotentialEur);
       setHistory(h.data); setThread(t.data); setLeadNotes(n.data); setDocuments(d.data);
+      setLeadCampaigns(camps.data);
+      editForm.setFieldsValue({
+        firstName: l.firstName, lastName: l.lastName, email: l.email, phone: l.phone,
+        company: l.company, website: l.website, sector: l.sector, city: l.city, country: l.country,
+        source: l.source, notes: l.notes,
+      });
     } catch (e) {
       if ((e as { response?: { status?: number } }).response?.status === 404) setNotFound(true);
       else message.error("Impossible de charger le lead.");
@@ -141,6 +154,36 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
       setLead(data); message.success(userId ? "Lead assigné" : "Lead désassigné"); void load();
     } catch { message.error("Échec de l'assignation."); }
   }
+  async function saveLeadFields() {
+    setSavingLead(true);
+    try {
+      const values = await editForm.validateFields();
+      const { data } = await api.put<LeadDTO>(`/leads/${id}`, {
+        ...values,
+        email: values.email || null,
+        phone: values.phone || null,
+        website: values.website || null,
+      });
+      setLead(data);
+      message.success("Lead enregistré");
+      void load();
+    } catch {
+      message.error("Enregistrement impossible");
+    } finally {
+      setSavingLead(false);
+    }
+  }
+
+  async function deleteDocument(docId: string) {
+    try {
+      await api.delete(`/leads/${id}/documents/${docId}`);
+      message.success("Document supprimé");
+      void load();
+    } catch {
+      message.error("Suppression impossible");
+    }
+  }
+
   async function saveTags() {
     setSavingTags(true);
     try {
@@ -220,6 +263,9 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
               options={stages.map((s) => ({ value: s.id, label: s.name }))}
             />
           )}
+          <Button type="primary" icon={<SaveOutlined />} loading={savingLead} onClick={() => void saveLeadFields()}>
+            Enregistrer
+          </Button>
           <Button danger onClick={confirmDelete} block={isMobile}>Archiver</Button>
         </Space>
       </div>
@@ -227,21 +273,50 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
       <Row gutter={16}>
         <Col xs={24} lg={16}>
           <Card title="Coordonnées" size="small" style={{ marginBottom: 16 }}>
-            <Descriptions column={screens.md ? 2 : 1} size="small">
-              <Descriptions.Item label="Prénom">{lead.firstName ?? "—"}</Descriptions.Item>
-              <Descriptions.Item label="Nom">{lead.lastName ?? "—"}</Descriptions.Item>
-              <Descriptions.Item label="Email">{lead.email ?? "—"}</Descriptions.Item>
-              <Descriptions.Item label="Téléphone">{lead.phone ?? "—"}</Descriptions.Item>
-              <Descriptions.Item label="Entreprise">{lead.company ?? "—"}</Descriptions.Item>
-              <Descriptions.Item label="Site web">{lead.website ? <a href={lead.website} target="_blank" rel="noreferrer">{lead.website}</a> : "—"}</Descriptions.Item>
-              <Descriptions.Item label="Secteur">{lead.sector ?? "—"}</Descriptions.Item>
-              <Descriptions.Item label="Localisation">{[lead.city, lead.country].filter(Boolean).join(", ") || "—"}</Descriptions.Item>
-              <Descriptions.Item label="Source">{lead.source ?? "—"}</Descriptions.Item>
+            <Form form={editForm} layout="vertical">
+              <Row gutter={12}>
+                <Col xs={24} sm={12}><Form.Item name="firstName" label="Prénom"><Input /></Form.Item></Col>
+                <Col xs={24} sm={12}><Form.Item name="lastName" label="Nom"><Input /></Form.Item></Col>
+                <Col xs={24} sm={12}><Form.Item name="email" label="Email" rules={[{ type: "email" }]}><Input /></Form.Item></Col>
+                <Col xs={24} sm={12}><Form.Item name="phone" label="Téléphone"><Input /></Form.Item></Col>
+                <Col xs={24} sm={12}><Form.Item name="company" label="Entreprise"><Input /></Form.Item></Col>
+                <Col xs={24} sm={12}><Form.Item name="website" label="Site web" rules={[{ type: "url" }]}><Input /></Form.Item></Col>
+                <Col xs={24} sm={8}><Form.Item name="sector" label="Secteur"><Input /></Form.Item></Col>
+                <Col xs={24} sm={8}><Form.Item name="city" label="Ville"><Input /></Form.Item></Col>
+                <Col xs={24} sm={8}><Form.Item name="country" label="Pays"><Input /></Form.Item></Col>
+                <Col xs={24} sm={12}><Form.Item name="source" label="Source"><Input /></Form.Item></Col>
+                <Col xs={24}><Form.Item name="notes" label="Notes"><TextArea rows={2} /></Form.Item></Col>
+              </Row>
+            </Form>
+            <Descriptions column={screens.md ? 2 : 1} size="small" style={{ marginTop: 8 }}>
               <Descriptions.Item label="Statut email">{lead.emailStatus}</Descriptions.Item>
               <Descriptions.Item label="Créé le">{new Date(lead.createdAt).toLocaleString("fr-FR")}</Descriptions.Item>
               <Descriptions.Item label="Dernière action">{lead.lastActionAt ? new Date(lead.lastActionAt).toLocaleString("fr-FR") : "—"}</Descriptions.Item>
             </Descriptions>
-            {lead.notes && <Paragraph style={{ marginTop: 12 }}><Text type="secondary">Notes :</Text><br />{lead.notes}</Paragraph>}
+          </Card>
+
+          <Card title={<><RocketOutlined /> Campagnes & relances</>} size="small" style={{ marginBottom: 16 }}>
+            {!leadCampaigns || (leadCampaigns.campaigns.length === 0 && leadCampaigns.sequences.length === 0) ? (
+              <Text type="secondary">Aucune campagne ou séquence associée.</Text>
+            ) : (
+              <Space direction="vertical" style={{ width: "100%" }}>
+                {leadCampaigns.campaigns.map((c) => (
+                  <div key={c.campaignId}>
+                    <Text strong>{c.campaignName}</Text>{" "}
+                    <Tag>{c.campaignStatus}</Tag>
+                    <div><Text type="secondary" style={{ fontSize: 12 }}>
+                      {c.sentAt ? `Envoyé le ${new Date(c.sentAt).toLocaleString("fr-FR")}` : "Non envoyé"} · {c.opens} ouv. · {c.clicks} clics
+                    </Text></div>
+                  </div>
+                ))}
+                {leadCampaigns.sequences.map((s) => (
+                  <div key={s.sequenceId}>
+                    <Text strong>Séquence : {s.name}</Text> <Tag>{s.status}</Tag>
+                    <div><Text type="secondary" style={{ fontSize: 12 }}>{s.sentCount} email(s) envoyé(s)</Text></div>
+                  </div>
+                ))}
+              </Space>
+            )}
           </Card>
 
           <Card title="Historique" size="small" style={{ marginBottom: 16 }}>
@@ -501,7 +576,13 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
               dataSource={documents}
               locale={{ emptyText: "Aucun document" }}
               renderItem={(d) => (
-                <List.Item>
+                <List.Item
+                  actions={[
+                    <Popconfirm key="del" title="Supprimer ce document ?" onConfirm={() => void deleteDocument(d.id)}>
+                      <Button size="small" danger icon={<DeleteOutlined />} />
+                    </Popconfirm>,
+                  ]}
+                >
                   <a href={`/api/leads/${id}/documents/${d.id}`} download={d.fileName}>{d.fileName}</a>
                 </List.Item>
               )}

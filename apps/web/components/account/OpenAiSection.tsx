@@ -26,6 +26,7 @@ type ConfigState = {
   autoResponderMeetingUrl: string | null;
   knowledgeText: string | null;
   knowledgeDocs: KnowledgeDoc[];
+  knowledgeBaseId: string | null;
 };
 
 type UsageState = {
@@ -51,6 +52,7 @@ export function OpenAiSection() {
   const [config, setConfig] = useState<ConfigState | null>(null);
   const [usage, setUsage] = useState<UsageState | null>(null);
   const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDoc[]>([]);
+  const [knowledgeBases, setKnowledgeBases] = useState<{ id: string; name: string }[]>([]);
   const [form] = Form.useForm();
 
   function show(kind: Notice["kind"], text: string) {
@@ -78,6 +80,7 @@ export function OpenAiSection() {
       form.setFieldsValue({
         enabled: data.data.enabled,
         model: data.data.model,
+        knowledgeBaseId: data.data.knowledgeBaseId ?? null,
         knowledgeText: data.data.knowledgeText ?? "",
         apiKey: "",
       });
@@ -104,6 +107,11 @@ export function OpenAiSection() {
   }, [form]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    api.get<{ data: { id: string; name: string }[] }>("/knowledge-bases")
+      .then((r) => setKnowledgeBases(r.data.data ?? []))
+      .catch(() => {});
+  }, []);
 
   async function save() {
     const values = await form.validateFields();
@@ -113,6 +121,7 @@ export function OpenAiSection() {
       const { data } = await api.put<{ data: ConfigState }>("/me/openai-config", {
         enabled: values.enabled,
         model: values.model,
+        knowledgeBaseId: values.knowledgeBaseId || null,
         knowledgeText: values.knowledgeText?.trim() || null,
         knowledgeDocs,
         ...(values.apiKey?.trim() ? { apiKey: values.apiKey.trim() } : {}),
@@ -315,8 +324,18 @@ export function OpenAiSection() {
         >
           <Paragraph type="secondary" style={{ marginTop: 0, fontSize: 13 }}>
             Ajoutez du contexte métier (offres, argumentaire, ton, FAQ). L&apos;IA s&apos;en sert pour
-            personnaliser les emails de campagne et les relances (en complément du contexte spécifique par campagne).
+            personnaliser les emails, les relances et les réponses inbox (en complément des bases par campagne ou séquence).
           </Paragraph>
+          <Form.Item
+            name="knowledgeBaseId"
+            label={labelWithHelp("Base de connaissances par défaut (inbox / réponses)", "Utilisée pour les réponses IA de l'inbox lorsqu'aucune base campagne n'est définie. Gérée dans Configuration → Bases de connaissances.")}
+          >
+            <Select
+              allowClear
+              placeholder="Choisir une base…"
+              options={knowledgeBases.map((kb) => ({ value: kb.id, label: kb.name }))}
+            />
+          </Form.Item>
           <Form.Item
             name="knowledgeText"
             label={labelWithHelp("Consignes et texte libre", "Pitch, objections fréquentes, prix indicatifs, ton à adopter… Collez ici tout ce que l'IA doit connaître.")}

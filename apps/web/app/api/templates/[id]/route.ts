@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { handler, json, noContent, parseBody, requirePermission, ApiError } from "@/lib/api";
 import { deleteTemplate, getTemplate, updateTemplate } from "@/lib/services/templates";
+import { toScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -17,27 +18,26 @@ const updateSchema = z.object({
 });
 
 export const GET = handler<Ctx>(async (req, { params }) => {
-  await requirePermission("settings:manage");
+  const s = await requirePermission("settings:manage");
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
-  const template = await getTemplate(id);
-  if (!template) throw new ApiError(404, "Template introuvable", "not_found");
+  const template = await getTemplate(id, toScope(s));
   return json({ data: template });
 });
 
 export const PUT = handler<Ctx>(async (req, { params }) => {
-  await requirePermission("settings:manage");
+  const s = await requirePermission("settings:manage");
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
   const input = await parseBody(req, updateSchema);
-  const template = await updateTemplate(id, input);
+  const template = await updateTemplate(id, input, toScope(s));
   return json({ data: template });
 });
 
 export const DELETE = handler<Ctx>(async (req, { params }) => {
-  await requirePermission("settings:manage");
+  const s = await requirePermission("settings:manage");
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
-  await deleteTemplate(id);
+  await deleteTemplate(id, toScope(s));
   return noContent();
 });

@@ -1,6 +1,7 @@
 import { handler, json, noContent, parseBody, requirePermission } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
 import { updateLeadSchema } from "@/lib/schemas/lead";
+import { toScope } from "@/lib/scope";
 import { getLead, softDeleteLead, updateLead } from "@/lib/services/leads";
 
 export const dynamic = "force-dynamic";
@@ -9,17 +10,19 @@ type Ctx = { params: Promise<{ id: string }> };
 
 // GET /api/leads/:id — fiche lead (PII déchiffrée).
 export const GET = handler<Ctx>(async (_req, { params }) => {
-  await requirePermission("leads:read");
+  const s = await requirePermission("leads:read");
+  const scope = toScope(s);
   const { id } = await params;
-  return json(await getLead(id));
+  return json(await getLead(id, scope));
 });
 
 // PUT /api/leads/:id — édition.
 export const PUT = handler<Ctx>(async (req, { params }) => {
   const s = await requirePermission("leads:write");
+  const scope = toScope(s);
   const { id } = await params;
   const input = await parseBody(req, updateLeadSchema);
-  const lead = await updateLead(id, input, s.sub);
+  const lead = await updateLead(id, input, scope);
   await audit({ userId: s.sub, action: "lead.update", entityType: "lead", entityId: id, ip: clientIp(req), diff: input });
   return json(lead);
 });

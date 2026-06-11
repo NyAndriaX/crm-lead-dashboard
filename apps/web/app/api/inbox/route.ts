@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { handler, json, parseQuery, requirePermission } from "@/lib/api";
+import { toScope } from "@/lib/scope";
 import { listInbox } from "@/lib/services/inbox";
 
 export const dynamic = "force-dynamic";
@@ -13,9 +14,10 @@ const querySchema = z.object({
 });
 
 export const GET = handler(async (req) => {
-  await requirePermission("inbox:read");
+  const s = await requirePermission("inbox:read");
+  const scope = toScope(s);
   const q = parseQuery(req, querySchema);
-  const result = await listInbox({
+  const result = await listInbox(scope, {
     search: q.search,
     leadId: q.leadId,
     unreadOnly: q.unreadOnly === "true",

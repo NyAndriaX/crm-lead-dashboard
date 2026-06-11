@@ -21,6 +21,7 @@ export type OpenAiConfigPublic = {
   autoResponderMeetingUrl: string | null;
   knowledgeText: string | null;
   knowledgeDocs: AiKnowledgeDoc[];
+  knowledgeBaseId: string | null;
 };
 
 /** État public (sans clé) pour l'interface utilisateur. */
@@ -35,6 +36,7 @@ export async function getOpenAiConfigPublic(userId: string): Promise<OpenAiConfi
       autoResponderMeetingUrl: true,
       openAiKnowledgeText: true,
       openAiKnowledgeDocs: true,
+      openAiKnowledgeBaseId: true,
     },
   });
   if (!u) {
@@ -46,6 +48,7 @@ export async function getOpenAiConfigPublic(userId: string): Promise<OpenAiConfi
       autoResponderMeetingUrl: null,
       knowledgeText: null,
       knowledgeDocs: [],
+      knowledgeBaseId: null,
     };
   }
   return {
@@ -56,6 +59,7 @@ export async function getOpenAiConfigPublic(userId: string): Promise<OpenAiConfi
     autoResponderMeetingUrl: u.autoResponderMeetingUrl,
     knowledgeText: u.openAiKnowledgeText,
     knowledgeDocs: parseKnowledgeDocs(u.openAiKnowledgeDocs),
+    knowledgeBaseId: u.openAiKnowledgeBaseId,
   };
 }
 

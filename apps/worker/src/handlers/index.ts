@@ -19,7 +19,7 @@
 import * as fs from "node:fs";
 import * as crypto from "node:crypto";
 import * as XLSX from "xlsx";
-import { prisma, notifyUser, isEmailHashBlocked, type NotifyUserInput } from "@crm/db";
+import { prisma, notifyUser, isEmailHashBlocked, syncTags, type NotifyUserInput } from "@crm/db";
 import type { WorkerJobContext, WorkerJobHandler } from "@crm/queue";
 import { runCampaignSend } from "../campaignSend";
 import { runImapSync } from "../imapSync";
@@ -99,7 +99,7 @@ interface ImportPayload {
 interface ColumnMapping {
   email?: string; phone?: string; firstName?: string; lastName?: string;
   company?: string; website?: string; sector?: string; city?: string;
-  country?: string; source?: string; notes?: string;
+  country?: string; source?: string; notes?: string; tags?: string;
 }
 
 async function processImport(ctx: WorkerJobContext): Promise<unknown> {
@@ -174,7 +174,8 @@ async function processImport(ctx: WorkerJobContext): Promise<unknown> {
           }
         }
 
-        const tags = [...defaultTags];
+        const rowTags = colMap.tags ? String(row[colMap.tags] ?? "").split(/[,;|]/).map((t) => t.trim()).filter(Boolean) : [];
+        const tags = Array.from(new Set([...defaultTags, ...rowTags]));
         const source = get("source") ?? defaultSource ?? null;
 
         const leadData = {
@@ -195,6 +196,7 @@ async function processImport(ctx: WorkerJobContext): Promise<unknown> {
         };
 
         const lead = await prisma.lead.create({ data: leadData });
+        if (tags.length > 0) await syncTags(tags);
 
         // Score de base
         let s = 0;

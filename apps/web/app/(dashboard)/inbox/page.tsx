@@ -73,6 +73,8 @@ export default function InboxPage() {
   const [imapSearching, setImapSearching] = useState(false);
   const [imapModalOpen, setImapModalOpen] = useState(false);
   const [imapHits, setImapHits] = useState<{ uid: number; subject: string | null; from: string | null; date: string | null }[]>([]);
+  const [knowledgeBases, setKnowledgeBases] = useState<{ id: string; name: string }[]>([]);
+  const [aiKnowledgeBaseId, setAiKnowledgeBaseId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -95,6 +97,10 @@ export default function InboxPage() {
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     api.get<{ data: SmtpOption[] }>("/smtp-configs?active=true").then((r) => setSmtpOpts(r.data.data)).catch(() => {});
+    api.get<{ data: { id: string; name: string }[] }>("/knowledge-bases").then((r) => setKnowledgeBases(r.data.data ?? [])).catch(() => {});
+    api.get<{ data: { knowledgeBaseId: string | null } }>("/me/openai-config")
+      .then((r) => setAiKnowledgeBaseId(r.data.data.knowledgeBaseId ?? null))
+      .catch(() => {});
   }, []);
 
   async function openItem(item: InboxItem) {
@@ -196,7 +202,9 @@ export default function InboxPage() {
     try {
       const { data } = await api.post<{
         data: { ok: boolean; acted: boolean; mode: string; message: string; category: string };
-      }>(`/inbox/${msg.id}/auto-reply`);
+      }>(`/inbox/${msg.id}/auto-reply`, {
+        knowledgeBaseId: aiKnowledgeBaseId,
+      });
       const kind = data.data.acted ? "success" : "warning";
       setAiNotice({ kind, text: data.data.message });
       const t = await api.get<{ data: ThreadItem[] }>(`/leads/${msg.leadId}/thread`);
@@ -440,15 +448,24 @@ export default function InboxPage() {
                   </div>
                 ) : null}
                 {opened.leadId ? (
-                  <Button
-                    type="primary"
-                    icon={<ThunderboltOutlined />}
-                    loading={aiRetrying}
-                    onClick={() => void retryAiReply()}
-                    style={{ marginBottom: 8 }}
-                  >
-                    Relancer la réponse IA
-                  </Button>
+                  <Space direction="vertical" size={8} style={{ width: "100%", marginBottom: 8 }}>
+                    <Select
+                      allowClear
+                      placeholder="Base de connaissances (optionnel)"
+                      value={aiKnowledgeBaseId}
+                      onChange={(v) => setAiKnowledgeBaseId(v ?? null)}
+                      options={knowledgeBases.map((kb) => ({ value: kb.id, label: kb.name }))}
+                      style={{ width: "100%" }}
+                    />
+                    <Button
+                      type="primary"
+                      icon={<ThunderboltOutlined />}
+                      loading={aiRetrying}
+                      onClick={() => void retryAiReply()}
+                    >
+                      Relancer la réponse IA
+                    </Button>
+                  </Space>
                 ) : null}
               </>
             ) : null}

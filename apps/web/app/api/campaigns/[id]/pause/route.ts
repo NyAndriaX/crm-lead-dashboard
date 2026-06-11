@@ -1,4 +1,5 @@
 import { handler, json, requirePermission } from "@/lib/api";
+import { toScope } from "@/lib/scope";
 import { pauseCampaign } from "@/lib/services/campaigns";
 
 export const dynamic = "force-dynamic";
@@ -6,7 +7,8 @@ export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
 
 export const POST = handler<Ctx>(async (_req, { params }) => {
-  await requirePermission("campaigns:send");
+  const s = await requirePermission("campaigns:send");
+  const scope = toScope(s);
   const { id } = await params;
-  return json({ data: await pauseCampaign(id) });
+  return json({ data: await pauseCampaign(id, scope) });
 });

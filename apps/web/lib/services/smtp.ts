@@ -3,7 +3,7 @@
  */
 import dns from "dns/promises";
 import nodemailer from "nodemailer";
-import { prisma } from "@crm/db";
+import { prisma, strictOwnerWhere, type DataScope } from "@crm/db";
 import { encryptOrNull } from "@/lib/crypto";
 
 export interface SmtpConfigInput {
@@ -30,8 +30,9 @@ export interface SmtpConfigUpdateInput {
   isActive?: boolean;
 }
 
-export async function listSmtpConfigs() {
+export async function listSmtpConfigs(scope: DataScope) {
   return prisma.smtpConfig.findMany({
+    where: strictOwnerWhere(scope.userId),
     select: {
       id: true,
       label: true,
@@ -49,9 +50,9 @@ export async function listSmtpConfigs() {
   });
 }
 
-export async function getSmtpConfig(id: string) {
-  return prisma.smtpConfig.findUnique({
-    where: { id },
+export async function getSmtpConfig(id: string, scope: DataScope) {
+  return prisma.smtpConfig.findFirst({
+    where: { id, ...strictOwnerWhere(scope.userId) },
     select: {
       id: true,
       label: true,
@@ -66,7 +67,7 @@ export async function getSmtpConfig(id: string) {
   });
 }
 
-export async function createSmtpConfig(input: SmtpConfigInput) {
+export async function createSmtpConfig(input: SmtpConfigInput, scope: DataScope) {
   return prisma.smtpConfig.create({
     data: {
       label: input.label,
@@ -78,6 +79,7 @@ export async function createSmtpConfig(input: SmtpConfigInput) {
       fromEmail: input.fromEmail ?? null,
       dailyLimit: input.dailyLimit ?? 200,
       isActive: input.isActive ?? true,
+      ownerUserId: scope.userId,
     },
     select: {
       id: true,
@@ -93,7 +95,9 @@ export async function createSmtpConfig(input: SmtpConfigInput) {
   });
 }
 
-export async function updateSmtpConfig(id: string, input: SmtpConfigUpdateInput) {
+export async function updateSmtpConfig(id: string, input: SmtpConfigUpdateInput, scope: DataScope) {
+  const existing = await getSmtpConfig(id, scope);
+  if (!existing) throw new Error("SMTP introuvable");
   const data: Record<string, unknown> = {
     ...(input.label !== undefined ? { label: input.label } : {}),
     ...(input.host !== undefined ? { host: input.host } : {}),
@@ -130,7 +134,9 @@ export async function updateSmtpConfig(id: string, input: SmtpConfigUpdateInput)
   });
 }
 
-export async function deleteSmtpConfig(id: string) {
+export async function deleteSmtpConfig(id: string, scope: DataScope) {
+  const existing = await getSmtpConfig(id, scope);
+  if (!existing) throw new Error("SMTP introuvable");
   await prisma.smtpConfig.delete({ where: { id } });
 }
 

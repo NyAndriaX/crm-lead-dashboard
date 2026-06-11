@@ -1,7 +1,8 @@
 /**
  * Service Séquences de relance (RL-01 / RL-02 / RL-04 / RL-06 / RL-07).
  */
-import { prisma } from "@crm/db";
+import { Prisma, prisma, strictCreatorWhere, type DataScope } from "@crm/db";
+import { ApiError } from "../api";
 
 export type SequenceStepInput = {
   delayDays: number;
@@ -12,12 +13,18 @@ export type SequenceStepInput = {
   aiPersonalize?: boolean;
 };
 
+export type SequenceConfigInput = {
+  knowledgeBaseId?: string | null;
+  knowledgeText?: string | null;
+};
+
 export type SequenceInput = {
   name: string;
   steps: SequenceStepInput[];
   maxSteps?: number | null;
   isPaused?: boolean;
   campaignId?: string | null;
+  config?: SequenceConfigInput | null;
 };
 
 export type SequenceUpdateInput = Partial<SequenceInput>;
@@ -33,8 +40,11 @@ function normalizeSteps(steps: SequenceStepInput[]): SequenceStepInput[] {
   }));
 }
 
-export async function listSequences() {
-  const rows = await prisma.sequence.findMany({ orderBy: { createdAt: "desc" } });
+export async function listSequences(scope: DataScope) {
+  const rows = await prisma.sequence.findMany({
+    where: strictCreatorWhere(scope.userId),
+    orderBy: { createdAt: "desc" },
+  });
   const counts = await prisma.sequenceLead.groupBy({
     by: ["sequenceId", "status"],
     _count: { _all: true },
@@ -61,6 +71,7 @@ export async function listSequences() {
     maxSteps: r.maxSteps,
     isPaused: r.isPaused,
     campaignId: r.campaignId,
+    config: r.config,
     campaign: r.campaignId ? campById.get(r.campaignId) ?? null : null,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
@@ -68,8 +79,10 @@ export async function listSequences() {
   }));
 }
 
-export async function getSequence(id: string) {
-  const row = await prisma.sequence.findUnique({ where: { id } });
+export async function getSequence(id: string, scope: DataScope) {
+  const row = await prisma.sequence.findFirst({
+    where: { id, ...strictCreatorWhere(scope.userId) },
+  });
   if (!row) return null;
   return {
     id: row.id,
@@ -78,12 +91,28 @@ export async function getSequence(id: string) {
     maxSteps: row.maxSteps,
     isPaused: row.isPaused,
     campaignId: row.campaignId,
+    config: row.config,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
 }
 
-export async function createSequence(input: SequenceInput) {
+function normalizeConfig(config?: SequenceConfigInput | null): Prisma.InputJsonValue | typeof Prisma.DbNull {
+  if (!config) return Prisma.DbNull;
+  const out: Record<string, string> = {};
+  if (config.knowledgeBaseId) out.knowledgeBaseId = config.knowledgeBaseId;
+  if (config.knowledgeText?.trim()) out.knowledgeText = config.knowledgeText.trim();
+  return Object.keys(out).length > 0 ? out : Prisma.DbNull;
+}
+
+export async function createSequence(input: SequenceInput, scope: DataScope) {
+  if (input.campaignId) {
+    const camp = await prisma.campaign.findFirst({
+      where: { id: input.campaignId, createdById: scope.userId },
+      select: { id: true },
+    });
+    if (!camp) throw new ApiError(403, "Campagne non autorisée", "forbidden");
+  }
   return prisma.sequence.create({
     data: {
       name: input.name.trim(),
@@ -91,32 +120,49 @@ export async function createSequence(input: SequenceInput) {
       maxSteps: input.maxSteps ?? null,
       isPaused: input.isPaused ?? false,
       campaignId: input.campaignId ?? null,
+      createdById: scope.userId,
+      ...(input.config !== undefined ? { config: normalizeConfig(input.config) } : {}),
     },
   });
 }
 
-export async function updateSequence(id: string, input: SequenceUpdateInput) {
+export async function updateSequence(id: string, input: SequenceUpdateInput, scope: DataScope) {
+  const existing = await getSequence(id, scope);
+  if (!existing) throw new ApiError(404, "Séquence introuvable", "not_found");
+  if (input.campaignId) {
+    const camp = await prisma.campaign.findFirst({
+      where: { id: input.campaignId, createdById: scope.userId },
+      select: { id: true },
+    });
+    if (!camp) throw new ApiError(403, "Campagne non autorisée", "forbidden");
+  }
   const data: Record<string, unknown> = {};
   if (input.name !== undefined) data.name = input.name.trim();
   if (input.steps !== undefined) data.steps = normalizeSteps(input.steps) as object;
   if (input.maxSteps !== undefined) data.maxSteps = input.maxSteps;
   if (input.isPaused !== undefined) data.isPaused = input.isPaused;
   if (input.campaignId !== undefined) data.campaignId = input.campaignId;
+  if (input.config !== undefined) data.config = normalizeConfig(input.config);
   return prisma.sequence.update({ where: { id }, data });
 }
 
-export async function deleteSequence(id: string) {
-  // Cascade applicative : on retire d'abord les SequenceLead liés.
+export async function deleteSequence(id: string, scope: DataScope) {
+  const existing = await getSequence(id, scope);
+  if (!existing) throw new ApiError(404, "Séquence introuvable", "not_found");
   await prisma.sequenceLead.deleteMany({ where: { sequenceId: id } });
   await prisma.sequence.delete({ where: { id } });
 }
 
-export async function setSequencePaused(id: string, paused: boolean) {
+export async function setSequencePaused(id: string, paused: boolean, scope: DataScope) {
+  const existing = await getSequence(id, scope);
+  if (!existing) throw new ApiError(404, "Séquence introuvable", "not_found");
   return prisma.sequence.update({ where: { id }, data: { isPaused: paused } });
 }
 
 /** Liste les leads inscrits dans une séquence (avec leur statut courant). */
-export async function listSequenceLeads(sequenceId: string) {
+export async function listSequenceLeads(sequenceId: string, scope: DataScope) {
+  const existing = await getSequence(sequenceId, scope);
+  if (!existing) throw new ApiError(404, "Séquence introuvable", "not_found");
   return prisma.sequenceLead.findMany({
     where: { sequenceId },
     orderBy: { createdAt: "desc" },
@@ -143,10 +189,11 @@ export async function listSequenceLeads(sequenceId: string) {
 export async function enrollLeadsInSequence(
   sequenceId: string,
   leadIds: string[],
+  scope: DataScope,
 ): Promise<{ enrolled: number; skipped: number }> {
   if (leadIds.length === 0) return { enrolled: 0, skipped: 0 };
-  const seq = await prisma.sequence.findUnique({ where: { id: sequenceId } });
-  if (!seq) throw new Error("Sequence introuvable");
+  const seq = await getSequence(sequenceId, scope);
+  if (!seq) throw new ApiError(404, "Séquence introuvable", "not_found");
   const steps = Array.isArray(seq.steps) ? (seq.steps as Array<{ delayDays?: number }>) : [];
   const firstDelayMs = Math.max(0, Math.floor(Number(steps[0]?.delayDays ?? 0))) * 24 * 3600 * 1000;
   const nextSendAt = new Date(Date.now() + firstDelayMs);
@@ -201,8 +248,11 @@ export type SequencesDashboard = {
   }[];
 };
 
-export async function getSequencesDashboard(): Promise<SequencesDashboard> {
-  const sequences = await prisma.sequence.findMany({ orderBy: { createdAt: "desc" } });
+export async function getSequencesDashboard(scope: DataScope): Promise<SequencesDashboard> {
+  const sequences = await prisma.sequence.findMany({
+    where: strictCreatorWhere(scope.userId),
+    orderBy: { createdAt: "desc" },
+  });
   if (sequences.length === 0) {
     return {
       totals: {
@@ -308,7 +358,9 @@ export async function getSequencesDashboard(): Promise<SequencesDashboard> {
   };
 }
 
-export async function removeLeadFromSequence(sequenceId: string, leadId: string): Promise<void> {
+export async function removeLeadFromSequence(sequenceId: string, leadId: string, scope: DataScope): Promise<void> {
+  const existing = await getSequence(sequenceId, scope);
+  if (!existing) throw new ApiError(404, "Séquence introuvable", "not_found");
   await prisma.sequenceLead.updateMany({
     where: { sequenceId, leadId, status: { in: ["active", "paused"] } },
     data: { status: "stopped", stoppedReason: "manual", nextSendAt: null },

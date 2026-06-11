@@ -114,6 +114,9 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [userName, setUserName] = useState("");
+  const now = new Date();
+  const [openAiYear, setOpenAiYear] = useState(now.getFullYear());
+  const [openAiMonth, setOpenAiMonth] = useState(now.getMonth() + 1);
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -121,11 +124,12 @@ export default function DashboardPage() {
       .then((r) => setUserName(r.data.user.name.split(" ")[0] ?? r.data.user.name))
       .catch(() => {});
 
-    api.get<{ data: DashStats }>("/dashboard/stats")
+    setLoading(true);
+    api.get<{ data: DashStats }>("/dashboard/stats", { params: { openAiYear, openAiMonth } })
       .then((r) => setStats(r.data.data))
       .catch(() => setError(true))
       .finally(() => setLoading(false));
-  }, []);
+  }, [openAiYear, openAiMonth]);
 
   if (loading) return (
     <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 400 }}>
@@ -301,7 +305,12 @@ export default function DashboardPage() {
       </Row>
 
       {openAi?.configured && (
-        <OpenAiUsageCard usage={openAi} />
+        <OpenAiUsageCard
+          usage={openAi}
+          periodYear={openAiYear}
+          periodMonth={openAiMonth}
+          onPeriodChange={(y, m) => { setOpenAiYear(y); setOpenAiMonth(m); }}
+        />
       )}
 
       {/* ── Graphiques ────────────────────────────────────────────────────── */}

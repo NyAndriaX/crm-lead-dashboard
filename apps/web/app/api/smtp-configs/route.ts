@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ApiError, handler, json, created, parseBody, parseQuery, requirePermission, requireSession } from "@/lib/api";
 import { can } from "@/lib/rbac";
+import { toScope } from "@/lib/scope";
 import { createSmtpConfig, listSmtpConfigs } from "@/lib/services/smtp";
 
 export const dynamic = "force-dynamic";
@@ -24,14 +25,16 @@ export const GET = handler(async (req) => {
   if (!can(s.role, "settings:manage") && !can(s.role, "campaigns:read")) {
     throw new ApiError(403, "Permission manquante", "forbidden");
   }
+  const scope = toScope(s);
   const { active } = parseQuery(req, querySchema);
-  const configs = await listSmtpConfigs();
+  const configs = await listSmtpConfigs(scope);
   return json({ data: active === "true" ? configs.filter((config) => config.isActive) : configs });
 });
 
 export const POST = handler(async (req) => {
-  await requirePermission("settings:manage");
+  const s = await requirePermission("settings:manage");
+  const scope = toScope(s);
   const input = await parseBody(req, createSchema);
-  const config = await createSmtpConfig(input);
+  const config = await createSmtpConfig(input, scope);
   return created({ data: config });
 });

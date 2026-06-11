@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ApiError, handler, json, noContent, parseBody, requirePermission } from "@/lib/api";
+import { toScope } from "@/lib/scope";
 import {
   deleteSequence,
   getSequence,
@@ -20,45 +21,55 @@ const stepSchema = z.object({
   aiPersonalize: z.boolean().optional(),
 });
 
+const configSchema = z.object({
+  knowledgeBaseId: z.string().trim().min(1).nullable().optional(),
+  knowledgeText: z.string().trim().max(20_000).nullable().optional(),
+}).optional().nullable();
+
 const updateSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   steps: z.array(stepSchema).min(1).max(20).optional(),
   maxSteps: z.number().int().min(1).max(20).nullable().optional(),
   isPaused: z.boolean().optional(),
   campaignId: z.string().trim().min(1).nullable().optional(),
+  config: configSchema,
 });
 
 export const GET = handler<Ctx>(async (_req, { params }) => {
-  await requirePermission("sequences:manage");
+  const s = await requirePermission("sequences:manage");
+  const scope = toScope(s);
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
-  const seq = await getSequence(id);
+  const seq = await getSequence(id, scope);
   if (!seq) throw new ApiError(404, "Séquence introuvable", "not_found");
   return json({ data: seq });
 });
 
 export const PUT = handler<Ctx>(async (req, { params }) => {
-  await requirePermission("sequences:manage");
+  const s = await requirePermission("sequences:manage");
+  const scope = toScope(s);
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
   const input = await parseBody(req, updateSchema);
-  const seq = await updateSequence(id, input);
+  const seq = await updateSequence(id, input, scope);
   return json({ data: seq });
 });
 
 export const PATCH = handler<Ctx>(async (req, { params }) => {
-  await requirePermission("sequences:manage");
+  const s = await requirePermission("sequences:manage");
+  const scope = toScope(s);
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
   const body = await parseBody(req, z.object({ isPaused: z.boolean() }));
-  const seq = await setSequencePaused(id, body.isPaused);
+  const seq = await setSequencePaused(id, body.isPaused, scope);
   return json({ data: seq });
 });
 
 export const DELETE = handler<Ctx>(async (_req, { params }) => {
-  await requirePermission("sequences:manage");
+  const s = await requirePermission("sequences:manage");
+  const scope = toScope(s);
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
-  await deleteSequence(id);
+  await deleteSequence(id, scope);
   return noContent();
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, Form, Input, Button, Typography, Alert, Tag, Space, Divider, message } from "antd";
 import {
@@ -295,9 +296,9 @@ function LoginPageInner() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
                     <span>Mot de passe</span>
                     <Text type="secondary" style={{ fontSize: 12 }}>
-                      <a style={{ color: "#1677ff" }} onClick={(e) => { e.preventDefault(); message.info("Contactez l'administrateur pour réinitialiser."); }} href="#">
+                      <Link href="/forgot-password" style={{ color: "#1677ff", fontSize: 12 }}>
                         Mot de passe oublié ?
-                      </a>
+                      </Link>
                     </Text>
                   </div>
                 }

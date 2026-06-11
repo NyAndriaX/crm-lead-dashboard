@@ -308,6 +308,21 @@ export type GdprErasedItem = {
   createdAt: string;
 };
 
+/** Passe un lead archivé en suppression RGPD définitive (blacklist email). */
+export async function eraseArchivedLead(leadId: string, erasedBy?: string): Promise<EraseResult> {
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { id: true, deletedAt: true, emailHash: true },
+  });
+  if (!lead || !lead.deletedAt) {
+    return {
+      leadId,
+      removed: { lead: false, leadHistory: 0, emailEvents: 0, inboxMessages: 0, sequenceLeads: 0, leadPipeline: 0 },
+    };
+  }
+  return eraseLead(leadId, erasedBy);
+}
+
 export async function listGdprErasedContacts(opts: { page?: number; pageSize?: number } = {}) {
   const page = Math.max(1, opts.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, opts.pageSize ?? 25));

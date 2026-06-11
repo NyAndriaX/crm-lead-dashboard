@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { handler, json, noContent, parseBody, parseQuery, requirePermission } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
+import { toScope } from "@/lib/scope";
 import { deleteStage, updateStage } from "@/lib/services/pipeline";
 
 export const dynamic = "force-dynamic";
@@ -18,10 +19,11 @@ const deleteQuerySchema = z.object({
 
 export const PUT = handler<Ctx>(async (req, { params }) => {
   const session = await requirePermission("pipeline:manage");
+  const scope = toScope(session);
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
   const input = await parseBody(req, updateSchema);
-  await updateStage(id, input);
+  await updateStage(id, input, scope);
   await audit({
     userId: session.sub,
     action: "pipeline.stage.update",
@@ -35,10 +37,11 @@ export const PUT = handler<Ctx>(async (req, { params }) => {
 
 export const DELETE = handler<Ctx>(async (req, { params }) => {
   const session = await requirePermission("pipeline:manage");
+  const scope = toScope(session);
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
   const { reassignTo } = parseQuery(req, deleteQuerySchema);
-  await deleteStage(id, reassignTo ? { reassignTo } : undefined);
+  await deleteStage(id, scope, reassignTo ? { reassignTo } : undefined);
   await audit({
     userId: session.sub,
     action: "pipeline.stage.delete",

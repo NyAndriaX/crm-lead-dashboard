@@ -5,6 +5,7 @@
 #   docker build -f apps/worker/Dockerfile -t crm-app .
 #
 # RUN_MODE (optionnel) : all (défaut) | web | worker | db-init
+# Démarrage : db push → init-prod → migrate-data-owners (scripts/docker-entrypoint.sh)
 FROM node:20-bookworm-slim AS base
 WORKDIR /app
 

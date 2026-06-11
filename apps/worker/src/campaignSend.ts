@@ -7,8 +7,10 @@ import * as crypto from "node:crypto";
 import nodemailer from "nodemailer";
 import {
   prisma,
+  EmailEventType,
   buildLeadWhereFromSegmentFilters,
   signEmailTrackToken,
+  buildSmtpNodemailerAuth,
   type LeadSegmentFilters,
 } from "@crm/db";
 import { enqueueOneOff, type WorkerJobContext } from "@crm/queue";
@@ -53,6 +55,7 @@ type CampaignCfg = {
   warmup?: { enabled?: boolean; startPerDay?: number; growth?: number };
   /** A2 (F2/F3) — réécriture IA unique par destinataire. */
   aiPersonalize?: boolean;
+  excludedLeadIds?: string[];
 };
 
 function mergeStats(prev: unknown, patch: Record<string, number>): Record<string, number> {
@@ -190,9 +193,12 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
   }
 
   const filters = (campaign.segment.filters ?? {}) as LeadSegmentFilters;
+  const excluded = Array.isArray(cfg?.excludedLeadIds) ? cfg!.excludedLeadIds! : [];
   const whereLead = {
     ...buildLeadWhereFromSegmentFilters({ ...filters, includeDeleted: false }),
     emailHash: { not: null },
+    ...(excluded.length > 0 ? { id: { notIn: excluded } } : {}),
+    emailEvents: { none: { campaignId, eventType: EmailEventType.SENT } },
   };
 
   const total = await prisma.lead.count({ where: whereLead });
@@ -205,20 +211,24 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
 
   const smtpRow = await prisma.smtpConfig.findUnique({ where: { id: campaign.smtpConfig.id } });
   if (!smtpRow) return { error: "SMTP introuvable" };
-  const login = decryptOrNull(smtpRow.loginEnc);
-  const pass = decryptOrNull(smtpRow.passwordEnc);
-  if (!login || !pass) return { error: "Identifiants SMTP illisibles" };
+  let smtpAuth: Awaited<ReturnType<typeof buildSmtpNodemailerAuth>>;
+  try {
+    smtpAuth = await buildSmtpNodemailerAuth(smtpRow, decryptOrNull);
+  } catch {
+    return { error: "Identifiants SMTP illisibles" };
+  }
 
   const secure = smtpRow.port === 465;
   const transporter = nodemailer.createTransport({
     host: smtpRow.host,
     port: smtpRow.port,
     secure,
-    auth: { user: login, pass },
+    auth: smtpAuth,
     tls: { rejectUnauthorized: false },
   });
 
-  const fromAddr = smtpRow.fromEmail ?? login;
+  const login = decryptOrNull(smtpRow.loginEnc);
+  const fromAddr = smtpRow.fromEmail ?? smtpRow.oauthMailSender ?? login ?? "no-reply@crm";
   const fromName = smtpRow.fromName ?? "CRM";
 
   const capWarm = warmupDailyCap(cfg, campaign.createdAt);
@@ -355,6 +365,7 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
         await prisma.inboxMessage.create({
           data: {
             leadId: lead.id,
+            ownerUserId: campaign.createdById,
             messageId: messageIdKey,
             direction: "outbound",
             fromEnc: encryptValue(`"${fromName}" <${fromAddr}>`),

@@ -9,6 +9,8 @@ import {
   resolveOpenAiCredentials,
   injectKnowledgeIntoMessages,
   injectCampaignKnowledgeIntoMessages,
+  injectSequenceKnowledgeIntoMessages,
+  injectKnowledgeBaseIntoMessages,
 } from "@crm/db";
 
 export type AiMessage = { role: "system" | "user"; content: string };
@@ -16,6 +18,8 @@ export type AiMessage = { role: "system" | "user"; content: string };
 export async function aiComplete(args: {
   userId?: string | null;
   campaignId?: string | null;
+  sequenceId?: string | null;
+  knowledgeBaseId?: string | null;
   feature?: string;
   messages: AiMessage[];
   maxTokens?: number;
@@ -27,6 +31,10 @@ export async function aiComplete(args: {
   if (!credentials) return { text: args.fallback(), source: "fallback" };
 
   let messages = await injectKnowledgeIntoMessages(args.userId, args.messages);
+  if (args.knowledgeBaseId) {
+    messages = await injectKnowledgeBaseIntoMessages(args.knowledgeBaseId, messages);
+  }
+  messages = await injectSequenceKnowledgeIntoMessages(args.sequenceId, messages);
   messages = await injectCampaignKnowledgeIntoMessages(args.campaignId, messages);
 
   const res = await openAiChatCompletion({
@@ -63,6 +71,7 @@ export type LeadLite = {
 export async function aiPersonalizeEmail(args: {
   userId?: string | null;
   campaignId?: string | null;
+  sequenceId?: string | null;
   subject: string;
   html: string;
   lead: LeadLite;
@@ -79,6 +88,7 @@ export async function aiPersonalizeEmail(args: {
   const { text, source } = await aiComplete({
     userId: args.userId,
     campaignId: args.campaignId,
+    sequenceId: args.sequenceId,
     feature: args.kind === "relance" ? "sequence_personalize" : "email_personalize",
     maxTokens: 900,
     temperature: 0.7,

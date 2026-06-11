@@ -2,8 +2,15 @@
  * Service Pipeline — gestion des étapes commerciales (PL-02), déplacement des
  * leads entre étapes (PL-03), métriques pipeline (PL-05).
  */
-import { prisma } from "@crm/db";
-import type { LeadStatus } from "@crm/db";
+import {
+  prisma,
+  ensureDefaultPipelineStages,
+  resolvePipelineOwnerId,
+  buildPipelineLeadsWhere,
+  strictOwnerWhere,
+  type DataScope,
+  type LeadStatus,
+} from "@crm/db";
 
 export type PipelineStageItem = {
   id: string;
@@ -75,9 +82,14 @@ export function resolveStageIdForStatus(
 export async function syncPipelineStageForStatus(
   leadId: string,
   status: LeadStatus,
+  scope: DataScope,
   userId?: string | null,
 ): Promise<{ stageId: string | null; changed: boolean }> {
-  const stages = await prisma.pipelineStage.findMany({ orderBy: { order: "asc" } });
+  await ensureDefaultPipelineStages(scope.userId);
+  const stages = await prisma.pipelineStage.findMany({
+    where: { ownerUserId: scope.userId },
+    orderBy: { order: "asc" },
+  });
   const stageId = resolveStageIdForStatus(status, stages);
   if (!stageId) return { stageId: null, changed: false };
 
@@ -135,9 +147,11 @@ function resolveEffectiveStageId(
 
 async function effectiveCountByStage(
   stages: { id: string; name: string }[],
+  scope: DataScope,
+  stageOwnerUserId: string,
 ): Promise<Map<string, number>> {
   const leads = await prisma.lead.findMany({
-    where: { deletedAt: null },
+    where: buildPipelineLeadsWhere(stageOwnerUserId, scope),
     select: { status: true, pipelineStageId: true },
   });
   const countByStage = new Map<string, number>(stages.map((s) => [s.id, 0]));
@@ -152,36 +166,67 @@ async function effectiveCountByStage(
 
 // ── Stages CRUD ──────────────────────────────────────────────────────────────
 
-export async function listStages(): Promise<PipelineStageItem[]> {
+export type ListStagesResult = {
+  stages: PipelineStageItem[];
+  readOnly: boolean;
+  ownerUserId: string;
+};
+
+export async function listStages(
+  scope: DataScope,
+  opts?: { ownerUserId?: string | null },
+): Promise<ListStagesResult> {
+  const { ownerUserId, readOnly } = await resolvePipelineOwnerId(scope, opts?.ownerUserId);
+  await ensureDefaultPipelineStages(ownerUserId);
   const stages = await prisma.pipelineStage.findMany({
+    where: { ownerUserId },
     orderBy: { order: "asc" },
   });
-  // Compte par étape avec repli statut → étape (leads non supprimés).
-  const countByStage = await effectiveCountByStage(stages);
-  return stages.map((s) => ({
-    id: s.id,
-    name: s.name,
-    order: s.order,
-    color: s.color,
-    leadCount: countByStage.get(s.id) ?? 0,
-    createdAt: s.createdAt,
-  }));
+  const countByStage = await effectiveCountByStage(stages, scope, ownerUserId);
+  return {
+    ownerUserId,
+    readOnly,
+    stages: stages.map((s) => ({
+      id: s.id,
+      name: s.name,
+      order: s.order,
+      color: s.color,
+      leadCount: countByStage.get(s.id) ?? 0,
+      createdAt: s.createdAt,
+    })),
+  };
 }
 
-export async function createStage(input: { name: string; color?: string | null }): Promise<PipelineStageItem> {
-  // Place en fin de liste par défaut.
-  const max = await prisma.pipelineStage.aggregate({ _max: { order: true } });
+export async function createStage(
+  input: { name: string; color?: string | null },
+  scope: DataScope,
+): Promise<PipelineStageItem> {
+  await ensureDefaultPipelineStages(scope.userId);
+  const max = await prisma.pipelineStage.aggregate({
+    where: { ownerUserId: scope.userId },
+    _max: { order: true },
+  });
   const order = (max._max.order ?? -1) + 1;
   const stage = await prisma.pipelineStage.create({
-    data: { name: input.name, color: input.color ?? null, order },
+    data: { name: input.name, color: input.color ?? null, order, ownerUserId: scope.userId },
   });
   return { id: stage.id, name: stage.name, order: stage.order, color: stage.color, leadCount: 0, createdAt: stage.createdAt };
+}
+
+async function assertOwnStage(id: string, scope: DataScope) {
+  const stage = await prisma.pipelineStage.findFirst({
+    where: { id, ...strictOwnerWhere(scope.userId) },
+  });
+  if (!stage) throw new Error("Étape introuvable ou accès refusé");
+  return stage;
 }
 
 export async function updateStage(
   id: string,
   input: { name?: string; color?: string | null },
+  scope: DataScope,
 ): Promise<void> {
+  await assertOwnStage(id, scope);
   await prisma.pipelineStage.update({
     where: { id },
     data: {
@@ -191,30 +236,40 @@ export async function updateStage(
   });
 }
 
-export async function deleteStage(id: string, opts?: { reassignTo?: string }): Promise<void> {
-  // Si on supprime une étape contenant des leads, on les réassigne ou on
-  // détache (pipelineStageId = null).
+export async function deleteStage(id: string, scope: DataScope, opts?: { reassignTo?: string }): Promise<void> {
+  const stage = await assertOwnStage(id, scope);
+
   if (opts?.reassignTo) {
-    await prisma.lead.updateMany({
-      where: { pipelineStageId: id },
-      data: { pipelineStageId: opts.reassignTo },
+    const target = await prisma.pipelineStage.findFirst({
+      where: { id: opts.reassignTo, ...strictOwnerWhere(scope.userId) },
     });
-    await prisma.leadPipeline.updateMany({
-      where: { stageId: id },
-      data: { stageId: opts.reassignTo },
-    });
-  } else {
-    await prisma.lead.updateMany({
-      where: { pipelineStageId: id },
-      data: { pipelineStageId: null },
-    });
-    await prisma.leadPipeline.deleteMany({ where: { stageId: id } });
+    if (!target) throw new Error("Étape de réassignation introuvable");
+    if (opts.reassignTo === id) throw new Error("Impossible de réassigner vers la même colonne");
   }
-  await prisma.pipelineStage.delete({ where: { id } });
+
+  await prisma.$transaction(async (tx) => {
+    if (opts?.reassignTo) {
+      await tx.lead.updateMany({
+        where: { pipelineStageId: id },
+        data: { pipelineStageId: opts.reassignTo },
+      });
+      await tx.leadPipeline.updateMany({
+        where: { stageId: id },
+        data: { stageId: opts.reassignTo },
+      });
+    } else {
+      await tx.lead.updateMany({
+        where: { pipelineStageId: id },
+        data: { pipelineStageId: null },
+      });
+      await tx.leadPipeline.deleteMany({ where: { stageId: id } });
+    }
+    await tx.pipelineStage.delete({ where: { id } });
+  });
 }
 
-export async function reorderStages(orderedIds: string[]): Promise<void> {
-  // Réécriture explicite de l'ordre. Atomique via transaction.
+export async function reorderStages(orderedIds: string[], scope: DataScope): Promise<void> {
+  for (const id of orderedIds) await assertOwnStage(id, scope);
   await prisma.$transaction(
     orderedIds.map((id, idx) =>
       prisma.pipelineStage.update({ where: { id }, data: { order: idx } }),
@@ -228,6 +283,7 @@ export async function moveLeadToStage(args: {
   leadId: string;
   stageId: string;
   position?: number;
+  scope: DataScope;
   userId?: string | null;
 }): Promise<{
   leadId: string;
@@ -235,7 +291,9 @@ export async function moveLeadToStage(args: {
   status: LeadStatus;
   statusChanged: boolean;
 }> {
-  const stage = await prisma.pipelineStage.findUnique({ where: { id: args.stageId } });
+  const stage = await prisma.pipelineStage.findFirst({
+    where: { id: args.stageId, ownerUserId: args.scope.userId },
+  });
   if (!stage) throw new Error("Étape introuvable");
   const lead = await prisma.lead.findUnique({ where: { id: args.leadId } });
   if (!lead || lead.deletedAt) throw new Error("Lead introuvable");
@@ -331,9 +389,11 @@ function decimalToNumber(v: unknown): number {
 
 async function businessPotentialByStage(
   stages: { id: string; name: string }[],
+  scope: DataScope,
+  stageOwnerUserId: string,
 ): Promise<Map<string, { total: number; count: number }>> {
   const leads = await prisma.lead.findMany({
-    where: { deletedAt: null },
+    where: buildPipelineLeadsWhere(stageOwnerUserId, scope),
     select: { status: true, pipelineStageId: true, businessPotentialEur: true },
   });
   const map = new Map<string, { total: number; count: number }>(
@@ -350,12 +410,19 @@ async function businessPotentialByStage(
   return map;
 }
 
-export async function pipelineMetrics(): Promise<PipelineMetrics> {
-  const stages = await prisma.pipelineStage.findMany({ orderBy: { order: "asc" } });
+export async function pipelineMetrics(
+  scope: DataScope,
+  opts?: { ownerUserId?: string | null },
+): Promise<PipelineMetrics> {
+  const { ownerUserId } = await resolvePipelineOwnerId(scope, opts?.ownerUserId);
+  await ensureDefaultPipelineStages(ownerUserId);
+  const stages = await prisma.pipelineStage.findMany({
+    where: { ownerUserId },
+    orderBy: { order: "asc" },
+  });
 
-  // Count par stage avec repli statut → étape (leads non supprimés).
-  const countByStage = await effectiveCountByStage(stages);
-  const revenueByStage = await businessPotentialByStage(stages);
+  const countByStage = await effectiveCountByStage(stages, scope, ownerUserId);
+  const revenueByStage = await businessPotentialByStage(stages, scope, ownerUserId);
 
   // Durée moyenne dans chaque étape : moyenne de (now - LeadPipeline.enteredAt) pour les leads
   // actuellement présents dans cette étape (vue "santé du pipeline").

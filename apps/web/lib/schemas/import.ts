@@ -4,7 +4,7 @@ import { z } from "zod";
 /** Champs lead acceptés lors d'un import. */
 export const IMPORTABLE_FIELDS = [
   "email", "phone", "firstName", "lastName", "company",
-  "website", "sector", "city", "country", "source", "notes",
+  "website", "sector", "city", "country", "source", "notes", "tags",
 ] as const;
 export type ImportableField = (typeof IMPORTABLE_FIELDS)[number];
 
@@ -21,6 +21,7 @@ export const IMPORTABLE_FIELD_LABELS: Record<ImportableField, string> = {
   country: "Pays",
   source: "Source",
   notes: "Notes",
+  tags: "Tags (séparés par virgule)",
 };
 
 /**

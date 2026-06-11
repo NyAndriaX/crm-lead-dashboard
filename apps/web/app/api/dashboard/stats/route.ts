@@ -2,14 +2,21 @@
  * GET /api/dashboard/stats — statistiques du tableau de bord principal.
  * Accessible à tous les rôles ; COMMERCIAL ne voit que ses propres leads.
  */
+import { z } from "zod";
 import { prisma, getOpenAiUsageSummaryForDashboard } from "@crm/db";
-import { handler, json, requireSession } from "@/lib/api";
+import { handler, json, parseQuery, requireSession } from "@/lib/api";
 import { NOT_DELETED } from "@/lib/notDeleted";
 
 export const dynamic = "force-dynamic";
 
-export const GET = handler(async () => {
+const querySchema = z.object({
+  openAiYear: z.coerce.number().int().min(2020).max(2100).optional(),
+  openAiMonth: z.coerce.number().int().min(1).max(12).optional(),
+});
+
+export const GET = handler(async (req) => {
   const session = await requireSession();
+  const { openAiYear, openAiMonth } = parseQuery(req, querySchema);
   const isRestricted = session.role === "COMMERCIAL";
   const baseWhere = {
     ...NOT_DELETED,
@@ -82,7 +89,10 @@ export const GET = handler(async () => {
     ? Math.round((((thisMonth as number) - (prevMonth as number)) / (prevMonth as number)) * 100)
     : null;
 
-  const openAi = await getOpenAiUsageSummaryForDashboard(session.sub, session.role);
+  const openAi = await getOpenAiUsageSummaryForDashboard(session.sub, session.role, {
+    year: openAiYear,
+    month: openAiMonth,
+  });
 
   return json({
     data: {

@@ -100,6 +100,8 @@ model User {
   openAiKnowledgeText  String?  @db.Text
   // Fichiers Markdown importés [{ id, name, content, createdAt }].
   openAiKnowledgeDocs  Json     @default("[]")
+  // Base de connaissances partagée par défaut (réponses inbox / auto-répondeur).
+  openAiKnowledgeBaseId String?
   // Auto-répondeur IA (par utilisateur) : off | draft | auto
   autoResponderMode       String  @default("off")
   autoResponderMeetingUrl String?
@@ -116,6 +118,18 @@ model User {
   openAiUsageLogs OpenAiUsageLog[]
   leadNotes       LeadNote[]
   leadDocuments   LeadDocument[]
+  passwordResetTokens PasswordResetToken[]
+
+  ownedLeads         Lead[]          @relation("LeadOwner")
+  ownedImapConfigs   ImapConfig[]    @relation("ImapOwner")
+  ownedSmtpConfigs   SmtpConfig[]    @relation("SmtpOwner")
+  ownedPipelineStages PipelineStage[] @relation("PipelineOwner")
+  ownedInboxMessages InboxMessage[]  @relation("InboxOwner")
+  ownedKnowledgeBases KnowledgeBase[] @relation("KnowledgeBaseOwner")
+  createdCampaigns   Campaign[]      @relation("CampaignCreator")
+  createdSequences   Sequence[]      @relation("SequenceCreator")
+  createdSegments    Segment[]       @relation("SegmentCreator")
+  createdTemplates   Template[]      @relation("TemplateCreator")
 
   @@index([teamId])
 }
@@ -183,6 +197,7 @@ model Lead {
   notes       String?     @db.Text
   businessPotentialEur Decimal? @db.Decimal(14, 2) // potentiel commercial EUR
   assignedToId String?
+  ownerUserId  String?
   pipelineStageId String?
   enrichment  Json?
   lastActionAt DateTime?
@@ -193,6 +208,7 @@ model Lead {
   updatedAt   DateTime    @updatedAt
 
   assignedTo     User?            @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  owner          User?            @relation("LeadOwner", fields: [ownerUserId], references: [id])
   pipelineStage  PipelineStage?   @relation(fields: [pipelineStageId], references: [id])
   history        LeadHistory[]
   leadNotes      LeadNote[]
@@ -204,6 +220,7 @@ model Lead {
 
   @@index([status, createdAt])
   @@index([assignedToId, status])
+  @@index([ownerUserId])
   @@index([score(sort: Desc)])
   @@index([pipelineStageId])
   @@fulltext([firstName, lastName, company, notes])
@@ -289,14 +306,18 @@ model Blacklist {
 // ──────────────────────────────────────────────────────────────
 
 model PipelineStage {
-  id        String   @id @default(cuid())
-  name      String
-  order     Int
-  color     String?
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  name        String
+  order       Int
+  color       String?
+  ownerUserId String?
+  createdAt   DateTime @default(now())
 
+  owner        User?          @relation("PipelineOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   leads        Lead[]
   leadPipeline LeadPipeline[]
+
+  @@index([ownerUserId, order])
 }
 
 model LeadPipeline {
@@ -328,6 +349,7 @@ model SmtpConfig {
   dailyLimit       Int      @default(200)
   sentToday        Int      @default(0)
   isActive         Boolean  @default(true)
+  ownerUserId      String?
   createdAt        DateTime @default(now())
   // OAuth Microsoft 365
   oauthProvider    String?  // "microsoft" | null
@@ -337,7 +359,10 @@ model SmtpConfig {
   oauthRefreshTokenEnc Bytes?
   oauthMailSender  String?
 
+  owner     User?      @relation("SmtpOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   campaigns Campaign[]
+
+  @@index([ownerUserId])
 }
 
 model ImapConfig {
@@ -348,6 +373,7 @@ model ImapConfig {
   loginEnc         Bytes
   passwordEnc      Bytes
   isActive         Boolean   @default(true)
+  ownerUserId      String?
   lastSyncAt       DateTime?
   createdAt        DateTime  @default(now())
   // OAuth Microsoft 365
@@ -357,6 +383,10 @@ model ImapConfig {
   oauthClientSecretEnc Bytes?
   oauthRefreshTokenEnc Bytes?
   oauthMailbox     String?
+
+  owner User? @relation("ImapOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  @@index([ownerUserId])
 }
 
 model Template {
@@ -369,10 +399,14 @@ model Template {
   isPreset               Boolean  @default(false)
   isPublic               Boolean  @default(true)
   includeUnsubscribeLink Boolean  @default(true)
+  createdById            String?
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
+  createdBy User?      @relation("TemplateCreator", fields: [createdById], references: [id], onDelete: SetNull)
   campaigns Campaign[]
+
+  @@index([createdById])
 }
 
 model TemplateBlock {
@@ -393,12 +427,16 @@ model TemplateBlock {
 }
 
 model Segment {
-  id        String   @id @default(cuid())
-  name      String
-  filters   Json
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  name        String
+  filters     Json
+  createdById String?
+  createdAt   DateTime @default(now())
 
+  createdBy User?      @relation("SegmentCreator", fields: [createdById], references: [id], onDelete: SetNull)
   campaigns Campaign[]
+
+  @@index([createdById])
 }
 
 model Campaign {
@@ -417,6 +455,7 @@ model Campaign {
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
+  createdBy  User?        @relation("CampaignCreator", fields: [createdById], references: [id], onDelete: SetNull)
   template   Template?    @relation(fields: [templateId], references: [id])
   segment    Segment?     @relation(fields: [segmentId], references: [id])
   smtpConfig SmtpConfig?  @relation(fields: [smtpConfigId], references: [id])
@@ -426,6 +465,7 @@ model Campaign {
   @@index([templateId])
   @@index([segmentId])
   @@index([smtpConfigId])
+  @@index([createdById])
 }
 
 model EmailEvent {
@@ -453,6 +493,8 @@ model EmailEvent {
 model InboxMessage {
   id          String   @id @default(cuid())
   leadId      String?
+  ownerUserId String?
+  imapConfigId String?
   messageId   String
   inReplyTo   String?
   direction   String
@@ -467,9 +509,11 @@ model InboxMessage {
   receivedAt  DateTime @default(now())
   deletedAt   DateTime?
 
-  lead Lead? @relation(fields: [leadId], references: [id])
+  lead  Lead? @relation(fields: [leadId], references: [id])
+  owner User? @relation("InboxOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
 
   @@index([leadId, receivedAt])
+  @@index([ownerUserId, receivedAt])
   @@index([messageId])
 }
 
@@ -478,19 +522,23 @@ model InboxMessage {
 // ──────────────────────────────────────────────────────────────
 
 model Sequence {
-  id         String   @id @default(cuid())
-  name       String
-  steps      Json
-  maxSteps   Int?
-  isPaused   Boolean  @default(false)
-  campaignId String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          String   @id @default(cuid())
+  name        String
+  steps       Json
+  maxSteps    Int?
+  isPaused    Boolean  @default(false)
+  campaignId  String?
+  config      Json?
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
+  createdBy     User?          @relation("SequenceCreator", fields: [createdById], references: [id], onDelete: SetNull)
   campaign      Campaign?      @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   sequenceLeads SequenceLead[]
 
   @@index([campaignId])
+  @@index([createdById])
 }
 
 model SequenceLead {
@@ -638,6 +686,33 @@ model Organization {
   settings  Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model KnowledgeBase {
+  id          String   @id @default(cuid())
+  name        String
+  description String?  @db.Text
+  contentMd   String   @db.Text
+  ownerUserId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner User? @relation("KnowledgeBaseOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  @@index([ownerUserId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // ──────────────────────────────────────────────────────────────

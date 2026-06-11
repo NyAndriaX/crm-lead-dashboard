@@ -67,9 +67,12 @@ function buildNav(role: ShellUser["role"], collapsed: boolean): MenuProps["items
 }
 
 
+type Branding = { siteName?: string; siteIconUrl?: string };
+
 export default function DashboardShell({ user, children }: { user: ShellUser; children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [branding, setBranding] = useState<Branding>({});
   const pathname = usePathname();
   const router = useRouter();
   const { token } = antdTheme.useToken();
@@ -89,6 +92,13 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
     pathname.startsWith("/analytics") ? "/analytics" :
     "/dashboard"
   );
+
+  useEffect(() => {
+    fetch("/api/organization/branding")
+      .then((r) => r.json())
+      .then((j: { data?: Branding }) => setBranding(j.data ?? {}))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     setDrawerOpen(false);
@@ -151,19 +161,24 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
               whiteSpace: "nowrap",
             }}
           >
-            <div
-              style={{
-                width: 28, height: 28, borderRadius: 8,
-                background: "linear-gradient(135deg,#1677ff,#0950b3)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              <DashboardOutlined style={{ color: "#fff", fontSize: 14 }} />
-            </div>
+            {branding.siteIconUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={branding.siteIconUrl} alt="" style={{ width: 28, height: 28, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
+            ) : (
+              <div
+                style={{
+                  width: 28, height: 28, borderRadius: 8,
+                  background: "linear-gradient(135deg,#1677ff,#0950b3)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <DashboardOutlined style={{ color: "#fff", fontSize: 14 }} />
+              </div>
+            )}
             {!collapsed && (
               <Text strong style={{ color: "#fff", marginLeft: 10, fontSize: 14, letterSpacing: 0.3 }}>
-                CRM Dashboard
+                {branding.siteName ?? "CRM Dashboard"}
               </Text>
             )}
           </div>

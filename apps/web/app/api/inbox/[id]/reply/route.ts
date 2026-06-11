@@ -1,6 +1,6 @@
 import { z } from "zod";
 import nodemailer from "nodemailer";
-import { prisma } from "@crm/db";
+import { prisma, buildSmtpNodemailerAuth } from "@crm/db";
 import { ApiError, handler, json, parseBody, requirePermission } from "@/lib/api";
 import { decryptOrNull, encrypt } from "@/lib/crypto";
 
@@ -15,7 +15,7 @@ const replySchema = z.object({
 });
 
 export const POST = handler<Ctx>(async (req, { params }) => {
-  await requirePermission("inbox:reply");
+  const session = await requirePermission("inbox:reply");
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
   const input = await parseBody(req, replySchema);
@@ -41,20 +41,25 @@ export const POST = handler<Ctx>(async (req, { params }) => {
   }
   if (!toEmail) throw new ApiError(400, "Destinataire indéterminable", "no_recipient");
 
-  const smtpRow = await prisma.smtpConfig.findUnique({ where: { id: input.smtpConfigId } });
+  const smtpRow = await prisma.smtpConfig.findFirst({
+    where: { id: input.smtpConfigId, ownerUserId: session.sub },
+  });
   if (!smtpRow) throw new ApiError(404, "SMTP introuvable", "smtp_not_found");
+  let smtpAuth: Awaited<ReturnType<typeof buildSmtpNodemailerAuth>>;
+  try {
+    smtpAuth = await buildSmtpNodemailerAuth(smtpRow, decryptOrNull);
+  } catch {
+    throw new ApiError(500, "Identifiants SMTP illisibles", "smtp_unreadable");
+  }
   const login = decryptOrNull(smtpRow.loginEnc);
-  const pass = decryptOrNull(smtpRow.passwordEnc);
-  if (!login || !pass) throw new ApiError(500, "Identifiants SMTP illisibles", "smtp_unreadable");
-
-  const fromAddr = smtpRow.fromEmail ?? login;
+  const fromAddr = smtpRow.fromEmail ?? smtpRow.oauthMailSender ?? login ?? "no-reply@crm";
   const fromName = smtpRow.fromName ?? "CRM";
 
   const transporter = nodemailer.createTransport({
     host: smtpRow.host,
     port: smtpRow.port,
     secure: smtpRow.port === 465,
-    auth: { user: login, pass },
+    auth: smtpAuth,
     tls: { rejectUnauthorized: false },
   });
 
@@ -93,6 +98,7 @@ export const POST = handler<Ctx>(async (req, { params }) => {
   const saved = await prisma.inboxMessage.create({
     data: {
       leadId: original.leadId,
+      ownerUserId: session.sub,
       messageId: newMessageIdKey,
       inReplyTo: original.messageId,
       direction: "outbound",
