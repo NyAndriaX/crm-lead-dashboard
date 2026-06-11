@@ -2,37 +2,14 @@
  * Réinitialisation de mot de passe — demande + confirmation.
  */
 import * as crypto from "node:crypto";
-import nodemailer from "nodemailer";
-import { prisma } from "@crm/db";
+import { prisma, sendTransactionalEmail, TransactionalEmailError } from "@crm/db";
 import { hashPassword } from "@/lib/auth";
-import { decryptOrNull } from "@/lib/crypto";
 import { ApiError } from "@/lib/api";
-import { buildSmtpNodemailerAuth } from "@crm/db";
 
 const TOKEN_TTL_MS = 60 * 60 * 1000; // 1 h
 
 function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
-}
-
-async function pickSmtpTransporter() {
-  const smtp = await prisma.smtpConfig.findFirst({
-    where: { isActive: true },
-    orderBy: { createdAt: "asc" },
-  });
-  if (!smtp) return null;
-
-  const auth = await buildSmtpNodemailerAuth(smtp, decryptOrNull);
-  const transporter = nodemailer.createTransport({
-    host: smtp.host,
-    port: smtp.port,
-    secure: smtp.port === 465,
-    auth,
-    tls: { rejectUnauthorized: false },
-  });
-  const fromAddr = smtp.fromEmail ?? smtp.oauthMailSender ?? decryptOrNull(smtp.loginEnc) ?? "no-reply@crm.local";
-  const fromName = smtp.fromName ?? "CRM Lead Dashboard";
-  return { transporter, from: `"${fromName}" <${fromAddr}>` };
 }
 
 /** Crée un token et envoie l'email (ne révèle pas si l'email existe). */
@@ -56,21 +33,32 @@ export async function requestPasswordReset(email: string): Promise<void> {
   const baseUrl = (process.env.APP_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
   const resetUrl = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
 
-  const mailer = await pickSmtpTransporter();
-  if (!mailer) {
-    throw new ApiError(503, "Aucun serveur SMTP configuré pour envoyer l'email de réinitialisation.", "smtp_unavailable");
-  }
-
-  await mailer.transporter.sendMail({
-    from: mailer.from,
-    to: normalized,
-    subject: "Réinitialisation de votre mot de passe — CRM Lead Dashboard",
-    html: `<p>Bonjour ${user.name},</p>
+  try {
+    await sendTransactionalEmail({
+      to: normalized,
+      subject: "Réinitialisation de votre mot de passe — CRM Lead Dashboard",
+      html: `<p>Bonjour ${user.name},</p>
 <p>Vous avez demandé la réinitialisation de votre mot de passe.</p>
 <p><a href="${resetUrl}">Cliquez ici pour choisir un nouveau mot de passe</a></p>
 <p>Ce lien expire dans 1 heure. Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p>`,
-    text: `Bonjour ${user.name},\n\nRéinitialisez votre mot de passe : ${resetUrl}\n\nCe lien expire dans 1 heure.`,
-  });
+      text: `Bonjour ${user.name},\n\nRéinitialisez votre mot de passe : ${resetUrl}\n\nCe lien expire dans 1 heure.`,
+    });
+  } catch (e) {
+    if (e instanceof TransactionalEmailError && e.reason === "no_active_smtp") {
+      throw new ApiError(
+        503,
+        "Aucun compte SMTP actif (classique ou Microsoft 365). Configurez l'envoi dans Paramètres → Emailing ou Microsoft 365 OAuth.",
+        "smtp_unavailable",
+      );
+    }
+    const detail = e instanceof Error ? e.message : String(e);
+    console.error("[password-reset] envoi email échoué:", detail);
+    throw new ApiError(
+      503,
+      "Impossible d'envoyer l'email de réinitialisation. Vérifiez la configuration SMTP / Microsoft 365.",
+      "email_send_failed",
+    );
+  }
 }
 
 export async function resetPasswordWithToken(token: string, newPassword: string): Promise<void> {

@@ -28,6 +28,9 @@ const { Text, Title, Paragraph } = Typography;
 
 const DEFAULT_COLORS = ["#1677ff", "#52c41a", "#fa8c16", "#722ed1", "#13c2c2", "#eb2f96", "#f5222d", "#595959"];
 
+const DRAG_TYPE_COLUMN = "COLUMN";
+const DRAG_TYPE_CARD = "CARD";
+
 type Stage = {
   id: string;
   name: string;
@@ -122,8 +125,6 @@ export default function PipelinePage() {
   const [stageSaving, setStageSaving] = useState(false);
   const [createForm] = Form.useForm();
   const [drawerLeadId, setDrawerLeadId] = useState<string | null>(null);
-  const [reorderOpen, setReorderOpen] = useState(false);
-  const [reorderIds, setReorderIds] = useState<string[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [pipelineOwnerId, setPipelineOwnerId] = useState<string | undefined>(undefined);
   const [pipelineReadOnly, setPipelineReadOnly] = useState(false);
@@ -229,14 +230,34 @@ export default function PipelinePage() {
     [leads, effectiveStageId],
   );
 
-  async function onDragEnd(result: DropResult) {
-    if (pipelineReadOnly) return;
+  async function onColumnDragEnd(result: DropResult) {
+    const { destination, source } = result;
+    if (!destination || destination.index === source.index) return;
+
+    const previousStages = stages;
+    const next = Array.from(stages);
+    const [moved] = next.splice(source.index, 1);
+    if (!moved) return;
+    next.splice(destination.index, 0, moved);
+    setStages(next.map((s, idx) => ({ ...s, order: idx })));
+
+    try {
+      await api.put("/pipeline-stages/reorder", { orderedIds: next.map((s) => s.id) });
+    } catch (e) {
+      setStages(previousStages);
+      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
+      message.error(`Réorganisation impossible : ${msg}`);
+    }
+  }
+
+  async function onLeadDragEnd(result: DropResult) {
     const { destination, source, draggableId } = result;
     if (!destination) return;
     if (destination.droppableId === source.droppableId && destination.index === source.index) return;
 
     const newStageId = destination.droppableId;
-    const oldStageId = source.droppableId;
+    const leadBefore = leads.find((l) => l.id === draggableId);
+    const previousPipelineStageId = leadBefore?.pipelineStageId ?? null;
 
     setLeads((prev) =>
       prev.map((l) => (l.id === draggableId ? { ...l, pipelineStageId: newStageId } : l)),
@@ -256,15 +277,30 @@ export default function PipelinePage() {
         message.success(`Statut mis à jour : ${data.data.status}`, 2);
       }
       try {
-        const { data: m } = await api.get<{ data: Metrics }>("/pipeline/metrics");
+        const ownerQs = pipelineOwnerId ? `?ownerUserId=${encodeURIComponent(pipelineOwnerId)}` : "";
+        const { data: m } = await api.get<{ data: Metrics }>(`/pipeline/metrics${ownerQs}`);
         setMetrics(m.data);
       } catch { /* non bloquant */ }
     } catch (e) {
       setLeads((prev) =>
-        prev.map((l) => (l.id === draggableId ? { ...l, pipelineStageId: oldStageId } : l)),
+        prev.map((l) =>
+          l.id === draggableId ? { ...l, pipelineStageId: previousPipelineStageId } : l,
+        ),
       );
       const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
       message.error(`Déplacement impossible : ${msg}`);
+    }
+  }
+
+  function onDragEnd(result: DropResult) {
+    if (pipelineReadOnly || !canManagePipeline) return;
+    if (!result.destination) return;
+    const isColumnDrag =
+      result.type === DRAG_TYPE_COLUMN || result.draggableId.startsWith("column-");
+    if (isColumnDrag) {
+      void onColumnDragEnd(result);
+    } else {
+      void onLeadDragEnd(result);
     }
   }
 
@@ -297,40 +333,15 @@ export default function PipelinePage() {
     }
   }
 
-  function openReorder() {
-    setReorderIds(stages.map((s) => s.id));
-    setReorderOpen(true);
-  }
-
-  async function saveReorder() {
-    setStageSaving(true);
-    try {
-      await api.put("/pipeline-stages/reorder", { orderedIds: reorderIds });
-      message.success("Ordre des colonnes enregistré");
-      setReorderOpen(false);
-      await fetchAll();
-    } catch (e) {
-      message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur");
-    } finally {
-      setStageSaving(false);
-    }
-  }
-
-  function onReorderDragEnd(result: DropResult) {
-    if (!result.destination) return;
-    const items = Array.from(reorderIds);
-    const [removed] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, removed!);
-    setReorderIds(items);
-  }
-
   async function confirmDeleteStage() {
     if (!deleteTarget) return;
+    const removed = deleteTarget;
     setStageSaving(true);
     try {
       const qs = reassignTo ? `?reassignTo=${encodeURIComponent(reassignTo)}` : "";
-      await api.delete(`/pipeline-stages/${deleteTarget.id}${qs}`);
-      message.success(`Colonne « ${deleteTarget.name} » supprimée`);
+      await api.delete(`/pipeline-stages/${removed.id}${qs}`);
+      setStages((prev) => prev.filter((s) => s.id !== removed.id));
+      message.success(`Colonne « ${removed.name} » supprimée`);
       setDeleteTarget(null);
       setReassignTo(undefined);
       await fetchAll();
@@ -378,14 +389,9 @@ export default function PipelinePage() {
               />
             )}
             {canManagePipeline && !pipelineReadOnly && (
-              <>
-                <Button icon={<HolderOutlined />} onClick={openReorder}>
-                  Réorganiser les colonnes
-                </Button>
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-                  Ajouter une colonne
-                </Button>
-              </>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+                Ajouter une colonne
+              </Button>
             )}
             <Button icon={<ReloadOutlined />} onClick={() => fetchAll()}>Actualiser</Button>
           </Space>
@@ -522,7 +528,11 @@ export default function PipelinePage() {
               paddingBottom: 8,
             }}
           >
+          <Droppable droppableId="pipeline-columns" direction="horizontal" type={DRAG_TYPE_COLUMN}>
+            {(columnsProvided) => (
           <div
+            ref={columnsProvided.innerRef}
+            {...columnsProvided.droppableProps}
             style={{
               display: "flex",
               gap: 12,
@@ -532,13 +542,22 @@ export default function PipelinePage() {
               alignItems: "stretch",
             }}
           >
-            {stages.map((stage) => {
+            {stages.map((stage, stageIndex) => {
               const stageLeads = leadsByStage.get(stage.id) ?? [];
               const metric = metrics?.stages.find((m) => m.id === stage.id);
               return (
-                <div
+                <Draggable
                   key={stage.id}
+                  draggableId={`column-${stage.id}`}
+                  index={stageIndex}
+                  isDragDisabled={pipelineReadOnly || !canManagePipeline}
+                >
+                  {(colProvided, colSnapshot) => (
+                <div
+                  ref={colProvided.innerRef}
+                  {...colProvided.draggableProps}
                   style={{
+                    ...colProvided.draggableProps.style,
                     flex: "0 0 320px",
                     minWidth: 320,
                     maxHeight: "100%",
@@ -546,7 +565,8 @@ export default function PipelinePage() {
                     flexDirection: "column",
                     background: "#fafafa",
                     borderRadius: 8,
-                    border: "1px solid #f0f0f0",
+                    border: colSnapshot.isDragging ? "1px solid #1677ff" : "1px solid #f0f0f0",
+                    boxShadow: colSnapshot.isDragging ? "0 4px 16px rgba(0,0,0,0.12)" : undefined,
                   }}
                 >
                   <div
@@ -559,6 +579,21 @@ export default function PipelinePage() {
                   >
                     <Space style={{ width: "100%", justifyContent: "space-between" }}>
                       <Space>
+                        {canManagePipeline && !pipelineReadOnly && (
+                          <Tooltip title="Glisser pour réordonner la colonne">
+                            <span
+                              {...colProvided.dragHandleProps}
+                              style={{
+                                cursor: colSnapshot.isDragging ? "grabbing" : "grab",
+                                color: "#bfbfbf",
+                                display: "inline-flex",
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <HolderOutlined />
+                            </span>
+                          </Tooltip>
+                        )}
                         <div
                           style={{
                             width: 10, height: 10, borderRadius: "50%",
@@ -568,7 +603,7 @@ export default function PipelinePage() {
                         <Text strong>{stage.name}</Text>
                         <Badge count={stageLeads.length} showZero color={stage.color ?? "#bfbfbf"} />
                       </Space>
-                      {canManagePipeline && (
+                      {canManagePipeline && !pipelineReadOnly && (
                         <Tooltip title="Supprimer cette colonne">
                           <Button
                             type="text"
@@ -607,7 +642,7 @@ export default function PipelinePage() {
                     )}
                   </div>
 
-                  <Droppable droppableId={stage.id}>
+                  <Droppable droppableId={stage.id} type={DRAG_TYPE_CARD}>
                     {(provided, snapshot) => (
                       <div
                         ref={provided.innerRef}
@@ -627,12 +662,16 @@ export default function PipelinePage() {
                           </div>
                         )}
                         {stageLeads.map((lead, idx) => (
-                          <Draggable key={lead.id} draggableId={lead.id} index={idx}>
+                          <Draggable
+                            key={lead.id}
+                            draggableId={lead.id}
+                            index={idx}
+                            isDragDisabled={pipelineReadOnly || !canManagePipeline}
+                          >
                             {(drag, dragSnap) => (
                               <div
                                 ref={drag.innerRef}
                                 {...drag.draggableProps}
-                                {...drag.dragHandleProps}
                                 style={{ ...drag.draggableProps.style, marginBottom: 8 }}
                               >
                                 <Card
@@ -643,13 +682,27 @@ export default function PipelinePage() {
                                     boxShadow: dragSnap.isDragging
                                       ? "0 4px 12px rgba(0,0,0,0.15)"
                                       : undefined,
-                                    cursor: dragSnap.isDragging ? "grabbing" : "pointer",
+                                    cursor: dragSnap.isDragging ? "grabbing" : "default",
                                   }}
                                   onClick={() => {
                                     if (!dragSnap.isDragging) setDrawerLeadId(lead.id);
                                   }}
                                 >
                                     <Space align="start" size={8} style={{ width: "100%" }}>
+                                      {canManagePipeline && !pipelineReadOnly && (
+                                        <span
+                                          {...drag.dragHandleProps}
+                                          style={{
+                                            cursor: dragSnap.isDragging ? "grabbing" : "grab",
+                                            color: "#bfbfbf",
+                                            paddingTop: 2,
+                                            flexShrink: 0,
+                                          }}
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          <HolderOutlined />
+                                        </span>
+                                      )}
                                       <Avatar
                                         size="small"
                                         style={{ background: "#1677ff", fontSize: 11, flexShrink: 0 }}
@@ -713,9 +766,12 @@ export default function PipelinePage() {
                     )}
                   </Droppable>
                 </div>
+                  )}
+                </Draggable>
               );
             })}
-            {canManagePipeline && (
+            {columnsProvided.placeholder}
+            {canManagePipeline && !pipelineReadOnly && (
               <button
                 type="button"
                 onClick={() => setCreateOpen(true)}
@@ -749,6 +805,8 @@ export default function PipelinePage() {
               </button>
             )}
           </div>
+            )}
+          </Droppable>
           </div>
         </DragDropContext>
       )}
@@ -782,55 +840,6 @@ export default function PipelinePage() {
       </Modal>
 
       <Modal
-        title="Réorganiser les colonnes"
-        open={reorderOpen}
-        onOk={() => void saveReorder()}
-        onCancel={() => setReorderOpen(false)}
-        confirmLoading={stageSaving}
-        okText="Enregistrer l'ordre"
-      >
-        <DragDropContext onDragEnd={onReorderDragEnd}>
-          <Droppable droppableId="stage-reorder">
-            {(provided) => (
-              <div ref={provided.innerRef} {...provided.droppableProps}>
-                {reorderIds.map((sid, index) => {
-                  const stage = stages.find((s) => s.id === sid);
-                  if (!stage) return null;
-                  return (
-                    <Draggable key={sid} draggableId={sid} index={index}>
-                      {(drag) => (
-                        <div
-                          ref={drag.innerRef}
-                          {...drag.draggableProps}
-                          {...drag.dragHandleProps}
-                          style={{
-                            ...drag.draggableProps.style,
-                            padding: "10px 12px",
-                            marginBottom: 8,
-                            background: "#fafafa",
-                            border: "1px solid #f0f0f0",
-                            borderRadius: 8,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                          }}
-                        >
-                          <HolderOutlined />
-                          <div style={{ width: 10, height: 10, borderRadius: "50%", background: stage.color ?? "#d9d9d9" }} />
-                          <Text>{stage.name}</Text>
-                        </div>
-                      )}
-                    </Draggable>
-                  );
-                })}
-                {provided.placeholder}
-              </div>
-            )}
-          </Droppable>
-        </DragDropContext>
-      </Modal>
-
-      <Modal
         title="Supprimer la colonne"
         open={!!deleteTarget}
         onOk={() => void confirmDeleteStage()}
@@ -846,12 +855,12 @@ export default function PipelinePage() {
             <Paragraph style={{ marginBottom: 0 }}>
               Supprimer la colonne <Text strong>« {deleteTarget.name} »</Text> ?
             </Paragraph>
-            {deleteTarget.leadCount > 0 ? (
+            {(leadsByStage.get(deleteTarget.id)?.length ?? deleteTarget.leadCount) > 0 ? (
               <>
                 <Alert
                   type="warning"
                   showIcon
-                  message={`Cette colonne contient ${deleteTarget.leadCount} lead(s).`}
+                  message={`Cette colonne contient ${leadsByStage.get(deleteTarget.id)?.length ?? deleteTarget.leadCount} lead(s).`}
                   description="Choisissez où les réassigner, sinon ils seront détachés (pas supprimés)."
                 />
                 <div>

@@ -4,9 +4,21 @@ import { currentOrganization, updateOrganization } from "@/lib/services/organiza
 
 export const dynamic = "force-dynamic";
 
+const emptyToUndefined = (v: unknown) =>
+  typeof v === "string" && v.trim() === "" ? undefined : v;
+
+const emptyToNull = (v: unknown) =>
+  typeof v === "string" && v.trim() === "" ? null : v;
+
 const updateSchema = z.object({
-  siteName: z.string().trim().min(1).max(80).optional(),
-  siteIconUrl: z.string().trim().max(500_000).optional().nullable(),
+  siteName: z.preprocess(
+    emptyToUndefined,
+    z.string().trim().min(1).max(80).optional(),
+  ),
+  siteIconUrl: z.preprocess(
+    emptyToNull,
+    z.string().max(2_000_000).nullable().optional(),
+  ),
 });
 
 export const GET = handler(async () => {

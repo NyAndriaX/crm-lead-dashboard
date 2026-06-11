@@ -6,6 +6,7 @@ import {
 } from "antd";
 import { ApiOutlined, CheckCircleOutlined, DeleteOutlined, FileMarkdownOutlined, ThunderboltOutlined, UploadOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
+import { extractApiError, showErrorPopup, showSuccessPopup, showWarningPopup } from "@/lib/feedback";
 import { labelWithHelp } from "@/components/ui/FieldHelp";
 
 type KnowledgeDoc = {
@@ -161,12 +162,15 @@ export function OpenAiSection() {
       const { data } = await api.post<{ data: { ok: boolean; message: string } }>("/me/openai-config/test");
       if (data.data.ok) {
         show("success", data.data.message);
+        showSuccessPopup("Test OpenAI réussi", data.data.message);
       } else {
         show("warning", data.data.message);
+        showWarningPopup("Test OpenAI", data.data.message);
       }
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message;
-      show("error", msg ?? "Test impossible.");
+      const msg = extractApiError(e, "Test impossible.");
+      show("error", msg);
+      showErrorPopup("Test OpenAI échoué", msg);
     } finally {
       setTesting(false);
     }

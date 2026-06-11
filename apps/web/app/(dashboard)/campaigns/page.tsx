@@ -45,13 +45,14 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "@/lib/client";
+import { smtpSelectOptions, type SmtpOptionLike } from "@/lib/emailAccounts";
 import { useIsMobile } from "@/lib/responsive";
 import { labelWithHelp } from "@/components/ui/FieldHelp";
 
 const { Title, Text, Paragraph } = Typography;
 
 type TemplateOpt = { id: string; name: string; subject: string };
-type SmtpOpt = { id: string; label: string; fromEmail?: string | null };
+type SmtpOpt = SmtpOptionLike;
 type SegmentRow = { id: string; name: string; filters: unknown; createdAt: string };
 type CampaignRow = {
   id: string;
@@ -862,7 +863,7 @@ export default function CampaignsPage() {
                 label={labelWithHelp("SMTP", "Serveur d'envoi configuré dans Configuration → Emailing. Détermine l'adresse expéditeur et la délivrabilité.")}
                 rules={[{ required: true }]}
               >
-                <Select options={smtps.map((s) => ({ label: s.label, value: s.id }))} />
+                <Select options={smtpSelectOptions(smtps)} showSearch optionFilterProp="label" />
               </Form.Item>
             </Col>
           </Row>

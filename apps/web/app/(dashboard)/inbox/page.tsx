@@ -8,6 +8,7 @@ import {
 } from "antd";
 import { ReloadOutlined, MailOutlined, CheckOutlined, SendOutlined, TagsOutlined, ThunderboltOutlined, DeleteOutlined, SyncOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
+import { smtpSelectOptions, type SmtpOptionLike } from "@/lib/emailAccounts";
 import SafeHtml from "@/components/SafeHtml";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
 import type { LeadStatus } from "@crm/db";
@@ -47,7 +48,7 @@ const CATEGORY_COLOR: Record<string, string> = {
 };
 
 type ThreadItem = InboxItem & { bodyText: string | null; bodyHtml: string | null };
-type SmtpOption = { id: string; label: string; fromEmail: string | null };
+type SmtpOption = SmtpOptionLike & { fromEmail?: string | null };
 
 function leadName(it: InboxItem): string {
   if (!it.lead) return "(sans nom)";
@@ -507,10 +508,7 @@ export default function InboxPage() {
               <Form.Item label="Compte SMTP" name="smtpConfigId" rules={[{ required: true, message: "Sélectionnez un compte SMTP" }]}>
                 <Select
                   placeholder="Choisir un compte SMTP"
-                  options={smtpOpts.map((o) => ({
-                    value: o.id,
-                    label: `${o.label}${o.fromEmail ? ` <${o.fromEmail}>` : ""}`,
-                  }))}
+                  options={smtpSelectOptions(smtpOpts)}
                 />
               </Form.Item>
               <Form.Item label="Sujet" name="subject" rules={[{ required: true, message: "Sujet requis" }]}>

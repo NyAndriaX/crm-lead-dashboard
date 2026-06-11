@@ -23,6 +23,7 @@ import { RgpdSection } from "@/components/admin/RgpdSection";
 import { KnowledgeBasesSection } from "@/components/admin/KnowledgeBasesSection";
 import { BrandingSection } from "@/components/admin/BrandingSection";
 import { SettingsTabsLayout, type SettingsTabItem } from "@/components/admin/SettingsTabsLayout";
+import { extractApiError, showErrorPopup, showSuccessPopup } from "@/lib/feedback";
 import {
   Card, Typography, Table, Button, Tag, Space, Form, InputNumber, Row, Col,
   Statistic, Badge, Modal, Input, Select, message, Spin, Alert, Popconfirm, List,
@@ -1164,19 +1165,19 @@ function EmailingTab() {
     try {
       const values = await form.validateFields(['host', 'port', 'login', 'password']);
       setTesting(true);
-      await api.post('/smtp-configs/test', {
+      const response = await api.post<{ data?: { message?: string } }>('/smtp-configs/test', {
         host: values.host,
         port: values.port,
         login: values.login,
         password: values.password,
       });
-      const successMessage = 'Connexion SMTP réussie';
+      const successMessage = response.data?.data?.message ?? 'Connexion SMTP réussie';
       setSmtpTestResult({ type: 'success', message: successMessage });
-      message.success(successMessage);
+      showSuccessPopup('Test SMTP réussi', successMessage);
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur de connexion SMTP';
+      const msg = extractApiError(e, 'Erreur de connexion SMTP');
       setSmtpTestResult({ type: 'error', message: msg });
-      message.error(msg);
+      showErrorPopup('Test SMTP échoué', msg);
     } finally {
       setTesting(false);
     }
@@ -2286,22 +2287,6 @@ function Microsoft365OAuthTab() {
   useEffect(() => { void load(); }, [load]);
 
   if (loading) return <div style={{ textAlign: "center", padding: 40 }}><Spin /></div>;
-
-  if (imapConfigs.length === 0 && smtpConfigs.length === 0) {
-    return (
-      <Alert
-        type="info"
-        showIcon
-        message="Aucun compte IMAP ou SMTP trouvé"
-        description={
-          <>
-            Créez d&apos;abord un compte dans l&apos;onglet <strong>Emailing</strong> ou{" "}
-            <strong>IMAP / Réponses</strong>, puis revenez ici pour activer OAuth Microsoft 365.
-          </>
-        }
-      />
-    );
-  }
 
   return <Microsoft365OAuthSection imapConfigs={imapConfigs} smtpConfigs={smtpConfigs} onRefresh={load} />;
 }

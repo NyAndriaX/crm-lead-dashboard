@@ -100,8 +100,10 @@ export function PipelineStagesSection() {
     setSaving(true);
     try {
       const qs = reassignTo ? `?reassignTo=${encodeURIComponent(reassignTo)}` : "";
-      await api.delete(`/pipeline-stages/${deleteTarget.id}${qs}`);
-      message.success(`Étape « ${deleteTarget.name} » supprimée`);
+      const removed = deleteTarget;
+      await api.delete(`/pipeline-stages/${removed.id}${qs}`);
+      setStages((prev) => prev.filter((s) => s.id !== removed.id));
+      message.success(`Étape « ${removed.name} » supprimée`);
       setDeleteTarget(null);
       setReassignTo(undefined);
       void fetchStages();

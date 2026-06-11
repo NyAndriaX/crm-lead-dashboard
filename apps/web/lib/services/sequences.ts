@@ -16,6 +16,7 @@ export type SequenceStepInput = {
 export type SequenceConfigInput = {
   knowledgeBaseId?: string | null;
   knowledgeText?: string | null;
+  smtpConfigId?: string | null;
 };
 
 export type SequenceInput = {
@@ -97,15 +98,28 @@ export async function getSequence(id: string, scope: DataScope) {
   };
 }
 
+async function assertSmtpConfig(config: SequenceConfigInput | null | undefined, scope: DataScope) {
+  const id = config?.smtpConfigId;
+  if (!id) return;
+  const smtp = await prisma.smtpConfig.findFirst({
+    where: { id, ownerUserId: scope.userId, isActive: true },
+    select: { id: true },
+  });
+  if (!smtp) throw new ApiError(400, "Compte SMTP introuvable ou inactif", "invalid_smtp");
+}
+
 function normalizeConfig(config?: SequenceConfigInput | null): Prisma.InputJsonValue | typeof Prisma.DbNull {
   if (!config) return Prisma.DbNull;
-  const out: Record<string, string> = {};
+  const out: Record<string, string | null> = {};
   if (config.knowledgeBaseId) out.knowledgeBaseId = config.knowledgeBaseId;
   if (config.knowledgeText?.trim()) out.knowledgeText = config.knowledgeText.trim();
+  if (config.smtpConfigId) out.smtpConfigId = config.smtpConfigId;
+  else if (config.smtpConfigId === null) out.smtpConfigId = null;
   return Object.keys(out).length > 0 ? out : Prisma.DbNull;
 }
 
 export async function createSequence(input: SequenceInput, scope: DataScope) {
+  await assertSmtpConfig(input.config ?? null, scope);
   if (input.campaignId) {
     const camp = await prisma.campaign.findFirst({
       where: { id: input.campaignId, createdById: scope.userId },
@@ -129,6 +143,7 @@ export async function createSequence(input: SequenceInput, scope: DataScope) {
 export async function updateSequence(id: string, input: SequenceUpdateInput, scope: DataScope) {
   const existing = await getSequence(id, scope);
   if (!existing) throw new ApiError(404, "Séquence introuvable", "not_found");
+  await assertSmtpConfig(input.config ?? null, scope);
   if (input.campaignId) {
     const camp = await prisma.campaign.findFirst({
       where: { id: input.campaignId, createdById: scope.userId },

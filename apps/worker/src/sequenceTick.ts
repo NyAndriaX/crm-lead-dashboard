@@ -151,10 +151,17 @@ async function sendStep(args: {
 
   const seqMeta = await prisma.sequence.findUnique({
     where: { id: sequenceId },
-    select: { createdById: true },
+    select: { createdById: true, config: true },
   });
   const smtpOwnerId = seqMeta?.createdById ?? lead.assignedToId;
-  const smtpRow = await pickActiveSmtp(smtpOwnerId);
+  const seqConfig = seqMeta?.config as { smtpConfigId?: string | null } | null;
+  let smtpRow = null;
+  if (seqConfig?.smtpConfigId && smtpOwnerId) {
+    smtpRow = await prisma.smtpConfig.findFirst({
+      where: { id: seqConfig.smtpConfigId, isActive: true, ownerUserId: smtpOwnerId },
+    });
+  }
+  if (!smtpRow) smtpRow = await pickActiveSmtp(smtpOwnerId);
   if (!smtpRow) return { sent: false, error: "no_smtp" };
   let smtpAuth: Awaited<ReturnType<typeof buildSmtpNodemailerAuth>>;
   try {

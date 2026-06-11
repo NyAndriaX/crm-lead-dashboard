@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { handler, json, noContent, parseBody, parseQuery, requirePermission } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
-import { toScope } from "@/lib/scope";
+import { scopeError, toScope } from "@/lib/scope";
 import { deleteStage, updateStage } from "@/lib/services/pipeline";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +41,11 @@ export const DELETE = handler<Ctx>(async (req, { params }) => {
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
   const { reassignTo } = parseQuery(req, deleteQuerySchema);
-  await deleteStage(id, scope, reassignTo ? { reassignTo } : undefined);
+  try {
+    await deleteStage(id, scope, reassignTo ? { reassignTo } : undefined);
+  } catch (e) {
+    scopeError(e);
+  }
   await audit({
     userId: session.sub,
     action: "pipeline.stage.delete",

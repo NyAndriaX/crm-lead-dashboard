@@ -24,6 +24,7 @@ const stepSchema = z.object({
 const configSchema = z.object({
   knowledgeBaseId: z.string().trim().min(1).nullable().optional(),
   knowledgeText: z.string().trim().max(20_000).nullable().optional(),
+  smtpConfigId: z.string().trim().min(1).nullable().optional(),
 }).optional().nullable();
 
 const updateSchema = z.object({

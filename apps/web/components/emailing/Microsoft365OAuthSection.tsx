@@ -17,10 +17,19 @@ import {
   ExclamationCircleOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
+import { extractApiError, showSuccessPopup } from "@/lib/feedback";
 
 const { Title, Text, Paragraph } = Typography;
 
 type Target = "imap" | "smtp";
+type SetupMode = "outlook" | "existing";
+
+type AzureCreds = {
+  tenantId: string;
+  clientId: string;
+  clientSecret: string;
+  mailbox: string;
+};
 
 type ConfigOption = { id: string; label: string; hasOauth: boolean };
 
@@ -68,6 +77,7 @@ function copyToClipboard(text: string) {
 
 export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }: Props) {
   const [step, setStep] = useState<Step>("credentials");
+  const [setupMode, setSetupMode] = useState<SetupMode>("outlook");
   const [target, setTarget] = useState<Target>("imap");
   const [configId, setConfigId] = useState<string>("");
   const [form] = Form.useForm();
@@ -85,6 +95,7 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [revokeModal, setRevokeModal] = useState<{ configId: string; target: Target; label: string } | null>(null);
+  const [azureCreds, setAzureCreds] = useState<AzureCreds | null>(null);
 
   const currentStep = step === "credentials" ? 0 : step === "device" ? 1 : step === "consent" ? 2 : 3;
   const configs = target === "imap" ? imapConfigs : smtpConfigs;
@@ -98,16 +109,24 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
     setError(null);
     setSaved(false);
     setConfigId("");
+    setSetupMode("outlook");
+    setAzureCreds(null);
     form.resetFields();
   }, [form]);
 
   async function handleStep1() {
     try {
-      await form.validateFields(["tenantId", "clientId", "clientSecret", "mailbox"]);
-      if (!configId) {
-        setError("Sélectionnez un compte IMAP ou SMTP cible.");
+      const values = await form.validateFields(["tenantId", "clientId", "clientSecret", "mailbox"]);
+      if (setupMode === "existing" && !configId) {
+        setError("Sélectionnez un compte IMAP ou SMTP existant, ou choisissez « Nouveau compte Outlook ».");
         return;
       }
+      setAzureCreds({
+        tenantId: String(values.tenantId).trim(),
+        clientId: String(values.clientId).trim(),
+        clientSecret: String(values.clientSecret).trim(),
+        mailbox: String(values.mailbox).trim(),
+      });
       setError(null);
       setStep("device");
     } catch {
@@ -116,16 +135,19 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
   }
 
   async function generateDeviceCode() {
+    if (!azureCreds?.tenantId || !azureCreds?.clientId || !azureCreds?.clientSecret) {
+      setError("Identifiants Azure manquants — revenez à l'étape 1 et validez à nouveau.");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const values = form.getFieldsValue();
       const { data } = await api.post<{
         data: { device_code: string; user_code: string; verification_uri: string; expires_in: number; interval: number };
       }>("/oauth/microsoft/device-code", {
-        tenantId: values.tenantId,
-        clientId: values.clientId,
-        clientSecret: values.clientSecret,
+        tenantId: azureCreds.tenantId,
+        clientId: azureCreds.clientId,
+        clientSecret: azureCreds.clientSecret,
       });
       setDeviceCode({
         userCode: data.data.user_code,
@@ -136,35 +158,30 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
       });
       setStep("consent");
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message
-        ?? (e instanceof Error ? e.message : "Erreur inconnue");
-      setError(msg);
+      setError(extractApiError(e, "Erreur lors de la génération du code Microsoft"));
     } finally {
       setLoading(false);
     }
   }
 
   async function pollToken() {
-    if (!deviceCode) return;
+    if (!deviceCode || !azureCreds) return;
     setPolling(true);
     setError(null);
     try {
-      const values = form.getFieldsValue();
       const { data } = await api.post<{
         data: { accessToken: string; refreshToken: string | null };
       }>("/oauth/microsoft/poll", {
-        tenantId: values.tenantId,
-        clientId: values.clientId,
-        clientSecret: values.clientSecret,
+        tenantId: azureCreds.tenantId,
+        clientId: azureCreds.clientId,
+        clientSecret: azureCreds.clientSecret,
         deviceCode: deviceCode.deviceCode,
         interval: deviceCode.interval,
       });
       setTokens(data.data);
       setStep("save");
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message
-        ?? (e instanceof Error ? e.message : "Consentement en attente ou expiré.");
-      setError(msg);
+      setError(extractApiError(e, "Consentement en attente ou expiré."));
     } finally {
       setPolling(false);
     }
@@ -175,25 +192,32 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
       setError("Aucun refresh token reçu — assurez-vous que offline_access est accordé.");
       return;
     }
+    if (!azureCreds) {
+      setError("Identifiants Azure manquants — recommencez le workflow.");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const values = form.getFieldsValue();
       await api.post("/oauth/microsoft/save", {
-        target,
-        configId,
-        tenantId: values.tenantId,
-        clientId: values.clientId,
-        clientSecret: values.clientSecret,
+        mode: setupMode === "outlook" ? "outlook" : target,
+        ...(setupMode === "existing" ? { configId } : {}),
+        tenantId: azureCreds.tenantId,
+        clientId: azureCreds.clientId,
+        clientSecret: azureCreds.clientSecret,
         refreshToken: tokens.refreshToken,
-        mailbox: values.mailbox,
+        mailbox: azureCreds.mailbox,
       });
       setSaved(true);
+      showSuccessPopup(
+        "Connexion OAuth active",
+        setupMode === "outlook"
+          ? "Réception IMAP et envoi SMTP Outlook sont configurés via Microsoft 365."
+          : "Le compte est connecté via OAuth Microsoft 365.",
+      );
       onRefresh();
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message
-        ?? (e instanceof Error ? e.message : "Erreur de sauvegarde");
-      setError(msg);
+      setError(extractApiError(e, "Erreur de sauvegarde"));
     } finally {
       setLoading(false);
     }
@@ -325,40 +349,74 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
         {/* ── Étape 0 : Identifiants ── */}
         {step === "credentials" && (
           <Form form={form} layout="vertical">
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message="Connexion Outlook sans IMAP/SMTP manuel"
+              description="Choisissez « Nouveau compte Outlook » : le CRM créera automatiquement la réception (IMAP) et l'envoi (SMTP) via OAuth Microsoft 365."
+            />
             <Row gutter={16}>
               <Col xs={24} sm={12}>
                 <Form.Item
-                  label={<Text strong>Cible à connecter</Text>}
+                  label={<Text strong>Mode de connexion</Text>}
                   required
                 >
-                  <Space.Compact style={{ width: "100%" }}>
-                    <Select
-                      value={target}
-                      onChange={(v) => { setTarget(v); setConfigId(""); }}
-                      style={{ width: 120 }}
-                      options={[
-                        { value: "imap", label: <><InboxOutlined /> IMAP</> },
-                        { value: "smtp", label: <><MailOutlined /> SMTP</> },
-                      ]}
-                    />
-                    <Select
-                      placeholder="Choisir un compte"
-                      value={configId || undefined}
-                      onChange={setConfigId}
-                      style={{ flex: 1 }}
-                      options={configs.map((c) => ({
-                        value: c.id,
-                        label: (
-                          <Space>
-                            {c.label}
-                            {c.hasOauth && <Tag color="blue" style={{ fontSize: 10 }}>OAuth</Tag>}
-                          </Space>
-                        ),
-                      }))}
-                    />
-                  </Space.Compact>
+                  <Select
+                    value={setupMode}
+                    onChange={(v: SetupMode) => {
+                      setSetupMode(v);
+                      setConfigId("");
+                    }}
+                    options={[
+                      {
+                        value: "outlook",
+                        label: "Nouveau compte Outlook (IMAP + SMTP)",
+                      },
+                      {
+                        value: "existing",
+                        label: "Lier un compte IMAP ou SMTP existant",
+                        disabled: imapConfigs.length === 0 && smtpConfigs.length === 0,
+                      },
+                    ]}
+                  />
                 </Form.Item>
               </Col>
+              {setupMode === "existing" && (
+                <Col xs={24} sm={12}>
+                  <Form.Item
+                    label={<Text strong>Compte existant</Text>}
+                    required
+                  >
+                    <Space.Compact style={{ width: "100%" }}>
+                      <Select
+                        value={target}
+                        onChange={(v) => { setTarget(v); setConfigId(""); }}
+                        style={{ width: 120 }}
+                        options={[
+                          { value: "imap", label: <><InboxOutlined /> IMAP</> },
+                          { value: "smtp", label: <><MailOutlined /> SMTP</> },
+                        ]}
+                      />
+                      <Select
+                        placeholder="Choisir un compte"
+                        value={configId || undefined}
+                        onChange={setConfigId}
+                        style={{ flex: 1 }}
+                        options={configs.map((c) => ({
+                          value: c.id,
+                          label: (
+                            <Space>
+                              {c.label}
+                              {c.hasOauth && <Tag color="blue" style={{ fontSize: 10 }}>OAuth</Tag>}
+                            </Space>
+                          ),
+                        }))}
+                      />
+                    </Space.Compact>
+                  </Form.Item>
+                </Col>
+              )}
               <Col xs={24} sm={12}>
                 <Form.Item
                   name="mailbox"
@@ -506,7 +564,7 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
 
               <Paragraph style={{ margin: "16px 0 0", color: "#888", fontSize: 12 }}>
                 Expire dans ~{Math.round(deviceCode.expiresIn / 60)} minutes — connectez-vous avec{" "}
-                <strong>{form.getFieldValue("mailbox")}</strong>
+                <strong>{azureCreds?.mailbox ?? "votre compte"}</strong>
               </Paragraph>
             </div>
 
@@ -524,7 +582,7 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
                 {[
                   { num: "1", text: `Ouvrez ${deviceCode.verificationUri} dans votre navigateur` },
                   { num: "2", text: `Entrez le code : ${deviceCode.userCode}` },
-                  { num: "3", text: `Connectez-vous avec ${form.getFieldValue("mailbox")}` },
+                  { num: "3", text: `Connectez-vous avec ${azureCreds?.mailbox ?? "votre compte"}` },
                   { num: "4", text: "Acceptez les permissions (SMTP.Send, IMAP, offline_access…)" },
                   { num: "5", text: 'Revenez ici et cliquez "Vérifier le consentement"' },
                 ].map((item) => (
@@ -624,9 +682,11 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
                 <div>
                   <Title level={5} style={{ margin: "0 0 6px", color: "#52c41a" }}>Connexion OAuth active !</Title>
                   <Paragraph type="secondary" style={{ margin: 0 }}>
-                    {target === "imap"
-                      ? "Le worker IMAP utilisera maintenant OAuth Microsoft 365 pour recevoir les emails."
-                      : "Les envois SMTP utiliseront maintenant OAuth Microsoft 365 (plus besoin de mot de passe)."}
+                    {setupMode === "outlook"
+                      ? "Réception (IMAP) et envoi (SMTP) Outlook sont configurés via OAuth Microsoft 365."
+                      : target === "imap"
+                        ? "Le worker IMAP utilisera maintenant OAuth Microsoft 365 pour recevoir les emails."
+                        : "Les envois SMTP utiliseront maintenant OAuth Microsoft 365 (plus besoin de mot de passe)."}
                   </Paragraph>
                 </div>
                 <Button style={{ marginTop: 20 }} onClick={reset}>Connecter un autre compte</Button>

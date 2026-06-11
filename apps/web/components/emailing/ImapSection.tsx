@@ -18,6 +18,7 @@ import {
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
+import { extractApiError, showErrorPopup, showSuccessPopup } from "@/lib/feedback";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -138,11 +139,11 @@ export function ImapSection() {
       const response = await api.post<{ data: { ok?: boolean; message?: string } }>("/imap-configs/test", v);
       const msg = response.data?.data?.message || "Connexion IMAP réussie";
       setTestNotice({ kind: "success", text: msg });
+      showSuccessPopup("Test IMAP réussi", msg);
     } catch (e) {
-      const respMessage = (e as { response?: { data?: { message?: string } } }).response?.data?.message?.trim();
-      const directMessage = e instanceof Error ? e.message : String(e);
-      const msg = respMessage || directMessage || "Échec du test IMAP";
+      const msg = extractApiError(e, "Échec du test IMAP");
       setTestNotice({ kind: "error", text: msg });
+      showErrorPopup("Test IMAP échoué", msg);
     } finally {
       setTesting(false);
     }

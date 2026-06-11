@@ -8,6 +8,8 @@ import {
   resolvePipelineOwnerId,
   buildPipelineLeadsWhere,
   strictOwnerWhere,
+  assertLeadAccess,
+  DataScopeError,
   type DataScope,
   type LeadStatus,
 } from "@crm/db";
@@ -217,7 +219,7 @@ async function assertOwnStage(id: string, scope: DataScope) {
   const stage = await prisma.pipelineStage.findFirst({
     where: { id, ...strictOwnerWhere(scope.userId) },
   });
-  if (!stage) throw new Error("Étape introuvable ou accès refusé");
+  if (!stage) throw new DataScopeError("not_found", "Étape introuvable ou accès refusé");
   return stage;
 }
 
@@ -243,14 +245,26 @@ export async function deleteStage(id: string, scope: DataScope, opts?: { reassig
     const target = await prisma.pipelineStage.findFirst({
       where: { id: opts.reassignTo, ...strictOwnerWhere(scope.userId) },
     });
-    if (!target) throw new Error("Étape de réassignation introuvable");
-    if (opts.reassignTo === id) throw new Error("Impossible de réassigner vers la même colonne");
+    if (!target) throw new DataScopeError("not_found", "Étape de réassignation introuvable");
+    if (opts.reassignTo === id) throw new DataScopeError("forbidden", "Impossible de réassigner vers la même colonne");
   }
+
+  const allStages = await prisma.pipelineStage.findMany({
+    where: { ownerUserId: scope.userId },
+    select: { id: true, name: true },
+  });
+  const leadsInPipeline = await prisma.lead.findMany({
+    where: buildPipelineLeadsWhere(scope.userId, scope),
+    select: { id: true, status: true, pipelineStageId: true },
+  });
+  const leadIdsInColumn = leadsInPipeline
+    .filter((l) => resolveEffectiveStageId(l, allStages) === id)
+    .map((l) => l.id);
 
   await prisma.$transaction(async (tx) => {
     if (opts?.reassignTo) {
       await tx.lead.updateMany({
-        where: { pipelineStageId: id },
+        where: { id: { in: leadIdsInColumn } },
         data: { pipelineStageId: opts.reassignTo },
       });
       await tx.leadPipeline.updateMany({
@@ -259,7 +273,7 @@ export async function deleteStage(id: string, scope: DataScope, opts?: { reassig
       });
     } else {
       await tx.lead.updateMany({
-        where: { pipelineStageId: id },
+        where: { id: { in: leadIdsInColumn } },
         data: { pipelineStageId: null },
       });
       await tx.leadPipeline.deleteMany({ where: { stageId: id } });
@@ -291,12 +305,14 @@ export async function moveLeadToStage(args: {
   status: LeadStatus;
   statusChanged: boolean;
 }> {
+  await assertLeadAccess(args.scope, args.leadId);
+
   const stage = await prisma.pipelineStage.findFirst({
     where: { id: args.stageId, ownerUserId: args.scope.userId },
   });
-  if (!stage) throw new Error("Étape introuvable");
+  if (!stage) throw new DataScopeError("not_found", "Étape introuvable");
   const lead = await prisma.lead.findUnique({ where: { id: args.leadId } });
-  if (!lead || lead.deletedAt) throw new Error("Lead introuvable");
+  if (!lead || lead.deletedAt) throw new DataScopeError("not_found", "Lead introuvable");
 
   const previousStageId = lead.pipelineStageId;
   const previousStatus = lead.status;

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { handler, jsonCached, created, parseBody, parseQuery, requirePermission, requireSession, ApiError } from "@/lib/api";
+import { handler, json, created, parseBody, parseQuery, requirePermission, requireSession, ApiError } from "@/lib/api";
 import { can } from "@/lib/rbac";
 import { audit, clientIp } from "@/lib/audit";
 import { scopeError, toScope } from "@/lib/scope";
@@ -26,11 +26,8 @@ export const GET = handler(async (req) => {
   const scope = toScope(s);
   try {
     const result = await listStages(scope, { ownerUserId });
-    // P-01 : cache 30s + SWR 5min. Les étapes changent rarement.
-    return jsonCached(
-      { data: result.stages, readOnly: result.readOnly, ownerUserId: result.ownerUserId },
-      { maxAge: 30, swr: 300 },
-    );
+    // Pas de cache HTTP : les colonnes sont modifiées souvent (création, suppression, réordonnancement).
+    return json({ data: result.stages, readOnly: result.readOnly, ownerUserId: result.ownerUserId });
   } catch (e) {
     scopeError(e);
   }

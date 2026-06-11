@@ -11,6 +11,7 @@ import {
   CheckCircleOutlined, CloseCircleOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
+import { smtpSelectOptions, type SmtpOptionLike } from "@/lib/emailAccounts";
 import { SequencesDashboardPanel } from "@/components/sequences/SequencesDashboardPanel";
 import { labelWithHelp } from "@/components/ui/FieldHelp";
 
@@ -28,6 +29,7 @@ type CampaignOption = { id: string; name: string };
 type SequenceConfig = {
   knowledgeBaseId?: string | null;
   knowledgeText?: string | null;
+  smtpConfigId?: string | null;
 };
 type SequenceRow = {
   id: string;
@@ -62,7 +64,7 @@ type SequenceLeadRow = {
   };
 };
 type TemplateOption = { id: string; name: string; subject: string };
-type SmtpOption = { id: string; label: string };
+type SmtpOption = SmtpOptionLike;
 type LeadOption = { id: string; firstName: string | null; lastName: string | null; company: string | null };
 
 export default function SequencesPage() {
@@ -126,7 +128,7 @@ export default function SequencesPage() {
       campaignId: seq.campaignId ?? null,
       knowledgeBaseId: seq.config?.knowledgeBaseId ?? null,
       knowledgeText: seq.config?.knowledgeText ?? "",
-      smtpConfigId: (seq as SequenceRow & { smtpConfigId?: string }).smtpConfigId ?? null,
+      smtpConfigId: (seq.config as { smtpConfigId?: string | null } | null)?.smtpConfigId ?? null,
       steps: seq.steps?.length ? seq.steps : [{ delayDays: 0, templateId: null, stopOnReply: true }],
     });
     setEditorOpen(true);
@@ -139,10 +141,10 @@ export default function SequencesPage() {
         name: values.name,
         maxSteps: values.maxSteps ?? null,
         campaignId: (values.campaignId as string) || null,
-        smtpConfigId: (values.smtpConfigId as string) || null,
         config: {
           knowledgeBaseId: (values.knowledgeBaseId as string) || null,
           knowledgeText: (values.knowledgeText as string)?.trim() || null,
+          smtpConfigId: (values.smtpConfigId as string) || null,
         },
         steps: (values.steps as Step[]).map((s) => ({
           delayDays: Number(s.delayDays ?? 0),
@@ -393,14 +395,14 @@ export default function SequencesPage() {
               />
             </Form.Item>
             <Form.Item
-              label="SMTP d'envoi (optionnel — utilise le SMTP actif par défaut)"
+              label="Compte d'envoi (SMTP / Microsoft 365)"
               name="smtpConfigId"
-              tooltip="Permet de choisir un compte SMTP spécifique pour tous les envois de cette séquence."
+              tooltip="Choisissez un compte SMTP classique ou Microsoft 365 OAuth. Sans sélection, le premier compte actif du propriétaire est utilisé."
             >
               <Select
                 allowClear
                 placeholder="SMTP par défaut (actif)"
-                options={smtps.map((s) => ({ value: s.id, label: s.label }))}
+                options={smtpSelectOptions(smtps)}
               />
             </Form.Item>
             <Form.Item
