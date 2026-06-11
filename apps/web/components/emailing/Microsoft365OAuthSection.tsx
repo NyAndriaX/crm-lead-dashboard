@@ -5,7 +5,7 @@
  * Permet de connecter IMAP (réception) et SMTP (envoi) via OAuth Microsoft 365
  * sans mot de passe, en parallèle des configs classiques existantes.
  */
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   Card, Steps, Form, Input, Button, Alert, Tag, Select, Typography,
   Space, Divider, Row, Col, Tooltip, Badge, Modal, Spin,
@@ -40,6 +40,8 @@ type Props = {
   smtpConfigs: ConfigOption[];
   onRefresh: () => void;
 };
+
+const WIZARD_STORAGE_KEY = "crm_ms365_oauth_wizard";
 
 const STEP_ITEMS = [
   {
@@ -96,6 +98,58 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
   const [saved, setSaved] = useState(false);
   const [revokeModal, setRevokeModal] = useState<{ configId: string; target: Target; label: string } | null>(null);
   const [azureCreds, setAzureCreds] = useState<AzureCreds | null>(null);
+  const clientSecretRef = useRef("");
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(WIZARD_STORAGE_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as {
+        azureCreds?: AzureCreds;
+        deviceCode?: typeof deviceCode;
+        step?: Step;
+      };
+      if (saved.azureCreds) {
+        setAzureCreds(saved.azureCreds);
+        clientSecretRef.current = saved.azureCreds.clientSecret;
+        form.setFieldsValue({
+          tenantId: saved.azureCreds.tenantId,
+          clientId: saved.azureCreds.clientId,
+          clientSecret: saved.azureCreds.clientSecret,
+          mailbox: saved.azureCreds.mailbox,
+        });
+      }
+      if (saved.deviceCode) setDeviceCode(saved.deviceCode);
+      if (saved.step) setStep(saved.step);
+    } catch {
+      /* ignore */
+    }
+  }, [form]);
+
+  function persistWizard(patch: {
+    azureCreds?: AzureCreds | null;
+    deviceCode?: typeof deviceCode;
+    step?: Step;
+  }) {
+    try {
+      const prev = JSON.parse(sessionStorage.getItem(WIZARD_STORAGE_KEY) ?? "{}") as Record<string, unknown>;
+      sessionStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify({ ...prev, ...patch }));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function resolveClientSecret(): string {
+    const fromForm = String(form.getFieldValue("clientSecret") ?? "").trim();
+    return fromForm || clientSecretRef.current || azureCreds?.clientSecret?.trim() || "";
+  }
+
+  function buildCredsForApi(): AzureCreds | null {
+    if (!azureCreds) return null;
+    const clientSecret = resolveClientSecret();
+    if (!clientSecret) return null;
+    return { ...azureCreds, clientSecret };
+  }
 
   const currentStep = step === "credentials" ? 0 : step === "device" ? 1 : step === "consent" ? 2 : 3;
   const configs = target === "imap" ? imapConfigs : smtpConfigs;
@@ -111,6 +165,8 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
     setConfigId("");
     setSetupMode("outlook");
     setAzureCreds(null);
+    clientSecretRef.current = "";
+    sessionStorage.removeItem(WIZARD_STORAGE_KEY);
     form.resetFields();
   }, [form]);
 
@@ -121,12 +177,15 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
         setError("Sélectionnez un compte IMAP ou SMTP existant, ou choisissez « Nouveau compte Outlook ».");
         return;
       }
-      setAzureCreds({
+      const creds: AzureCreds = {
         tenantId: String(values.tenantId).trim(),
         clientId: String(values.clientId).trim(),
         clientSecret: String(values.clientSecret).trim(),
         mailbox: String(values.mailbox).trim(),
-      });
+      };
+      clientSecretRef.current = creds.clientSecret;
+      setAzureCreds(creds);
+      persistWizard({ azureCreds: creds, step: "device" });
       setError(null);
       setStep("device");
     } catch {
@@ -135,7 +194,8 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
   }
 
   async function generateDeviceCode() {
-    if (!azureCreds?.tenantId || !azureCreds?.clientId || !azureCreds?.clientSecret) {
+    const creds = buildCredsForApi();
+    if (!creds?.tenantId || !creds?.clientId || !creds?.clientSecret) {
       setError("Identifiants Azure manquants — revenez à l'étape 1 et validez à nouveau.");
       return;
     }
@@ -144,18 +204,17 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
     try {
       const { data } = await api.post<{
         data: { device_code: string; user_code: string; verification_uri: string; expires_in: number; interval: number };
-      }>("/oauth/microsoft/device-code", {
-        tenantId: azureCreds.tenantId,
-        clientId: azureCreds.clientId,
-        clientSecret: azureCreds.clientSecret,
-      });
-      setDeviceCode({
+      }>("/oauth/microsoft/device-code", creds);
+      const dc = {
         userCode: data.data.user_code,
         verificationUri: data.data.verification_uri,
         deviceCode: data.data.device_code,
         expiresIn: data.data.expires_in,
         interval: data.data.interval,
-      });
+      };
+      setDeviceCode(dc);
+      form.setFieldsValue({ clientSecret: creds.clientSecret });
+      persistWizard({ azureCreds: creds, deviceCode: dc, step: "consent" });
       setStep("consent");
     } catch (e) {
       setError(extractApiError(e, "Erreur lors de la génération du code Microsoft"));
@@ -165,16 +224,24 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
   }
 
   async function pollToken() {
-    if (!deviceCode || !azureCreds) return;
+    if (!deviceCode) return;
+    const creds = buildCredsForApi();
+    if (!creds) {
+      setError(
+        "Client Secret manquant. Saisissez la Valeur du secret Azure ci-dessous (pas l'ID du secret), puis réessayez.",
+      );
+      return;
+    }
+    clientSecretRef.current = creds.clientSecret;
     setPolling(true);
     setError(null);
     try {
       const { data } = await api.post<{
         data: { accessToken: string; refreshToken: string | null };
       }>("/oauth/microsoft/poll", {
-        tenantId: azureCreds.tenantId,
-        clientId: azureCreds.clientId,
-        clientSecret: azureCreds.clientSecret,
+        tenantId: creds.tenantId,
+        clientId: creds.clientId,
+        clientSecret: creds.clientSecret,
         deviceCode: deviceCode.deviceCode,
         interval: deviceCode.interval,
       });
@@ -192,7 +259,8 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
       setError("Aucun refresh token reçu — assurez-vous que offline_access est accordé.");
       return;
     }
-    if (!azureCreds) {
+    const creds = buildCredsForApi();
+    if (!creds) {
       setError("Identifiants Azure manquants — recommencez le workflow.");
       return;
     }
@@ -202,12 +270,13 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
       await api.post("/oauth/microsoft/save", {
         mode: setupMode === "outlook" ? "outlook" : target,
         ...(setupMode === "existing" ? { configId } : {}),
-        tenantId: azureCreds.tenantId,
-        clientId: azureCreds.clientId,
-        clientSecret: azureCreds.clientSecret,
+        tenantId: creds.tenantId,
+        clientId: creds.clientId,
+        clientSecret: creds.clientSecret,
         refreshToken: tokens.refreshToken,
-        mailbox: azureCreds.mailbox,
+        mailbox: creds.mailbox,
       });
+      sessionStorage.removeItem(WIZARD_STORAGE_KEY);
       setSaved(true);
       showSuccessPopup(
         "Connexion OAuth active",
@@ -455,7 +524,7 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
                   name="clientSecret"
                   label={<Text strong>Client Secret</Text>}
                   rules={[{ required: true, message: "Requis" }]}
-                  tooltip="Azure Portal → App registrations → Certificates & secrets → New client secret"
+                  tooltip="Azure Portal → Certificats et secrets → Nouveau secret client → copiez la Valeur (pas l'ID du secret)"
                 >
                   <Input.Password placeholder="Valeur du secret" />
                 </Form.Item>
@@ -603,6 +672,17 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
               </div>
             </div>
 
+            <Form form={form} layout="vertical">
+              <Form.Item
+                name="clientSecret"
+                label={<Text strong>Client Secret Azure</Text>}
+                rules={[{ required: true, message: "Valeur du secret requise" }]}
+                extra="Collez la Valeur du secret (visible une seule fois à la création), pas l'ID du secret."
+              >
+                <Input.Password placeholder="Valeur du secret Azure" autoComplete="off" />
+              </Form.Item>
+            </Form>
+
             {error && <Alert type="error" message={error} showIcon />}
 
             <Row gutter={12}>
@@ -614,7 +694,7 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
                   type="primary"
                   icon={polling ? <Spin size="small" /> : <CheckCircleOutlined />}
                   loading={polling}
-                  onClick={pollToken}
+                  onClick={() => void pollToken()}
                   size="large"
                   block
                   style={{ background: "#0078d4", borderColor: "#0078d4" }}

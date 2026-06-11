@@ -139,15 +139,22 @@ export async function pollDeviceCodeToken(
   intervalSec = 5,
   maxWaitMs = 120_000,
 ): Promise<MsTokenResponse> {
+  const clientSecret = (cfg.clientSecret ?? "").trim();
+  if (!clientSecret) {
+    throw new Error(
+      "Client Secret manquant — renseignez la Valeur du secret Azure (Certificats et secrets), pas l'ID du secret.",
+    );
+  }
+
   const deadline = Date.now() + maxWaitMs;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, intervalSec * 1000));
-    const body = new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-      client_id: cfg.clientId,
-      client_secret: cfg.clientSecret,
-      device_code: deviceCode,
-    }).toString();
+    const params = new URLSearchParams();
+    params.set("grant_type", "urn:ietf:params:oauth:grant-type:device_code");
+    params.set("client_id", cfg.clientId.trim());
+    params.set("client_secret", clientSecret);
+    params.set("device_code", deviceCode);
+    const body = params.toString();
 
     const { status, json } = await postHttps(
       "login.microsoftonline.com",
