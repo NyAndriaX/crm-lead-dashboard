@@ -5,12 +5,14 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, Form, Input, Button, Typography, Alert, Tag, Space, Divider, message } from "antd";
 import {
-  UserOutlined, LockOutlined, SafetyOutlined, ThunderboltFilled, RocketFilled,
+  UserOutlined, LockOutlined, SafetyOutlined, ThunderboltFilled,
   LineChartOutlined, TeamOutlined, MailOutlined, CopyOutlined,
 } from "@ant-design/icons";
 import { AxiosError } from "axios";
 import { api } from "@/lib/client";
 import { useIsMobile } from "@/lib/responsive";
+import { SiteBrandLogo } from "@/components/branding/SiteBrandLogo";
+import { useSiteBranding } from "@/lib/useSiteBranding";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -43,6 +45,7 @@ function LoginPageInner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needTotp, setNeedTotp] = useState(false);
+  const { siteName } = useSiteBranding();
 
   async function onFinish(values: { email: string; password: string; totp?: string }) {
     setLoading(true);
@@ -148,31 +151,9 @@ function LoginPageInner() {
             }}
           />
 
-          {/* Logo + tagline */}
+          {/* Logo + nom du site (identité configurée dans Paramètres) */}
           <div style={{ position: "relative", zIndex: 1 }}>
-            <Space size={12} align="center">
-              <div
-                style={{
-                  width: 44, height: 44, borderRadius: 12,
-                  background: "rgba(255,255,255,0.15)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  border: "1px solid rgba(255,255,255,0.25)",
-                  backdropFilter: "blur(8px)",
-                }}
-              >
-                <RocketFilled style={{ fontSize: 22, color: "#fff" }} />
-              </div>
-              <div>
-                <Text style={{ color: "#fff", fontSize: 18, fontWeight: 700, letterSpacing: -0.3 }}>
-                  CRM Lead
-                </Text>
-                <div>
-                  <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 11, letterSpacing: 2, textTransform: "uppercase" }}>
-                    Dashboard
-                  </Text>
-                </div>
-              </div>
-            </Space>
+            <SiteBrandLogo iconSize={44} nameSize={18} variant="light" />
           </div>
 
           {/* Pitch + features */}
@@ -207,7 +188,7 @@ function LoginPageInner() {
           {/* Footer brand */}
           <div style={{ position: "relative", zIndex: 1, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
-              © {new Date().getFullYear()} CRM Lead Dashboard
+              © {new Date().getFullYear()} {siteName}
             </Text>
             <Space size={16}>
               <Text style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>RGPD-ready</Text>
@@ -230,19 +211,11 @@ function LoginPageInner() {
         <div style={{ width: "100%", maxWidth: 420 }}>
           {/* Header mobile : logo compact */}
           {isMobile && (
-            <div style={{ textAlign: "center", marginBottom: 24 }}>
-              <div
-                style={{
-                  width: 56, height: 56, borderRadius: 14,
-                  background: "linear-gradient(135deg,#1d39c4,#1677ff)",
-                  display: "inline-flex", alignItems: "center", justifyContent: "center",
-                  marginBottom: 12, boxShadow: "0 8px 24px rgba(22,119,255,0.25)",
-                }}
-              >
-                <RocketFilled style={{ fontSize: 26, color: "#fff" }} />
-              </div>
-              <Title level={3} style={{ margin: 0 }}>CRM Lead Dashboard</Title>
-              <Text type="secondary">Pilotez vos leads B2B en un seul écran</Text>
+            <div style={{ marginBottom: 24 }}>
+              <SiteBrandLogo iconSize={56} nameSize={20} variant="dark" layout="vertical-center" />
+              <Text type="secondary" style={{ display: "block", textAlign: "center", marginTop: 8 }}>
+                Pilotez vos leads B2B en un seul écran
+              </Text>
             </div>
           )}
 

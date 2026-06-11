@@ -16,6 +16,7 @@ import {
 import { api } from "@/lib/client";
 import { useBreakpoint, useIsMobile } from "@/lib/responsive";
 import { NotificationsBell } from "@/components/NotificationsBell";
+import { DEFAULT_SITE_NAME, useSiteBranding } from "@/lib/useSiteBranding";
 import type { MenuProps } from "antd";
 
 const { Header, Sider, Content } = Layout;
@@ -66,13 +67,10 @@ function buildNav(role: ShellUser["role"], collapsed: boolean): MenuProps["items
   ];
 }
 
-
-type Branding = { siteName?: string; siteIconUrl?: string };
-
 export default function DashboardShell({ user, children }: { user: ShellUser; children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [branding, setBranding] = useState<Branding>({});
+  const { siteName, siteIconUrl } = useSiteBranding();
   const pathname = usePathname();
   const router = useRouter();
   const { token } = antdTheme.useToken();
@@ -92,13 +90,6 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
     pathname.startsWith("/analytics") ? "/analytics" :
     "/dashboard"
   );
-
-  useEffect(() => {
-    fetch("/api/organization/branding")
-      .then((r) => r.json())
-      .then((j: { data?: Branding }) => setBranding(j.data ?? {}))
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     setDrawerOpen(false);
@@ -161,9 +152,9 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
               whiteSpace: "nowrap",
             }}
           >
-            {branding.siteIconUrl ? (
+            {siteIconUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={branding.siteIconUrl} alt="" style={{ width: 28, height: 28, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
+              <img src={siteIconUrl} alt="" style={{ width: 28, height: 28, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
             ) : (
               <div
                 style={{
@@ -178,7 +169,7 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
             )}
             {!collapsed && (
               <Text strong style={{ color: "#fff", marginLeft: 10, fontSize: 14, letterSpacing: 0.3 }}>
-                {branding.siteName ?? "CRM Dashboard"}
+                {siteName || DEFAULT_SITE_NAME}
               </Text>
             )}
           </div>
@@ -205,7 +196,15 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
               borderBottom: "1px solid rgba(255,255,255,0.08)",
             }}
           >
-            <Text strong style={{ color: "#fff", fontSize: 14 }}>CRM Dashboard</Text>
+            <Space size={10}>
+              {siteIconUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={siteIconUrl} alt="" style={{ width: 28, height: 28, borderRadius: 8, objectFit: "cover" }} />
+              ) : (
+                <DashboardOutlined style={{ color: "#fff", fontSize: 18 }} />
+              )}
+              <Text strong style={{ color: "#fff", fontSize: 14 }}>{siteName || DEFAULT_SITE_NAME}</Text>
+            </Space>
           </div>
           {menu}
         </Drawer>
