@@ -1,6 +1,6 @@
 /**
  * POST /api/import — upload CSV/XLSX, crée l'ImportJob, retourne headers + aperçu.
- * GET  /api/import — liste des imports (les siens ou tous pour ADMIN).
+ * GET  /api/import — liste des imports de l'utilisateur courant.
  */
 import { handler, json, created, requirePermission, requireSession } from "@/lib/api";
 import { createImportJob, listImportJobs } from "@/lib/services/import";
@@ -27,7 +27,6 @@ export const POST = handler(async (req) => {
 
 export const GET = handler(async () => {
   const session = await requireSession();
-  const isAdmin = session.role === "ADMIN";
-  const jobs = await listImportJobs(session.sub, isAdmin);
+  const jobs = await listImportJobs(session.sub);
   return json({ data: jobs });
 });

@@ -5,8 +5,34 @@
  *
  * Toutes les fonctions retournent des objets sérialisables JSON (Date → ISO).
  */
-import { prisma } from "@crm/db";
-import type { Prisma } from "@crm/db";
+import {
+  prisma,
+  buildLeadVisibilityWhere,
+  strictCreatorWhere,
+  strictOwnerWhere,
+  isAdminRole,
+  Role,
+  type DataScope,
+  type Prisma,
+} from "@crm/db";
+
+function scopedLeadWhere(scope: DataScope, extra: Prisma.LeadWhereInput = {}): Prisma.LeadWhereInput {
+  return { AND: [{ deletedAt: null }, buildLeadVisibilityWhere(scope), extra] };
+}
+
+function scopedEventWhere(scope: DataScope, extra: Prisma.EmailEventWhereInput = {}): Prisma.EmailEventWhereInput {
+  return {
+    AND: [
+      {
+        OR: [
+          { campaign: { createdById: scope.userId } },
+          { lead: buildLeadVisibilityWhere(scope) },
+        ],
+      },
+      extra,
+    ],
+  };
+}
 
 // ── Période ──────────────────────────────────────────────────────────────────
 
@@ -42,7 +68,7 @@ export type GlobalKpis = {
   campaignsActive: number;
 };
 
-export async function getGlobalKpis(period: Period): Promise<GlobalKpis> {
+export async function getGlobalKpis(scope: DataScope, period: Period): Promise<GlobalKpis> {
   const { from, to } = periodToDateRange(period);
   const dateFilter: Prisma.DateTimeFilter | undefined = from ? { gte: from, lte: to } : undefined;
   const occurredFilter = dateFilter ? { occurredAt: dateFilter } : {};
@@ -57,37 +83,36 @@ export async function getGlobalKpis(period: Period): Promise<GlobalKpis> {
     converted,
     campaignsActive,
   ] = await Promise.all([
-    prisma.lead.count({ where: { deletedAt: null } }),
+    prisma.lead.count({ where: scopedLeadWhere(scope) }),
     prisma.lead.count({
-      where: {
-        deletedAt: null,
+      where: scopedLeadWhere(scope, {
         emailStatus: { notIn: ["HARD_BOUNCE", "UNSUBSCRIBED"] },
         status: { notIn: ["PERDU"] },
-      },
+      }),
     }),
     prisma.lead.count({
-      where: { deletedAt: null, ...createdFilter },
+      where: scopedLeadWhere(scope, createdFilter),
     }),
     prisma.emailEvent.groupBy({
       by: ["eventType"],
-      where: occurredFilter,
+      where: scopedEventWhere(scope, occurredFilter),
       _count: { _all: true },
     }),
     prisma.inboxMessage.count({
       where: {
         direction: "inbound",
+        ...strictOwnerWhere(scope.userId),
         ...(dateFilter ? { receivedAt: dateFilter } : {}),
       },
     }),
     prisma.lead.count({
-      where: {
-        deletedAt: null,
+      where: scopedLeadWhere(scope, {
         status: "CONVERTI",
         ...(dateFilter ? { updatedAt: dateFilter } : {}),
-      },
+      }),
     }),
     prisma.campaign.count({
-      where: { status: { in: ["SENDING", "SCHEDULED"] } },
+      where: { status: { in: ["SENDING", "SCHEDULED"] }, ...strictCreatorWhere(scope.userId) },
     }),
   ]);
 
@@ -140,16 +165,19 @@ export type CampaignReportRow = {
   ctorRate: number | null; // CTOR : clics / ouvertures
 };
 
-export async function listCampaignReports(): Promise<CampaignReportRow[]> {
+export async function listCampaignReports(scope: DataScope): Promise<CampaignReportRow[]> {
   const campaigns = await prisma.campaign.findMany({
+    where: strictCreatorWhere(scope.userId),
     orderBy: { createdAt: "desc" },
     select: { id: true, name: true, status: true, scheduledAt: true, createdAt: true },
   });
+  const campaignIds = campaigns.map((c) => c.id);
+  if (campaignIds.length === 0) return [];
 
   // Agrège tous les events en une seule requête groupBy (perf).
   const groups = await prisma.emailEvent.groupBy({
     by: ["campaignId", "eventType"],
-    where: { campaignId: { not: null } },
+    where: { campaignId: { in: campaignIds } },
     _count: { _all: true },
   });
   const byCampaign = new Map<string, Record<string, number>>();
@@ -214,15 +242,18 @@ function bucketKey(date: Date, gran: Granularity): string {
   return `${y}-${m}-${d}`;
 }
 
-export async function getLeadsTimeline(args: {
-  period: Period;
-  granularity: Granularity;
-}): Promise<{ buckets: TimelineBucket[]; sources: string[] }> {
+export async function getLeadsTimeline(
+  scope: DataScope,
+  args: {
+    period: Period;
+    granularity: Granularity;
+  },
+): Promise<{ buckets: TimelineBucket[]; sources: string[] }> {
   const { from, to } = periodToDateRange(args.period);
-  const where: Prisma.LeadWhereInput = {
-    deletedAt: null,
-    ...(from ? { createdAt: { gte: from, lte: to } } : {}),
-  };
+  const where: Prisma.LeadWhereInput = scopedLeadWhere(
+    scope,
+    from ? { createdAt: { gte: from, lte: to } } : {},
+  );
   const leads = await prisma.lead.findMany({
     where,
     select: { createdAt: true, source: true },
@@ -264,15 +295,17 @@ export type SalesPerfRow = {
   repliesReceived: number;
 };
 
-export async function getSalesPerformance(period: Period): Promise<SalesPerfRow[]> {
+export async function getSalesPerformance(scope: DataScope, period: Period): Promise<SalesPerfRow[]> {
   const { from, to } = periodToDateRange(period);
-  const leadFilter: Prisma.LeadWhereInput = {
-    deletedAt: null,
-    ...(from ? { updatedAt: { gte: from, lte: to } } : {}),
-  };
+  const leadFilter: Prisma.LeadWhereInput = scopedLeadWhere(
+    scope,
+    from ? { updatedAt: { gte: from, lte: to } } : {},
+  );
 
   const users = await prisma.user.findMany({
-    where: { isActive: true },
+    where: isAdminRole(scope.role)
+      ? { isActive: true, OR: [{ id: scope.userId }, { role: { not: Role.ADMIN } }] }
+      : { id: scope.userId, isActive: true },
     select: { id: true, name: true, email: true, teamId: true },
     orderBy: { name: "asc" },
   });
@@ -291,17 +324,17 @@ export async function getSalesPerformance(period: Period): Promise<SalesPerfRow[
   });
   const replyEvents = await prisma.emailEvent.groupBy({
     by: ["leadId"],
-    where: {
+    where: scopedEventWhere(scope, {
       eventType: "REPLIED",
       ...(from ? { occurredAt: { gte: from, lte: to } } : {}),
-    },
+    }),
     _count: { _all: true },
   });
   // Recharge les leads pour mapper leadId → assignedToId (1 requête)
   const leadIds = replyEvents.map((r) => r.leadId).filter((x): x is string => Boolean(x));
   const leadAssign = leadIds.length > 0
     ? await prisma.lead.findMany({
-        where: { id: { in: leadIds } },
+        where: { id: { in: leadIds }, ...buildLeadVisibilityWhere(scope) },
         select: { id: true, assignedToId: true },
       })
     : [];

@@ -153,7 +153,7 @@ function LoginPageInner() {
 
           {/* Logo + nom du site (identité configurée dans Paramètres) */}
           <div style={{ position: "relative", zIndex: 1 }}>
-            <SiteBrandLogo iconSize={44} nameSize={18} variant="light" />
+            <SiteBrandLogo variant="light" />
           </div>
 
           {/* Pitch + features */}
@@ -212,7 +212,7 @@ function LoginPageInner() {
           {/* Header mobile : logo compact */}
           {isMobile && (
             <div style={{ marginBottom: 24 }}>
-              <SiteBrandLogo iconSize={56} nameSize={20} variant="dark" layout="vertical-center" />
+              <SiteBrandLogo variant="dark" layout="vertical-center" />
               <Text type="secondary" style={{ display: "block", textAlign: "center", marginTop: 8 }}>
                 Pilotez vos leads B2B en un seul écran
               </Text>
@@ -265,16 +265,7 @@ function LoginPageInner() {
 
               <Form.Item
                 name="password"
-                label={
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
-                    <span>Mot de passe</span>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      <Link href="/forgot-password" style={{ color: "#1677ff", fontSize: 12 }}>
-                        Mot de passe oublié ?
-                      </Link>
-                    </Text>
-                  </div>
-                }
+                label="Mot de passe"
                 rules={[{ required: true, message: "Mot de passe requis" }]}
               >
                 <Input.Password
@@ -283,6 +274,11 @@ function LoginPageInner() {
                   autoComplete="current-password"
                 />
               </Form.Item>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: -12, marginBottom: 20 }}>
+                <Link href="/forgot-password" style={{ color: "#1677ff", fontSize: 13 }}>
+                  Mot de passe oublié ?
+                </Link>
+              </div>
 
               {needTotp && (
                 <Form.Item

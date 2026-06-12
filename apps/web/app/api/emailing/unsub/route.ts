@@ -8,7 +8,10 @@ async function processUnsub(t: string | null): Promise<{ ok: boolean; message: s
   if (!t) return { ok: false, message: "Jeton manquant" };
   const p = verifyEmailTrackToken(t);
   if (!p || p.k !== "unsub") return { ok: false, message: "Jeton invalide" };
-  const lead = await prisma.lead.findUnique({ where: { id: p.l }, select: { id: true, emailEnc: true, emailHash: true } });
+  const lead = await prisma.lead.findUnique({
+    where: { id: p.l },
+    select: { id: true, emailEnc: true, emailHash: true, ownerUserId: true },
+  });
   if (!lead?.emailHash) return { ok: false, message: "Lead introuvable" };
   await prisma.$transaction([
     prisma.emailEvent.create({
@@ -30,7 +33,7 @@ async function processUnsub(t: string | null): Promise<{ ok: boolean; message: s
     }),
   ]);
   // INT-01 : webhook unsubscribe (best-effort, ne bloque pas la réponse).
-  void emitWebhookEvent("unsubscribe", { leadId: lead.id, campaignId: p.c });
+  void emitWebhookEvent("unsubscribe", { leadId: lead.id, campaignId: p.c }, lead.ownerUserId);
   return { ok: true, message: "Vous êtes désinscrit. Merci." };
 }
 

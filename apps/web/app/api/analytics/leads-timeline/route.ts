@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { handler, json, parseQuery, requirePermission } from "@/lib/api";
 import { getLeadsTimeline } from "@/lib/services/analytics";
+import { toScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -10,8 +11,8 @@ const querySchema = z.object({
 });
 
 export const GET = handler(async (req) => {
-  await requirePermission("analytics:read");
+  const session = await requirePermission("analytics:read");
   const { period, granularity } = parseQuery(req, querySchema);
-  const data = await getLeadsTimeline({ period, granularity });
+  const data = await getLeadsTimeline(toScope(session), { period, granularity });
   return json({ data });
 });

@@ -22,7 +22,8 @@ export const MS_OAUTH_SCOPES = [
 export type MsOAuthConfig = {
   tenantId: string;
   clientId: string;
-  clientSecret: string;
+  /** Vide pour les apps Azure « flux client public » (device code sans secret). */
+  clientSecret?: string;
 };
 
 export type MsTokenResponse = {
@@ -76,13 +77,15 @@ export async function getAccessToken(
   cfg: MsOAuthConfig,
   refreshToken: string,
 ): Promise<MsTokenResponse> {
-  const body = new URLSearchParams({
+  const params = new URLSearchParams({
     grant_type: "refresh_token",
-    client_id: cfg.clientId,
-    client_secret: cfg.clientSecret,
+    client_id: cfg.clientId.trim(),
     refresh_token: refreshToken,
     scope: MS_OAUTH_SCOPES,
-  }).toString();
+  });
+  const clientSecret = (cfg.clientSecret ?? "").trim();
+  if (clientSecret) params.set("client_secret", clientSecret);
+  const body = params.toString();
 
   const { status, json } = await postHttps(
     "login.microsoftonline.com",
@@ -140,11 +143,6 @@ export async function pollDeviceCodeToken(
   maxWaitMs = 120_000,
 ): Promise<MsTokenResponse> {
   const clientSecret = (cfg.clientSecret ?? "").trim();
-  if (!clientSecret) {
-    throw new Error(
-      "Client Secret manquant — renseignez la Valeur du secret Azure (Certificats et secrets), pas l'ID du secret.",
-    );
-  }
 
   const deadline = Date.now() + maxWaitMs;
   while (Date.now() < deadline) {
@@ -152,8 +150,9 @@ export async function pollDeviceCodeToken(
     const params = new URLSearchParams();
     params.set("grant_type", "urn:ietf:params:oauth:grant-type:device_code");
     params.set("client_id", cfg.clientId.trim());
-    params.set("client_secret", clientSecret);
     params.set("device_code", deviceCode);
+    // Public client (Allow public client flows = Yes) : pas de client_secret — voir scripts/test-azure-email.mjs
+    if (clientSecret) params.set("client_secret", clientSecret);
     const body = params.toString();
 
     const { status, json } = await postHttps(

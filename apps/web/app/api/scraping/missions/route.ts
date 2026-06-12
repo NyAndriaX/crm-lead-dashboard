@@ -3,6 +3,7 @@ import { handler, json, created, parseBody, requirePermission, requireSession, A
 import { can } from "@/lib/rbac";
 import { audit, clientIp } from "@/lib/audit";
 import { createMission, listMissions } from "@/lib/services/scraping";
+import { toScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -46,13 +47,15 @@ export const GET = handler(async () => {
   if (!can(s.role, "import:run") && !can(s.role, "leads:read")) {
     throw new ApiError(403, "Permission manquante", "forbidden");
   }
-  return json({ data: await listMissions() });
+  const scope = toScope(s);
+  return json({ data: await listMissions(scope) });
 });
 
 export const POST = handler(async (req) => {
   const session = await requirePermission("import:run");
+  const scope = toScope(session);
   const input = await parseBody(req, createSchema);
-  const mission = await createMission({ name: input.name, config: input.config });
+  const mission = await createMission(scope, { name: input.name, config: input.config });
   await audit({
     userId: session.sub,
     action: "scraping.mission.create",

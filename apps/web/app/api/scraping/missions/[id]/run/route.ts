@@ -10,6 +10,7 @@ import { audit, clientIp } from "@/lib/audit";
 import { enqueue } from "@/lib/jobs";
 import { checkScraperReachable, isScrapingLiveEnabled } from "@/lib/scraping/scraperHealth";
 import { getMission } from "@/lib/services/scraping";
+import { toScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +21,8 @@ export const POST = handler<Ctx>(async (req, { params }) => {
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
 
-  const mission = await getMission(id);
+  const scope = toScope(session);
+  const mission = await getMission(id, scope);
   if (!mission) throw new ApiError(404, "Mission introuvable", "not_found");
   if (mission.status === "running" || mission.status === "queued") {
     throw new ApiError(409, "Mission déjà en cours", "already_running");

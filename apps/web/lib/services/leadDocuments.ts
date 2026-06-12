@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
-import { prisma } from "@crm/db";
+import { prisma, assertLeadAccess, type DataScope } from "@crm/db";
 import { ApiError } from "@/lib/api";
 
 const MAX_BYTES = 15 * 1024 * 1024;
@@ -32,13 +32,18 @@ export type LeadDocumentDTO = {
   createdAt: Date;
 };
 
-async function assertLead(id: string) {
-  const lead = await prisma.lead.findUnique({ where: { id }, select: { id: true, deletedAt: true } });
+async function assertLead(scope: DataScope, id: string) {
+  try {
+    await assertLeadAccess(scope, id);
+  } catch {
+    throw new ApiError(404, "Lead introuvable", "not_found");
+  }
+  const lead = await prisma.lead.findUnique({ where: { id }, select: { deletedAt: true } });
   if (!lead || lead.deletedAt) throw new ApiError(404, "Lead introuvable", "not_found");
 }
 
-export async function listLeadDocuments(leadId: string): Promise<LeadDocumentDTO[]> {
-  await assertLead(leadId);
+export async function listLeadDocuments(leadId: string, scope: DataScope): Promise<LeadDocumentDTO[]> {
+  await assertLead(scope, leadId);
   const rows = await prisma.leadDocument.findMany({
     where: { leadId },
     orderBy: { createdAt: "desc" },
@@ -57,9 +62,10 @@ export async function listLeadDocuments(leadId: string): Promise<LeadDocumentDTO
 export async function addLeadDocument(
   leadId: string,
   file: File,
+  scope: DataScope,
   actorId?: string,
 ): Promise<LeadDocumentDTO> {
-  await assertLead(leadId);
+  await assertLead(scope, leadId);
   if (file.size <= 0 || file.size > MAX_BYTES) {
     throw new ApiError(400, `Fichier invalide (max ${MAX_BYTES / 1024 / 1024} Mo)`, "file_too_large");
   }
@@ -110,8 +116,9 @@ export async function addLeadDocument(
 export async function getLeadDocumentFile(
   leadId: string,
   docId: string,
+  scope: DataScope,
 ): Promise<{ row: LeadDocumentDTO & { storagePath: string } }> {
-  await assertLead(leadId);
+  await assertLead(scope, leadId);
   const row = await prisma.leadDocument.findFirst({ where: { id: docId, leadId } });
   if (!row) throw new ApiError(404, "Document introuvable", "not_found");
   return {
@@ -128,8 +135,13 @@ export async function getLeadDocumentFile(
   };
 }
 
-export async function deleteLeadDocument(leadId: string, docId: string, actorId?: string): Promise<void> {
-  const { row } = await getLeadDocumentFile(leadId, docId);
+export async function deleteLeadDocument(
+  leadId: string,
+  docId: string,
+  scope: DataScope,
+  actorId?: string,
+): Promise<void> {
+  const { row } = await getLeadDocumentFile(leadId, docId, scope);
   await prisma.leadDocument.delete({ where: { id: docId } });
   await fs.unlink(row.storagePath).catch(() => {});
   await prisma.leadHistory.create({

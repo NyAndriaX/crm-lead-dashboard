@@ -1,4 +1,17 @@
 import { prisma } from "@crm/db";
+import { ApiError } from "@/lib/api";
+
+async function assertBlockAccess(id: string, userId?: string) {
+  const block = await prisma.templateBlock.findUnique({
+    where: { id },
+    select: { id: true, isPublic: true, createdById: true },
+  });
+  if (!block) throw new ApiError(404, "Bloc introuvable", "not_found");
+  if (!block.isPublic && block.createdById !== userId) {
+    throw new ApiError(403, "Accès refusé", "forbidden");
+  }
+  return block;
+}
 
 export interface TemplateBlockInput {
   name: string;
@@ -38,7 +51,8 @@ export async function listTemplateBlocks(userId?: string) {
   });
 }
 
-export async function getTemplateBlock(id: string) {
+export async function getTemplateBlock(id: string, userId?: string) {
+  await assertBlockAccess(id, userId);
   return prisma.templateBlock.findUnique({
     where: { id },
     include: {
@@ -68,7 +82,11 @@ export async function createTemplateBlock(input: TemplateBlockInput, createdById
   });
 }
 
-export async function updateTemplateBlock(id: string, input: TemplateBlockUpdateInput) {
+export async function updateTemplateBlock(id: string, input: TemplateBlockUpdateInput, userId?: string) {
+  const block = await assertBlockAccess(id, userId);
+  if (!block.createdById || block.createdById !== userId) {
+    throw new ApiError(403, "Seul le créateur peut modifier ce bloc", "forbidden");
+  }
   return prisma.templateBlock.update({
     where: { id },
     data: {
@@ -87,12 +105,17 @@ export async function updateTemplateBlock(id: string, input: TemplateBlockUpdate
   });
 }
 
-export async function deleteTemplateBlock(id: string) {
+export async function deleteTemplateBlock(id: string, userId?: string) {
+  const block = await assertBlockAccess(id, userId);
+  if (!block.createdById || block.createdById !== userId) {
+    throw new ApiError(403, "Seul le créateur peut supprimer ce bloc", "forbidden");
+  }
   await prisma.templateBlock.delete({ where: { id } });
 }
 
 /** Duplique un bloc de contenu (même catégorie, copie indépendante). */
 export async function duplicateTemplateBlock(sourceId: string, createdById?: string) {
+  await assertBlockAccess(sourceId, createdById);
   const src = await prisma.templateBlock.findUnique({ where: { id: sourceId } });
   if (!src) return null;
   const prefix = "Copie — ";

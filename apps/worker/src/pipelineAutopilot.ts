@@ -95,8 +95,14 @@ function shouldAdvanceStatus(current: LeadStatus, target: LeadStatus): boolean {
   return STATUS_RANK[target] > STATUS_RANK[current];
 }
 
-async function findStageByNames(names: string[]): Promise<{ id: string; name: string; order: number } | null> {
-  const stages = await prisma.pipelineStage.findMany({ orderBy: { order: "asc" } });
+async function findStageByNames(
+  names: string[],
+  ownerUserId: string,
+): Promise<{ id: string; name: string; order: number } | null> {
+  const stages = await prisma.pipelineStage.findMany({
+    where: { ownerUserId },
+    orderBy: { order: "asc" },
+  });
   // On renvoie la dernière étape (la plus avancée) parmi les alias fournis.
   // Exemple: "Proposition" + "Négociation" (même statut EN_DISCUSSION) →
   // on préfère "Négociation" si elle existe.
@@ -136,14 +142,14 @@ export async function autopilotPipelineOnReply(args: {
   const target = OUTCOME_TARGET[outcome];
   const lead = await prisma.lead.findUnique({
     where: { id: args.leadId },
-    select: { id: true, status: true, pipelineStageId: true, deletedAt: true },
+    select: { id: true, status: true, pipelineStageId: true, deletedAt: true, ownerUserId: true },
   });
-  if (!lead || lead.deletedAt) {
+  if (!lead || lead.deletedAt || !lead.ownerUserId) {
     return { outcome, statusChanged: false, stageChanged: false };
   }
 
   const statusChanged = shouldAdvanceStatus(lead.status, target.status);
-  const stage = await findStageByNames(target.stageNames);
+  const stage = await findStageByNames(target.stageNames, lead.ownerUserId);
 
   let currentStage: { id: string; order: number } | null = null;
   if (lead.pipelineStageId) {

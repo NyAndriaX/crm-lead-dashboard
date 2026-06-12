@@ -4,7 +4,7 @@
  * applique la catégorie passée explicitement en body.
  */
 import { z } from "zod";
-import { prisma } from "@crm/db";
+import { prisma, strictOwnerWhere } from "@crm/db";
 import { handler, json, parseBody, requirePermission, ApiError } from "@/lib/api";
 import { categorizeReply, type ReplyCategory } from "@/lib/services/replyCategorizer";
 
@@ -22,8 +22,8 @@ export const POST = handler<Ctx>(async (req, { params }) => {
   const id = z.string().min(1).parse(rawId);
   const input = await parseBody(req, bodySchema).catch(() => ({ category: undefined }));
 
-  const msg = await prisma.inboxMessage.findUnique({
-    where: { id },
+  const msg = await prisma.inboxMessage.findFirst({
+    where: { id, ...strictOwnerWhere(session.sub) },
     include: { lead: { select: { assignedToId: true } } },
   });
   if (!msg) throw new ApiError(404, "Message introuvable", "not_found");

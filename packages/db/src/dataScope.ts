@@ -36,6 +36,11 @@ export function strictCreatorWhere(userId: string) {
   return { createdById: userId };
 }
 
+/** Leads appartenant à un utilisateur (propriétaire ou assigné) — jobs worker / campagnes. */
+export function buildOwnerOrAssigneeLeadWhere(userId: string): Prisma.LeadWhereInput {
+  return { OR: [{ ownerUserId: userId }, { assignedToId: userId }] };
+}
+
 /**
  * Leads visibles selon le rôle.
  * - Tous : ses leads (propriétaire ou assigné).

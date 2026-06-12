@@ -3,14 +3,15 @@
  */
 import { handler, json, requirePermission } from "@/lib/api";
 import { listArchivedLeads } from "@/lib/services/rgpd";
+import { toScope, scopeError } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
 export const GET = handler(async (req) => {
-  await requirePermission("rgpd:manage");
+  const session = await requirePermission("rgpd:manage");
   const url = new URL(req.url);
   const page = Number(url.searchParams.get("page") ?? "1");
   const pageSize = Number(url.searchParams.get("pageSize") ?? "25");
-  const result = await listArchivedLeads({ page, pageSize });
+  const result = await listArchivedLeads(toScope(session), { page, pageSize }).catch(scopeError);
   return json(result);
 });

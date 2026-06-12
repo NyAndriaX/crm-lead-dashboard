@@ -16,24 +16,24 @@ const updateSchema = z.object({
 });
 
 export const GET = handler<Ctx>(async (_req, { params }) => {
-  await requirePermission("settings:manage");
+  const session = await requirePermission("settings:manage");
   const { id } = await params;
-  const block = await getTemplateBlock(id);
+  const block = await getTemplateBlock(id, session.sub);
   if (!block) return notFound();
   return json({ data: block });
 });
 
 export const PUT = handler<Ctx>(async (req, { params }) => {
-  await requirePermission("settings:manage");
+  const session = await requirePermission("settings:manage");
   const { id } = await params;
   const input = await parseBody(req, updateSchema);
-  const block = await updateTemplateBlock(id, input);
+  const block = await updateTemplateBlock(id, input, session.sub);
   return json({ data: block });
 });
 
 export const DELETE = handler<Ctx>(async (_req, { params }) => {
-  await requirePermission("settings:manage");
+  const session = await requirePermission("settings:manage");
   const { id } = await params;
-  await deleteTemplateBlock(id);
+  await deleteTemplateBlock(id, session.sub);
   return json({ success: true });
 });

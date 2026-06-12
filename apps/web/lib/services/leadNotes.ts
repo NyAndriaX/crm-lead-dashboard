@@ -1,4 +1,4 @@
-import { prisma } from "@crm/db";
+import { prisma, assertLeadAccess, type DataScope } from "@crm/db";
 import { ApiError } from "@/lib/api";
 import type { LeadNoteLegalBasis } from "@/lib/leadLegalBasis";
 
@@ -13,13 +13,18 @@ export type LeadNoteDTO = {
   updatedAt: Date;
 };
 
-async function assertLead(id: string) {
-  const lead = await prisma.lead.findUnique({ where: { id }, select: { id: true, deletedAt: true } });
+async function assertLead(scope: DataScope, id: string) {
+  try {
+    await assertLeadAccess(scope, id);
+  } catch {
+    throw new ApiError(404, "Lead introuvable", "not_found");
+  }
+  const lead = await prisma.lead.findUnique({ where: { id }, select: { deletedAt: true } });
   if (!lead || lead.deletedAt) throw new ApiError(404, "Lead introuvable", "not_found");
 }
 
-export async function listLeadNotes(leadId: string): Promise<LeadNoteDTO[]> {
-  await assertLead(leadId);
+export async function listLeadNotes(leadId: string, scope: DataScope): Promise<LeadNoteDTO[]> {
+  await assertLead(scope, leadId);
   const rows = await prisma.leadNote.findMany({
     where: { leadId },
     orderBy: { createdAt: "desc" },
@@ -40,9 +45,10 @@ export async function listLeadNotes(leadId: string): Promise<LeadNoteDTO[]> {
 export async function createLeadNote(
   leadId: string,
   input: { content: string; legalBasis?: LeadNoteLegalBasis | string | null },
+  scope: DataScope,
   actorId?: string,
 ): Promise<LeadNoteDTO> {
-  await assertLead(leadId);
+  await assertLead(scope, leadId);
   const content = input.content.trim();
   if (!content) throw new ApiError(400, "Contenu requis", "validation_error");
 
@@ -78,8 +84,13 @@ export async function createLeadNote(
   };
 }
 
-export async function deleteLeadNote(leadId: string, noteId: string, actorId?: string): Promise<void> {
-  await assertLead(leadId);
+export async function deleteLeadNote(
+  leadId: string,
+  noteId: string,
+  scope: DataScope,
+  actorId?: string,
+): Promise<void> {
+  await assertLead(scope, leadId);
   const note = await prisma.leadNote.findFirst({ where: { id: noteId, leadId } });
   if (!note) throw new ApiError(404, "Note introuvable", "not_found");
   await prisma.leadNote.delete({ where: { id: noteId } });

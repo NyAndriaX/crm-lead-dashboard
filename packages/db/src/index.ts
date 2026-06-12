@@ -8,6 +8,7 @@ export {
   createdByUser,
   strictOwnerWhere,
   strictCreatorWhere,
+  buildOwnerOrAssigneeLeadWhere,
   buildLeadVisibilityWhere,
   assertLeadAccess,
   resolvePipelineOwnerId,

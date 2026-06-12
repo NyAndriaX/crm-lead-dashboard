@@ -150,7 +150,8 @@ async function scoringSignals(leadId: string) {
 }
 
 /** Recalcule et persiste le score d'un lead. */
-export async function recalcScore(leadId: string): Promise<number> {
+export async function recalcScore(leadId: string, scope?: DataScope): Promise<number> {
+  if (scope) await assertLeadAccess(scope, leadId);
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead) throw new ApiError(404, "Lead introuvable", "not_found");
   const weights = await getWeightsFromDb();
@@ -301,25 +302,28 @@ export async function assignLead(id: string, input: AssignLeadInput, scope: Data
 }
 
 /** Remplace l'ensemble des tags d'un lead (CRM-015). */
-export async function setLeadTags(id: string, input: SetTagsInput, actorId?: string): Promise<LeadDTO> {
+export async function setLeadTags(id: string, input: SetTagsInput, scope: DataScope): Promise<LeadDTO> {
+  await assertLeadAccess(scope, id);
   const current = await prisma.lead.findUnique({ where: { id }, select: { id: true, deletedAt: true, tags: true } });
   if (!current || current.deletedAt) throw new ApiError(404, "Lead introuvable", "not_found");
   const tags = Array.from(new Set(input.tags.map((t) => t.trim()).filter(Boolean)));
   const lead = await prisma.lead.update({ where: { id }, data: { tags, lastActionAt: new Date() } });
-  await prisma.leadHistory.create({ data: { leadId: id, userId: actorId, type: "tags_set", payload: { from: current.tags, to: tags } } });
+  await prisma.leadHistory.create({ data: { leadId: id, userId: scope.userId, type: "tags_set", payload: { from: current.tags, to: tags } } });
   await syncTags(tags);
   return toDTO(lead);
 }
 
-export async function softDeleteLead(id: string, actorId?: string): Promise<void> {
+export async function softDeleteLead(id: string, scope: DataScope): Promise<void> {
+  await assertLeadAccess(scope, id);
   const current = await prisma.lead.findUnique({ where: { id }, select: { id: true, deletedAt: true } });
   if (!current) throw new ApiError(404, "Lead introuvable", "not_found");
   if (current.deletedAt) return;
   await prisma.lead.update({ where: { id }, data: { deletedAt: new Date() } });
-  await prisma.leadHistory.create({ data: { leadId: id, userId: actorId, type: "soft_deleted" } });
+  await prisma.leadHistory.create({ data: { leadId: id, userId: scope.userId, type: "soft_deleted" } });
 }
 
-export async function restoreLead(id: string, actorId?: string): Promise<LeadDTO> {
+export async function restoreLead(id: string, scope: DataScope): Promise<LeadDTO> {
+  await assertLeadAccess(scope, id);
   const current = await prisma.lead.findUnique({ where: { id } });
   if (!current) throw new ApiError(404, "Lead introuvable", "not_found");
   if (current.emailHash) {
@@ -329,7 +333,7 @@ export async function restoreLead(id: string, actorId?: string): Promise<LeadDTO
     }
   }
   const lead = await prisma.lead.update({ where: { id }, data: { deletedAt: null } });
-  await prisma.leadHistory.create({ data: { leadId: id, userId: actorId, type: "restored" } });
+  await prisma.leadHistory.create({ data: { leadId: id, userId: scope.userId, type: "restored" } });
   return toDTO(lead);
 }
 
@@ -341,8 +345,13 @@ export const EXPORT_COLUMNS = [
 ] as const;
 export type ExportColumn = (typeof EXPORT_COLUMNS)[number];
 
-export async function collectLeadsForExport(filters: Partial<LeadFilters>, columns: ExportColumn[], limit = 50_000) {
-  const where = buildWhere(filters);
+export async function collectLeadsForExport(
+  filters: Partial<LeadFilters>,
+  columns: ExportColumn[],
+  scope: DataScope,
+  limit = 50_000,
+) {
+  const where = { AND: [buildWhere(filters), buildLeadVisibilityWhere(scope)] };
   const rows = await prisma.lead.findMany({ where, orderBy: { createdAt: "desc" }, take: limit });
   return rows.map((l) => {
     const dto = toDTO(l);

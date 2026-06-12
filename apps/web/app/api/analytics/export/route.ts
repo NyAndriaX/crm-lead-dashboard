@@ -20,6 +20,8 @@ import {
   getGlobalKpis, listCampaignReports, getLeadsTimeline, getSalesPerformance,
   type Period,
 } from "@/lib/services/analytics";
+import { toScope } from "@/lib/scope";
+import type { DataScope } from "@crm/db";
 
 export const dynamic = "force-dynamic";
 
@@ -32,14 +34,17 @@ const querySchema = z.object({
 
 type Row = Record<string, string | number | null | undefined>;
 
-async function rowsForReport(args: {
-  report: string;
-  period: Period;
-  granularity: "day" | "week" | "month";
-}): Promise<{ rows: Row[]; sheetName: string }> {
+async function rowsForReport(
+  scope: DataScope,
+  args: {
+    report: string;
+    period: Period;
+    granularity: "day" | "week" | "month";
+  },
+): Promise<{ rows: Row[]; sheetName: string }> {
   switch (args.report) {
     case "global": {
-      const k = await getGlobalKpis(args.period);
+      const k = await getGlobalKpis(scope, args.period);
       return {
         sheetName: "KPIs Globaux",
         rows: [
@@ -60,7 +65,7 @@ async function rowsForReport(args: {
       };
     }
     case "campaigns": {
-      const rows = await listCampaignReports();
+      const rows = await listCampaignReports(scope);
       return {
         sheetName: "Campagnes",
         rows: rows.map((r) => ({
@@ -83,7 +88,7 @@ async function rowsForReport(args: {
       };
     }
     case "leads-timeline": {
-      const t = await getLeadsTimeline({ period: args.period, granularity: args.granularity });
+      const t = await getLeadsTimeline(scope, { period: args.period, granularity: args.granularity });
       const rows: Row[] = t.buckets.map((b) => {
         const out: Row = { Période: b.period, Total: b.total };
         for (const src of t.sources) out[src] = b.bySource[src] ?? 0;
@@ -92,7 +97,7 @@ async function rowsForReport(args: {
       return { sheetName: "Évolution Leads", rows };
     }
     case "sales-performance": {
-      const rows = await getSalesPerformance(args.period);
+      const rows = await getSalesPerformance(scope, args.period);
       return {
         sheetName: "Performance commerciale",
         rows: rows.map((r) => ({
@@ -129,9 +134,9 @@ function rowsToCsv(rows: Row[]): string {
 }
 
 export const GET = handler(async (req) => {
-  await requirePermission("analytics:read");
+  const session = await requirePermission("analytics:read");
   const { report, period, granularity, format } = parseQuery(req, querySchema);
-  const { rows, sheetName } = await rowsForReport({ report, period, granularity });
+  const { rows, sheetName } = await rowsForReport(toScope(session), { report, period, granularity });
 
   const fileBase = `analytics-${report}-${period}-${new Date().toISOString().slice(0, 10)}`;
 

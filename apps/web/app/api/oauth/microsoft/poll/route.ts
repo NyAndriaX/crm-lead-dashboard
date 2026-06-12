@@ -6,7 +6,7 @@
  */
 import { z } from "zod";
 import { ApiError, handler, json, parseBody, requirePermission } from "@/lib/api";
-import { msOAuthCredsSchema, parseMsOAuthCreds } from "@/lib/oauth/microsoftSchemas";
+import { msOAuthCredsSchema, parseMsOAuthCreds, validateAzureClientSecret } from "@/lib/oauth/microsoftSchemas";
 import { pollDeviceCodeToken } from "@crm/db";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ function mapOAuthPollError(e: unknown): never {
   if (msg.includes("AADSTS7000218")) {
     throw new ApiError(
       400,
-      "Microsoft exige le Client Secret à cette étape. Vérifiez que vous avez collé la Valeur du secret (affichée une seule fois à la création), pas l'ID du secret ni l'ID de l'application.",
+      "Microsoft exige un Client Secret valide pour cette application (app « Web » / confidentielle). Collez la Valeur du secret Azure (pas l'ID du secret ni le Client ID), ou activez « Flux client public » dans Azure → Authentication → Paramètres avancés.",
       "azure_client_secret",
     );
   }
@@ -38,6 +38,10 @@ export const POST = handler(async (req) => {
   await requirePermission("settings:manage");
   const input = await parseBody(req, bodySchema);
   const creds = parseMsOAuthCreds(input);
+  const secretErr = validateAzureClientSecret(creds.clientSecret, creds.clientId);
+  if (secretErr) {
+    throw new ApiError(400, secretErr, "azure_client_secret");
+  }
   try {
     const tokens = await pollDeviceCodeToken(
       creds,

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import nodemailer from "nodemailer";
-import { prisma, buildSmtpNodemailerAuth } from "@crm/db";
+import { prisma, buildSmtpNodemailerAuth, strictOwnerWhere } from "@crm/db";
 import { ApiError, handler, json, parseBody, requirePermission } from "@/lib/api";
 import { decryptOrNull, encrypt } from "@/lib/crypto";
 
@@ -20,8 +20,8 @@ export const POST = handler<Ctx>(async (req, { params }) => {
   const id = z.string().min(1).parse(rawId);
   const input = await parseBody(req, replySchema);
 
-  const original = await prisma.inboxMessage.findUnique({
-    where: { id },
+  const original = await prisma.inboxMessage.findFirst({
+    where: { id, ...strictOwnerWhere(session.sub) },
     include: { lead: { select: { id: true, emailEnc: true } } },
   });
   if (!original) throw new ApiError(404, "Message introuvable", "not_found");

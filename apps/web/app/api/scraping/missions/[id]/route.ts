@@ -2,6 +2,7 @@ import { z } from "zod";
 import { handler, json, noContent, parseBody, requirePermission, ApiError } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
 import { deleteMission, getMission, updateMission } from "@/lib/services/scraping";
+import { toScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -43,19 +44,21 @@ const updateSchema = z.object({
 });
 
 export const GET = handler<Ctx>(async (_req, { params }) => {
-  await requirePermission("import:run");
+  const session = await requirePermission("import:run");
+  const scope = toScope(session);
   const { id } = await params;
-  const m = await getMission(z.string().min(1).parse(id));
+  const m = await getMission(z.string().min(1).parse(id), scope);
   if (!m) throw new ApiError(404, "Mission introuvable", "not_found");
   return json({ data: m });
 });
 
 export const PUT = handler<Ctx>(async (req, { params }) => {
   const session = await requirePermission("import:run");
+  const scope = toScope(session);
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
   const input = await parseBody(req, updateSchema);
-  await updateMission(id, input);
+  await updateMission(id, scope, input);
   await audit({
     userId: session.sub,
     action: "scraping.mission.update",
@@ -63,14 +66,15 @@ export const PUT = handler<Ctx>(async (req, { params }) => {
     entityId: id,
     ip: clientIp(req),
   });
-  return json({ data: await getMission(id) });
+  return json({ data: await getMission(id, scope) });
 });
 
 export const DELETE = handler<Ctx>(async (req, { params }) => {
   const session = await requirePermission("import:run");
+  const scope = toScope(session);
   const { id: rawId } = await params;
   const id = z.string().min(1).parse(rawId);
-  await deleteMission(id);
+  await deleteMission(id, scope);
   await audit({
     userId: session.sub,
     action: "scraping.mission.delete",

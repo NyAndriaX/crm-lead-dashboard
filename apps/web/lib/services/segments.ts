@@ -1,4 +1,12 @@
-import { prisma, buildLeadWhereFromSegmentFilters, strictCreatorWhere, type DataScope, type LeadSegmentFilters } from "@crm/db";
+import {
+  prisma,
+  buildLeadWhereFromSegmentFilters,
+  buildLeadVisibilityWhere,
+  strictCreatorWhere,
+  type DataScope,
+  type LeadSegmentFilters,
+  type Prisma,
+} from "@crm/db";
 import { ApiError } from "../api";
 import type { CreateSegmentInput, UpdateSegmentInput } from "../schemas/campaign";
 import { decryptOrNull } from "../crypto";
@@ -57,16 +65,21 @@ export async function deleteSegment(id: string, scope: DataScope) {
   ]);
 }
 
-function segmentWhere(filters: unknown): ReturnType<typeof buildLeadWhereFromSegmentFilters> {
-  return buildLeadWhereFromSegmentFilters({
-    ...(filters as Partial<LeadSegmentFilters>),
-    includeDeleted: false,
-  });
+function segmentWhere(scope: DataScope, filters: unknown): Prisma.LeadWhereInput {
+  return {
+    AND: [
+      buildLeadVisibilityWhere(scope),
+      buildLeadWhereFromSegmentFilters({
+        ...(filters as Partial<LeadSegmentFilters>),
+        includeDeleted: false,
+      }),
+    ],
+  };
 }
 
 /** Compte les leads correspondant au segment (aperçu côté API). */
-export async function countSegmentLeads(filters: unknown): Promise<number> {
-  return prisma.lead.count({ where: segmentWhere(filters) });
+export async function countSegmentLeads(scope: DataScope, filters: unknown): Promise<number> {
+  return prisma.lead.count({ where: segmentWhere(scope, filters) });
 }
 
 export type SegmentLeadPreview = {
@@ -82,12 +95,13 @@ export type SegmentLeadPreview = {
 
 /** Liste paginée des leads ciblés par un segment. */
 export async function listSegmentLeads(
+  scope: DataScope,
   filters: unknown,
   opts: { page?: number; pageSize?: number } = {},
 ): Promise<{ data: SegmentLeadPreview[]; total: number; page: number; pageSize: number }> {
   const page = Math.max(1, opts.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, opts.pageSize ?? 25));
-  const where = segmentWhere(filters);
+  const where = segmentWhere(scope, filters);
   const [rows, total] = await Promise.all([
     prisma.lead.findMany({
       where,

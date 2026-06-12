@@ -36,7 +36,7 @@ export default function ForgotPasswordPage() {
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: "#f5f7fb" }}>
       <Card style={{ width: "100%", maxWidth: 420, borderRadius: 16 }}>
         <div style={{ marginBottom: 16 }}>
-          <SiteBrandLogo iconSize={48} nameSize={16} variant="dark" layout="vertical-center" />
+          <SiteBrandLogo variant="dark" layout="vertical-center" />
         </div>
         <Link href="/login"><Button type="text" icon={<ArrowLeftOutlined />} style={{ marginBottom: 8 }}>Retour</Button></Link>
         <Title level={3} style={{ marginTop: 0 }}>Mot de passe oublié</Title>

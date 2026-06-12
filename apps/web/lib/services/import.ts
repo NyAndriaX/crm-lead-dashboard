@@ -91,7 +91,7 @@ export async function startImportJob(jobId: string, userId: string, input: Start
 
   await prisma.importJob.update({
     where: { id: jobId },
-    data: { mapping: input as object, status: "running" },
+    data: { mapping: input.mapping as object, status: "running" },
   });
 
   await enqueue("import-process", {
@@ -119,10 +119,10 @@ async function attachUsers<T extends { userId: string }>(
   return jobs.map((j) => ({ ...j, user: byId.get(j.userId) ?? null }));
 }
 
-/** Retourne la liste des imports de l'utilisateur (ou tous pour ADMIN). */
-export async function listImportJobs(userId: string, isAdmin: boolean) {
+/** Retourne la liste des imports de l'utilisateur courant. */
+export async function listImportJobs(userId: string) {
   const jobs = await prisma.importJob.findMany({
-    where: isAdmin ? {} : { userId },
+    where: { userId },
     orderBy: { createdAt: "desc" },
     take: 100,
   });
@@ -130,19 +130,19 @@ export async function listImportJobs(userId: string, isAdmin: boolean) {
 }
 
 /** Retourne le statut d'un import. */
-export async function getImportJob(jobId: string, userId: string, isAdmin: boolean) {
+export async function getImportJob(jobId: string, userId: string) {
   const job = await prisma.importJob.findUnique({ where: { id: jobId } });
   if (!job) throw new ApiError(404, "Import introuvable", "not_found");
-  if (!isAdmin && job.userId !== userId) throw new ApiError(403, "Interdit", "forbidden");
+  if (job.userId !== userId) throw new ApiError(403, "Interdit", "forbidden");
   const [withUser] = await attachUsers([job]);
   return withUser;
 }
 
 /** Supprime un import (et le fichier associé). */
-export async function deleteImportJob(jobId: string, userId: string, isAdmin: boolean) {
+export async function deleteImportJob(jobId: string, userId: string) {
   const job = await prisma.importJob.findUnique({ where: { id: jobId } });
   if (!job) throw new ApiError(404, "Import introuvable", "not_found");
-  if (!isAdmin && job.userId !== userId) throw new ApiError(403, "Interdit", "forbidden");
+  if (job.userId !== userId) throw new ApiError(403, "Interdit", "forbidden");
   if (job.status === "running") throw new ApiError(409, "Import en cours d'exécution", "conflict");
   if (job.filePath) {
     try { await fs.unlink(job.filePath); } catch { /* déjà supprimé */ }

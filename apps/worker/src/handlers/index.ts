@@ -19,7 +19,7 @@
 import * as fs from "node:fs";
 import * as crypto from "node:crypto";
 import * as XLSX from "xlsx";
-import { prisma, notifyUser, isEmailHashBlocked, syncTags, type NotifyUserInput } from "@crm/db";
+import { prisma, notifyUser, syncTags, type NotifyUserInput } from "@crm/db";
 import type { WorkerJobContext, WorkerJobHandler } from "@crm/queue";
 import { runCampaignSend } from "../campaignSend";
 import { runImapSync } from "../imapSync";
@@ -102,6 +102,25 @@ interface ColumnMapping {
   country?: string; source?: string; notes?: string; tags?: string;
 }
 
+function computeImportScore(data: {
+  emailHash: string | null;
+  phoneEnc: Buffer | null;
+  company: string | null;
+  website: string | null;
+  sector: string | null;
+  city: string | null;
+  country: string | null;
+}): number {
+  let s = 0;
+  if (data.emailHash) s += W.hasEmail;
+  if (data.phoneEnc) s += W.hasPhone;
+  if (data.company) s += W.hasCompany;
+  if (data.website) s += W.hasWebsite;
+  if (data.sector) s += W.hasSector;
+  if (data.city || data.country) s += W.hasLocation;
+  return Math.max(0, Math.min(100, Math.round(s)));
+}
+
 async function processImport(ctx: WorkerJobContext): Promise<unknown> {
   const payload = (ctx.payload as unknown as ImportPayload) ?? {} as ImportPayload;
   const { importJobId, skipDuplicates = true, defaultSource } = payload;
@@ -128,6 +147,8 @@ async function processImport(ctx: WorkerJobContext): Promise<unknown> {
   let duplicateRows = 0;
   let errorRows = 0;
   const errors: string[] = [];
+  const allTags = new Set<string>(defaultTags);
+  const historyBatch: { leadId: string; userId: string; type: string; payload: object }[] = [];
 
   try {
     const buffer = fs.readFileSync(importJob.filePath);
@@ -137,6 +158,23 @@ async function processImport(ctx: WorkerJobContext): Promise<unknown> {
     const sheet = wb.Sheets[firstSheetName];
     if (!sheet) throw new Error("Feuille introuvable");
     const rows = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: "" });
+
+    // Pré-charge dédoublonnage / blacklist (évite N requêtes SQL par ligne).
+    const [existingLeads, blockedRows] = await Promise.all([
+      prisma.lead.findMany({
+        where: { deletedAt: null, emailHash: { not: null } },
+        select: { emailHash: true },
+      }),
+      prisma.blacklist.findMany({ select: { emailHash: true } }),
+    ]);
+    const knownHashes = new Set(existingLeads.map((l) => l.emailHash!).filter(Boolean));
+    const blockedHashes = new Set(blockedRows.map((b) => b.emailHash));
+
+    const flushHistory = async () => {
+      if (!historyBatch.length) return;
+      const batch = historyBatch.splice(0, historyBatch.length);
+      await prisma.leadHistory.createMany({ data: batch });
+    };
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -159,29 +197,30 @@ async function processImport(ctx: WorkerJobContext): Promise<unknown> {
           continue;
         }
 
-        // Dédoublonnage par email
+        let emailHashVal: string | null = null;
         if (emailRaw) {
-          const hash = emailHash(emailRaw);
-          const blocked = await isEmailHashBlocked(hash);
-          if (blocked.blocked) {
+          emailHashVal = emailHash(emailRaw);
+          if (blockedHashes.has(emailHashVal)) {
             errorRows++;
-            errors.push(`Ligne ${i + 2} : email bloqué (${blocked.reason ?? "blacklist"})`);
+            errors.push(`Ligne ${i + 2} : email bloqué (blacklist)`);
             continue;
           }
-          const existing = await prisma.lead.findFirst({ where: { emailHash: hash, deletedAt: null }, select: { id: true } });
-          if (existing) {
+          if (knownHashes.has(emailHashVal)) {
             if (skipDuplicates) { duplicateRows++; continue; }
           }
         }
 
         const rowTags = colMap.tags ? String(row[colMap.tags] ?? "").split(/[,;|]/).map((t) => t.trim()).filter(Boolean) : [];
         const tags = Array.from(new Set([...defaultTags, ...rowTags]));
+        tags.forEach((t) => allTags.add(t));
         const source = get("source") ?? defaultSource ?? null;
 
+        const emailEnc = encryptOrNull(emailRaw);
+        const phoneEnc = encryptOrNull(phone);
         const leadData = {
-          emailEnc: encryptOrNull(emailRaw),
-          emailHash: emailRaw ? emailHash(emailRaw) : null,
-          phoneEnc: encryptOrNull(phone),
+          emailEnc,
+          emailHash: emailHashVal,
+          phoneEnc,
           firstName,
           lastName,
           company,
@@ -192,30 +231,32 @@ async function processImport(ctx: WorkerJobContext): Promise<unknown> {
           source,
           notes: get("notes"),
           tags,
+          ownerUserId: importJob.userId,
           lastActionAt: new Date(),
+          score: computeImportScore({
+            emailHash: emailHashVal,
+            phoneEnc,
+            company,
+            website: get("website"),
+            sector: get("sector"),
+            city: get("city"),
+            country: get("country"),
+          }),
         };
 
         const lead = await prisma.lead.create({ data: leadData });
-        if (tags.length > 0) await syncTags(tags);
+        if (emailHashVal) knownHashes.add(emailHashVal);
 
-        // Score de base
-        let s = 0;
-        if (lead.emailHash) s += W.hasEmail;
-        if (lead.phoneEnc) s += W.hasPhone;
-        if (lead.company) s += W.hasCompany;
-        if (lead.website) s += W.hasWebsite;
-        if (lead.sector) s += W.hasSector;
-        if (lead.city || lead.country) s += W.hasLocation;
-        const score = Math.max(0, Math.min(100, Math.round(s)));
-        if (score > 0) await prisma.lead.update({ where: { id: lead.id }, data: { score } });
-
-        await prisma.leadHistory.create({
-          data: { leadId: lead.id, userId: importJob.userId, type: "imported", payload: { importJobId } },
+        historyBatch.push({
+          leadId: lead.id,
+          userId: importJob.userId,
+          type: "imported",
+          payload: { importJobId },
         });
+        if (historyBatch.length >= 100) await flushHistory();
 
         importedRows++;
 
-        // Mise à jour du compteur toutes les 50 lignes
         if (importedRows % 50 === 0) {
           await update({ importedRows, duplicateRows, errorRows });
         }
@@ -224,6 +265,9 @@ async function processImport(ctx: WorkerJobContext): Promise<unknown> {
         errors.push(`Ligne ${i + 2} : ${e instanceof Error ? e.message : String(e)}`);
       }
     }
+
+    await flushHistory();
+    if (allTags.size > 0) await syncTags([...allTags]);
 
     const errorReport = errors.length > 0 ? errors.join("\n") : null;
     await update({ status: "done", importedRows, duplicateRows, errorRows, errorReport });

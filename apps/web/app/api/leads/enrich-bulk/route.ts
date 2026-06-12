@@ -14,6 +14,7 @@ import { notifyUser } from "@crm/db";
 import { handler, json, parseBody, requirePermission } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
 import { enrichLeadById } from "@/lib/services/enrichment";
+import { toScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,7 @@ const bodySchema = z.object({
 
 export const POST = handler(async (req) => {
   const session = await requirePermission("leads:write");
+  const scope = toScope(session);
   const input = await parseBody(req, bodySchema);
 
   const results: { leadId: string; ok: boolean; ran?: string[]; error?: string }[] = [];
@@ -37,7 +39,7 @@ export const POST = handler(async (req) => {
 
   for (const id of input.ids) {
     try {
-      const r = await enrichLeadById(id, input.providers);
+      const r = await enrichLeadById(id, input.providers, scope);
       results.push({ leadId: id, ok: true, ran: r.ran });
       succeeded++;
     } catch (e) {

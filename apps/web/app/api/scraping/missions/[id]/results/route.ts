@@ -9,6 +9,7 @@ import { z } from "zod";
 import { handler, json, parseBody, parseQuery, requirePermission } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
 import { listBuffer, setBufferStatus, injectAcceptedLeads, resolveInjectionTags, getMission } from "@/lib/services/scraping";
+import { toScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -24,19 +25,21 @@ const patchSchema = z.object({
 });
 
 export const GET = handler<Ctx>(async (req, { params }) => {
-  await requirePermission("import:run");
+  const session = await requirePermission("import:run");
+  const scope = toScope(session);
   const { id } = await params;
   const missionId = z.string().min(1).parse(id);
   const { status } = parseQuery(req, querySchema);
-  return json({ data: await listBuffer(missionId, status) });
+  return json({ data: await listBuffer(missionId, scope, status) });
 });
 
 export const PATCH = handler<Ctx>(async (req, { params }) => {
   const session = await requirePermission("import:run");
+  const scope = toScope(session);
   const { id } = await params;
   const missionId = z.string().min(1).parse(id);
   const input = await parseBody(req, patchSchema);
-  const count = await setBufferStatus(input.ids, input.status);
+  const count = await setBufferStatus(missionId, input.ids, input.status, scope);
   await audit({
     userId: session.sub,
     action: "scraping.results.review",
@@ -54,13 +57,14 @@ const injectSchema = z.object({
 
 export const POST = handler<Ctx>(async (req, { params }) => {
   const session = await requirePermission("leads:write");
+  const scope = toScope(session);
   const { id } = await params;
   const missionId = z.string().min(1).parse(id);
   const body = await req.json().catch(() => ({}));
   const { injectionTags } = injectSchema.parse(body);
-  const mission = await getMission(missionId);
+  const mission = await getMission(missionId, scope);
   const mergedTags = resolveInjectionTags(mission?.config, injectionTags);
-  const result = await injectAcceptedLeads(missionId, session.sub, mergedTags);
+  const result = await injectAcceptedLeads(missionId, scope, session.sub, mergedTags);
   await audit({
     userId: session.sub,
     action: "scraping.results.inject",

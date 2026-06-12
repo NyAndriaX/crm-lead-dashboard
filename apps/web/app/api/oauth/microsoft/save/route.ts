@@ -26,7 +26,7 @@ const bodySchema = z
     configId: z.string().optional(),
     tenantId: z.string().min(1),
     clientId: z.string().min(1),
-    clientSecret: z.string().min(1),
+    clientSecret: z.string().trim().optional(),
     refreshToken: z.string().min(1),
     mailbox: z.string().email(),
   })
@@ -48,11 +48,12 @@ export const POST = handler(async (req) => {
 
   const mode = input.mode ?? input.target ?? "outlook";
 
+  const secret = (input.clientSecret ?? "").trim();
   const oauthData = {
     oauthProvider: "microsoft" as const,
     oauthTenantId: input.tenantId,
     oauthClientId: input.clientId,
-    oauthClientSecretEnc: encryptToken(input.clientSecret),
+    oauthClientSecretEnc: secret ? encryptToken(secret) : null,
     oauthRefreshTokenEnc: encryptToken(input.refreshToken),
   };
 

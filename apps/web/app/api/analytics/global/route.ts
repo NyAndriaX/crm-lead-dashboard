@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { handler, json, parseQuery, requirePermission } from "@/lib/api";
 import { getGlobalKpis } from "@/lib/services/analytics";
+import { toScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -9,8 +10,8 @@ const querySchema = z.object({
 });
 
 export const GET = handler(async (req) => {
-  await requirePermission("analytics:read");
+  const session = await requirePermission("analytics:read");
   const { period } = parseQuery(req, querySchema);
-  const data = await getGlobalKpis(period);
+  const data = await getGlobalKpis(toScope(session), period);
   return json({ data });
 });

@@ -32,13 +32,13 @@ export async function getCampaignKnowledgeContext(
   if (!campaignId) return null;
   const camp = await prisma.campaign.findUnique({
     where: { id: campaignId },
-    select: { config: true },
+    select: { config: true, createdById: true },
   });
   if (!camp) return null;
 
   const { knowledgeText, knowledgeDocs, knowledgeBaseId } = parseCampaignKnowledgeFromConfig(camp.config);
   const parts: string[] = [];
-  const kbShared = await getKnowledgeBaseContext(knowledgeBaseId, maxChars);
+  const kbShared = await getKnowledgeBaseContext(knowledgeBaseId, maxChars, camp.createdById);
   if (kbShared) parts.push(kbShared);
   const text = knowledgeText?.trim();
   if (text) parts.push(text.slice(0, maxChars));

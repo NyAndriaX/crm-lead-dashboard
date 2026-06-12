@@ -4,7 +4,7 @@
  * Les champs `fromEnc` / `toEnc` sont stockés chiffrés AES-256-GCM. Ce service
  * déchiffre uniquement côté serveur, et n'expose JAMAIS le payload encrypté brut.
  */
-import { prisma, Prisma, strictOwnerWhere, type DataScope } from "@crm/db";
+import { prisma, Prisma, strictOwnerWhere, assertLeadAccess, type DataScope } from "@crm/db";
 import { ApiError } from "@/lib/api";
 import { decryptOrNull } from "@/lib/crypto";
 
@@ -197,6 +197,7 @@ export async function markInboxRead(id: string, isRead: boolean, scope: DataScop
 export async function assignInboxToLead(id: string, leadId: string | null, scope: DataScope): Promise<void> {
   const row = await getInboxMessage(id, scope);
   if (!row) throw new ApiError(404, "Message introuvable", "not_found");
+  if (leadId) await assertLeadAccess(scope, leadId);
   await prisma.inboxMessage.update({ where: { id }, data: { leadId } });
 }
 

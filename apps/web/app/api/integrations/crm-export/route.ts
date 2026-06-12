@@ -11,6 +11,7 @@ import { handler, parseQuery, requirePermission, ApiError } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
 import { exportLeadsQuery } from "@/lib/schemas/lead";
 import { collectLeadsForExport, EXPORT_COLUMNS, type ExportColumn } from "@/lib/services/leads";
+import { toScope } from "@/lib/scope";
 import { toCsv } from "@/lib/csv";
 import {
   mapRowToCrm, crmHeaders, CRM_TARGETS, type CrmTarget,
@@ -31,7 +32,7 @@ export const GET = handler(async (req) => {
   }
 
   const columns = [...EXPORT_COLUMNS] as ExportColumn[];
-  const rows = await collectLeadsForExport(q, columns);
+  const rows = await collectLeadsForExport(q, columns, toScope(s));
   const mapped = rows.map((r) => mapRowToCrm(r as Record<string, unknown>, target));
   const headers = crmHeaders(target);
 

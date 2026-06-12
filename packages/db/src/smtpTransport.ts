@@ -26,13 +26,18 @@ export async function buildSmtpNodemailerAuth(
     row.oauthProvider === "microsoft" &&
     row.oauthTenantId &&
     row.oauthClientId &&
-    row.oauthClientSecretEnc &&
     row.oauthRefreshTokenEnc
   ) {
-    const clientSecret = decryptToken(row.oauthClientSecretEnc);
+    const clientSecret = row.oauthClientSecretEnc
+      ? decryptToken(row.oauthClientSecretEnc)
+      : "";
     const refreshToken = decryptToken(row.oauthRefreshTokenEnc);
     const resp = await getAccessToken(
-      { tenantId: row.oauthTenantId, clientId: row.oauthClientId, clientSecret },
+      {
+        tenantId: row.oauthTenantId,
+        clientId: row.oauthClientId,
+        ...(clientSecret ? { clientSecret } : {}),
+      },
       refreshToken,
     );
     const user = row.oauthMailSender ?? decryptFn(row.loginEnc) ?? "";

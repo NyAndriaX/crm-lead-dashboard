@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { handler, json, created, parseBody, requirePermission, requireSession, ApiError } from "@/lib/api";
-import { can } from "@/lib/rbac";
+import { handler, json, created, parseBody, requirePermission } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
 import { createTeam, listTeams } from "@/lib/services/teams";
 
@@ -11,12 +10,8 @@ const createSchema = z.object({
 });
 
 export const GET = handler(async () => {
-  // Lecture autorisée à tout utilisateur authentifié (besoin pour les sélecteurs
-  // d'assignation et la visibilité d'équipe).
-  const s = await requireSession();
-  if (!can(s.role, "users:manage") && !can(s.role, "leads:assign")) {
-    throw new ApiError(403, "Permission manquante", "forbidden");
-  }
+  // Liste complète réservée à la gestion des utilisateurs (Paramètres → Équipes).
+  await requirePermission("users:manage");
   const data = await listTeams();
   return json({ data });
 });

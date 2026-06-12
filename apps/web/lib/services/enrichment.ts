@@ -10,7 +10,7 @@
  * chaque bloc, la `source` et la date — exigence E-09 (traçabilité).
  */
 import dns from "node:dns/promises";
-import { prisma } from "@crm/db";
+import { prisma, assertLeadAccess, type DataScope } from "@crm/db";
 import { decryptOrNull, encryptOrNull, emailHash } from "@/lib/crypto";
 
 export type EnrichProvider = "email" | "emailVerify" | "company" | "linkedin" | "news" | "social";
@@ -339,7 +339,9 @@ export type EnrichLeadResult = {
 export async function enrichLeadById(
   leadId: string,
   providers: EnrichProvider[] = ALL_PROVIDERS,
+  scope?: DataScope,
 ): Promise<EnrichLeadResult> {
+  if (scope) await assertLeadAccess(scope, leadId);
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead || lead.deletedAt) throw new Error("Lead introuvable");
 

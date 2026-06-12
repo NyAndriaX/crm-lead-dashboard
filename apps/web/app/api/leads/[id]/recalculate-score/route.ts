@@ -1,6 +1,7 @@
 import { handler, json, requirePermission } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
 import { recalcScore } from "@/lib/services/leads";
+import { toScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +11,7 @@ type Ctx = { params: Promise<{ id: string }> };
 export const POST = handler<Ctx>(async (req, { params }) => {
   const s = await requirePermission("leads:write");
   const { id } = await params;
-  const score = await recalcScore(id);
+  const score = await recalcScore(id, toScope(s));
   await audit({ userId: s.sub, action: "lead.recalc_score", entityType: "lead", entityId: id, ip: clientIp(req) });
   return json({ id, score });
 });

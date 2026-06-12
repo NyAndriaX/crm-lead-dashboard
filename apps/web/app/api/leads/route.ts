@@ -32,6 +32,6 @@ export const POST = handler(async (req) => {
     source: lead.source,
     status: lead.status,
     createdAt: lead.createdAt,
-  });
+  }, scope.userId);
   return created(lead);
 });

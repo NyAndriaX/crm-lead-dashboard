@@ -34,15 +34,20 @@ export async function sendTransactionalEmail(args: {
       smtp.oauthProvider === "microsoft" &&
       smtp.oauthTenantId &&
       smtp.oauthClientId &&
-      smtp.oauthClientSecretEnc &&
       smtp.oauthRefreshTokenEnc
     ) {
       const mailSender = smtp.oauthMailSender ?? fromAddr;
       try {
-        const clientSecret = decryptToken(smtp.oauthClientSecretEnc);
+        const clientSecret = smtp.oauthClientSecretEnc
+          ? decryptToken(smtp.oauthClientSecretEnc)
+          : "";
         const refreshToken = decryptToken(smtp.oauthRefreshTokenEnc);
         const { access_token } = await getAccessToken(
-          { tenantId: smtp.oauthTenantId, clientId: smtp.oauthClientId, clientSecret },
+          {
+            tenantId: smtp.oauthTenantId,
+            clientId: smtp.oauthClientId,
+            ...(clientSecret ? { clientSecret } : {}),
+          },
           refreshToken,
         );
         const transporter = nodemailer.createTransport({

@@ -79,6 +79,8 @@ async function audit() {
     sequence: await prisma.sequence.count({ where: { createdById: null } }),
     segment: await prisma.segment.count({ where: { createdById: null } }),
     template: await prisma.template.count({ where: { createdById: null } }),
+    scrapingMission: await prisma.scrapingMission.count({ where: { ownerUserId: null } }),
+    webhookOut: await prisma.webhookOut.count({ where: { createdById: null } }),
   };
 
   const inboxNoLead = await prisma.inboxMessage.count({
@@ -112,6 +114,42 @@ async function audit() {
   return { counts, inboxNoLead, leadsNoOwnerNoAssignee, usersWithoutStages, total };
 }
 
+async function resolveLeadOwnerId(leadId, assignedToId, defaultId) {
+  if (assignedToId) return assignedToId;
+
+  const hist = await prisma.leadHistory.findFirst({
+    where: {
+      leadId,
+      type: { in: ["imported", "scraped_imported", "scraped_auto_imported", "created"] },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { userId: true, type: true, payload: true },
+  });
+
+  if (hist?.userId) return hist.userId;
+
+  const payload = hist?.payload && typeof hist.payload === "object" ? hist.payload : null;
+  if (payload && typeof payload.importJobId === "string") {
+    const job = await prisma.importJob.findUnique({
+      where: { id: payload.importJobId },
+      select: { userId: true },
+    });
+    if (job?.userId) return job.userId;
+  }
+
+  const missionId =
+    payload && typeof payload.missionId === "string" ? payload.missionId : null;
+  if (missionId) {
+    const mission = await prisma.scrapingMission.findUnique({
+      where: { id: missionId },
+      select: { ownerUserId: true },
+    });
+    if (mission?.ownerUserId) return mission.ownerUserId;
+  }
+
+  return defaultId;
+}
+
 async function fixLeads(defaultId) {
   const leads = await prisma.lead.findMany({
     where: { ownerUserId: null },
@@ -119,9 +157,43 @@ async function fixLeads(defaultId) {
   });
   let fixed = 0;
   for (const l of leads) {
-    const ownerUserId = l.assignedToId ?? defaultId;
+    const ownerUserId = await resolveLeadOwnerId(l.id, l.assignedToId, defaultId);
     if (!APPLY) { fixed++; continue; }
     await prisma.lead.update({ where: { id: l.id }, data: { ownerUserId } });
+    fixed++;
+  }
+  return fixed;
+}
+
+async function fixScrapingMissions(defaultId) {
+  const rows = await prisma.scrapingMission.findMany({
+    where: { ownerUserId: null },
+    select: { id: true },
+  });
+  let fixed = 0;
+  for (const m of rows) {
+    if (!APPLY) { fixed++; continue; }
+    await prisma.scrapingMission.update({
+      where: { id: m.id },
+      data: { ownerUserId: defaultId },
+    });
+    fixed++;
+  }
+  return fixed;
+}
+
+async function fixWebhooks(defaultId) {
+  const rows = await prisma.webhookOut.findMany({
+    where: { createdById: null },
+    select: { id: true },
+  });
+  let fixed = 0;
+  for (const w of rows) {
+    if (!APPLY) { fixed++; continue; }
+    await prisma.webhookOut.update({
+      where: { id: w.id },
+      data: { createdById: defaultId },
+    });
     fixed++;
   }
   return fixed;
@@ -296,6 +368,11 @@ async function apply(defaultOwner, mapping) {
   console.log(`  sequence           → ${sequences}`);
   console.log(`  segment            → ${segments}`);
   console.log(`  template           → ${templates}`);
+
+  const scraping = await fixScrapingMissions(uid);
+  const webhooks = await fixWebhooks(uid);
+  console.log(`  scrapingMission    → ${scraping}`);
+  console.log(`  webhookOut         → ${webhooks}`);
 
   const pipelines = await ensureUserPipelineStages();
   console.log(`  pipelines manquants → ${pipelines} utilisateur(s)`);

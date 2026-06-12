@@ -2,6 +2,7 @@ import { handler, json, parseBody, requirePermission } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
 import { setTagsSchema } from "@/lib/schemas/lead";
 import { setLeadTags } from "@/lib/services/leads";
+import { toScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export const PUT = handler<Ctx>(async (req, { params }) => {
   const s = await requirePermission("leads:write");
   const { id } = await params;
   const input = await parseBody(req, setTagsSchema);
-  const lead = await setLeadTags(id, input, s.sub);
+  const lead = await setLeadTags(id, input, toScope(s));
   await audit({ userId: s.sub, action: "lead.tags_set", entityType: "lead", entityId: id, ip: clientIp(req), diff: input });
   return json(lead);
 });

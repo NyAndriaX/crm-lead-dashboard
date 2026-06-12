@@ -32,7 +32,7 @@ export async function aiComplete(args: {
 
   let messages = await injectKnowledgeIntoMessages(args.userId, args.messages);
   if (args.knowledgeBaseId) {
-    messages = await injectKnowledgeBaseIntoMessages(args.knowledgeBaseId, messages);
+    messages = await injectKnowledgeBaseIntoMessages(args.knowledgeBaseId, messages, args.userId);
   }
   messages = await injectSequenceKnowledgeIntoMessages(args.sequenceId, messages);
   messages = await injectCampaignKnowledgeIntoMessages(args.campaignId, messages);

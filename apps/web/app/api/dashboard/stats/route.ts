@@ -3,9 +3,10 @@
  * Accessible à tous les rôles ; COMMERCIAL ne voit que ses propres leads.
  */
 import { z } from "zod";
-import { prisma, getOpenAiUsageSummaryForDashboard } from "@crm/db";
+import { prisma, getOpenAiUsageSummaryForDashboard, buildLeadVisibilityWhere } from "@crm/db";
 import { handler, json, parseQuery, requireSession } from "@/lib/api";
 import { NOT_DELETED } from "@/lib/notDeleted";
+import { toScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -17,10 +18,8 @@ const querySchema = z.object({
 export const GET = handler(async (req) => {
   const session = await requireSession();
   const { openAiYear, openAiMonth } = parseQuery(req, querySchema);
-  const isRestricted = session.role === "COMMERCIAL";
   const baseWhere = {
-    ...NOT_DELETED,
-    ...(isRestricted ? { assignedToId: session.sub } : {}),
+    AND: [NOT_DELETED, buildLeadVisibilityWhere(toScope(session))],
   };
 
   const now = new Date();

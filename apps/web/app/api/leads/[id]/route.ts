@@ -30,8 +30,9 @@ export const PUT = handler<Ctx>(async (req, { params }) => {
 // DELETE /api/leads/:id — soft delete (restaurable via POST /api/leads/:id/restore).
 export const DELETE = handler<Ctx>(async (req, { params }) => {
   const s = await requirePermission("leads:delete");
+  const scope = toScope(s);
   const { id } = await params;
-  await softDeleteLead(id, s.sub);
+  await softDeleteLead(id, scope);
   await audit({ userId: s.sub, action: "lead.soft_delete", entityType: "lead", entityId: id, ip: clientIp(req) });
   return noContent();
 });

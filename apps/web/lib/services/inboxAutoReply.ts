@@ -1,7 +1,7 @@
 /**
  * Relance manuelle de l'auto-répondeur IA sur un message entrant déjà en base.
  */
-import { prisma } from "@crm/db";
+import { prisma, strictCreatorWhere, strictOwnerWhere } from "@crm/db";
 import { ApiError } from "@/lib/api";
 import { categorizeReply, type ReplyCategory } from "@/lib/services/replyCategorizer";
 import { maybeAutoRespond } from "../../../worker/src/autoResponder";
@@ -47,8 +47,8 @@ export async function retryInboxAutoReply(args: {
   message: string;
   category: ReplyCategory;
 }> {
-  const msg = await prisma.inboxMessage.findUnique({
-    where: { id: args.inboxMessageId },
+  const msg = await prisma.inboxMessage.findFirst({
+    where: { id: args.inboxMessageId, ...strictOwnerWhere(args.sessionUserId) },
     include: { lead: { select: { id: true, assignedToId: true } } },
   });
   if (!msg) throw new ApiError(404, "Message introuvable", "not_found");
@@ -77,7 +77,11 @@ export async function retryInboxAutoReply(args: {
   }
 
   const lastCampaign = await prisma.emailEvent.findFirst({
-    where: { leadId: msg.leadId, campaignId: { not: null } },
+    where: {
+      leadId: msg.leadId,
+      campaignId: { not: null },
+      campaign: strictCreatorWhere(args.sessionUserId),
+    },
     orderBy: { occurredAt: "desc" },
     select: { campaignId: true },
   });

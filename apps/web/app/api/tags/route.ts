@@ -2,6 +2,8 @@ import { prisma } from "@crm/db";
 import { created, handler, json, jsonCached, parseBody, requirePermission } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
 import { createTagSchema } from "@/lib/schemas/tag";
+import { listVisibleTags } from "@/lib/services/tags";
+import { toScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -9,8 +11,8 @@ export const dynamic = "force-dynamic";
 // change peu, cette route est appelée sur plusieurs pages (leads liste, fiche,
 // bulk actions) — cache 60s + SWR 5min réduit la charge sans risque de stale.
 export const GET = handler(async () => {
-  await requirePermission("leads:read");
-  const tags = await prisma.tag.findMany({ orderBy: { name: "asc" } });
+  const session = await requirePermission("leads:read");
+  const tags = await listVisibleTags(toScope(session));
   return jsonCached({ data: tags }, { maxAge: 60, swr: 300 });
 });
 

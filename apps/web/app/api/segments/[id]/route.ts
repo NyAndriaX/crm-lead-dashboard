@@ -12,7 +12,7 @@ export const GET = handler<Ctx>(async (_req, { params }) => {
   const scope = toScope(s);
   const { id } = await params;
   const row = await getSegment(id, scope);
-  const count = await countSegmentLeads(row.filters);
+  const count = await countSegmentLeads(scope, row.filters);
   return json({ data: row, meta: { leadCount: count } });
 });
 

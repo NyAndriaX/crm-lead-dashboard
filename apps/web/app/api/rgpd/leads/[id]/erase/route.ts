@@ -9,6 +9,7 @@ import { z } from "zod";
 import { handler, json, requirePermission } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
 import { eraseLead } from "@/lib/services/rgpd";
+import { toScope, scopeError } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +20,7 @@ export const POST = handler<Ctx>(async (req, { params }) => {
   const { id: rawId } = await params;
   const leadId = z.string().min(1).parse(rawId);
 
-  const result = await eraseLead(leadId, session.sub);
+  const result = await eraseLead(leadId, toScope(session), session.sub).catch(scopeError);
 
   // Audit minimal sans PII (on conserve juste l'ID et les compteurs)
   await audit({

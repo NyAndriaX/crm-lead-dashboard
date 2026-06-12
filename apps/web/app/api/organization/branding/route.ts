@@ -19,6 +19,8 @@ const updateSchema = z.object({
     emptyToNull,
     z.string().max(2_000_000).nullable().optional(),
   ),
+  siteIconSizeSidebar: z.number().int().min(16).max(64).optional(),
+  siteIconSizeLogin: z.number().int().min(24).max(80).optional(),
 });
 
 export const GET = handler(async () => {

@@ -10,8 +10,7 @@
  *                   par les admins (article 30 — registre des activités de
  *                   traitement).
  */
-import { prisma } from "@crm/db";
-import { blockEmailHash, GDPR_ERASE_REASON } from "@crm/db";
+import { prisma, blockEmailHash, GDPR_ERASE_REASON, assertLeadAccess, buildLeadVisibilityWhere, type DataScope } from "@crm/db";
 import { decryptOrNull } from "@/lib/crypto";
 
 // ── Droit à l'oubli ──────────────────────────────────────────────────────────
@@ -28,7 +27,8 @@ export type EraseResult = {
   };
 };
 
-export async function eraseLead(leadId: string, erasedBy?: string): Promise<EraseResult> {
+export async function eraseLead(leadId: string, scope: DataScope, erasedBy?: string): Promise<EraseResult> {
+  await assertLeadAccess(scope, leadId);
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
     select: { id: true, emailHash: true },
@@ -107,7 +107,8 @@ export type LeadExport = {
   sequenceLeads: { id: string; sequenceId: string; currentStep: number; sentCount: number; status: string; stoppedReason: string | null; nextSendAt: string | null }[];
 };
 
-export async function exportLead(leadId: string): Promise<LeadExport | null> {
+export async function exportLead(leadId: string, scope: DataScope): Promise<LeadExport | null> {
+  await assertLeadAccess(scope, leadId);
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead) return null;
 
@@ -255,10 +256,12 @@ export type ArchivedLeadItem = {
   createdAt: string;
 };
 
-export async function listArchivedLeads(opts: { page?: number; pageSize?: number } = {}) {
+export async function listArchivedLeads(scope: DataScope, opts: { page?: number; pageSize?: number } = {}) {
   const page = Math.max(1, opts.page ?? 1);
   const pageSize = Math.min(100, Math.max(1, opts.pageSize ?? 25));
-  const where = { deletedAt: { not: null } as const };
+  const where = {
+    AND: [{ deletedAt: { not: null } as const }, buildLeadVisibilityWhere(scope)],
+  };
   const [rows, total] = await Promise.all([
     prisma.lead.findMany({
       where,
@@ -309,7 +312,8 @@ export type GdprErasedItem = {
 };
 
 /** Passe un lead archivé en suppression RGPD définitive (blacklist email). */
-export async function eraseArchivedLead(leadId: string, erasedBy?: string): Promise<EraseResult> {
+export async function eraseArchivedLead(leadId: string, scope: DataScope, erasedBy?: string): Promise<EraseResult> {
+  await assertLeadAccess(scope, leadId);
   const lead = await prisma.lead.findUnique({
     where: { id: leadId },
     select: { id: true, deletedAt: true, emailHash: true },
@@ -320,7 +324,7 @@ export async function eraseArchivedLead(leadId: string, erasedBy?: string): Prom
       removed: { lead: false, leadHistory: 0, emailEvents: 0, inboxMessages: 0, sequenceLeads: 0, leadPipeline: 0 },
     };
   }
-  return eraseLead(leadId, erasedBy);
+  return eraseLead(leadId, scope, erasedBy);
 }
 
 export async function listGdprErasedContacts(opts: { page?: number; pageSize?: number } = {}) {

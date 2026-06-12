@@ -9,6 +9,7 @@ import {
   prisma,
   EmailEventType,
   buildLeadWhereFromSegmentFilters,
+  buildOwnerOrAssigneeLeadWhere,
   signEmailTrackToken,
   buildSmtpNodemailerAuth,
   type LeadSegmentFilters,
@@ -124,13 +125,22 @@ const STAGE_NAME_CONTACTED = "Contacté";
  * sont pas déjà (pipelineStageId null). Un lead déjà avancé ou déjà
  * positionné manuellement n'est jamais déplacé en arrière.
  */
+async function resolveContactedStageId(ownerUserId: string | null): Promise<string | null> {
+  if (!ownerUserId) return null;
+  const stage = await prisma.pipelineStage.findFirst({
+    where: { name: STAGE_NAME_CONTACTED, ownerUserId },
+    select: { id: true },
+  });
+  return stage?.id ?? null;
+}
+
 async function progressLeadAfterSend(args: {
-  lead: { id: string; status: string; pipelineStageId: string | null };
+  lead: { id: string; status: string; pipelineStageId: string | null; ownerUserId: string | null };
   campaignId: string;
   variant: string;
-  contactedStageId: string | null;
 }): Promise<void> {
-  const { lead, campaignId, variant, contactedStageId } = args;
+  const { lead, campaignId, variant } = args;
+  const contactedStageId = await resolveContactedStageId(lead.ownerUserId);
   const promote = lead.status === "NOUVEAU";
   const assignStage = promote && lead.pipelineStageId == null && contactedStageId != null;
 
@@ -183,6 +193,7 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
     return { skipped: true, reason: campaign.status };
   }
   if (campaign.status === "DONE") return { skipped: true, reason: "DONE" };
+  if (!campaign.createdById) return { error: "Campagne sans propriétaire (createdById)" };
 
   const cfg = (campaign.config ?? null) as CampaignCfg | null;
   const baseUrl = (process.env.APP_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -195,10 +206,13 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
   const filters = (campaign.segment.filters ?? {}) as LeadSegmentFilters;
   const excluded = Array.isArray(cfg?.excludedLeadIds) ? cfg!.excludedLeadIds! : [];
   const whereLead = {
-    ...buildLeadWhereFromSegmentFilters({ ...filters, includeDeleted: false }),
-    emailHash: { not: null },
-    ...(excluded.length > 0 ? { id: { notIn: excluded } } : {}),
-    emailEvents: { none: { campaignId, eventType: EmailEventType.SENT } },
+    AND: [
+      buildLeadWhereFromSegmentFilters({ ...filters, includeDeleted: false }),
+      buildOwnerOrAssigneeLeadWhere(campaign.createdById!),
+      { emailHash: { not: null } },
+      ...(excluded.length > 0 ? [{ id: { notIn: excluded } }] : []),
+      { emailEvents: { none: { campaignId, eventType: EmailEventType.SENT } } },
+    ],
   };
 
   const total = await prisma.lead.count({ where: whereLead });
@@ -235,14 +249,6 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
   const capCampaign = campaign.dailyLimit ?? smtpRow.dailyLimit;
   let remainingSmtp = Math.max(0, smtpRow.dailyLimit - smtpRow.sentToday);
   let effectiveCap = Math.min(remainingSmtp, capCampaign, capWarm);
-
-  // Étape pipeline "Contacté" résolue une seule fois (peut être absente si
-  // l'admin a renommé/supprimé l'étape standard → on ne place alors pas le lead).
-  const contactedStage = await prisma.pipelineStage.findFirst({
-    where: { name: STAGE_NAME_CONTACTED },
-    select: { id: true },
-  });
-  const contactedStageId = contactedStage?.id ?? null;
 
   let sent = 0;
   let failed = 0;
@@ -389,10 +395,14 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
       // ne doit jamais faire échouer l'envoi ni re-compter le mail).
       try {
         await progressLeadAfterSend({
-          lead: { id: lead.id, status: lead.status, pipelineStageId: lead.pipelineStageId },
+          lead: {
+            id: lead.id,
+            status: lead.status,
+            pipelineStageId: lead.pipelineStageId,
+            ownerUserId: lead.ownerUserId,
+          },
           campaignId,
           variant,
-          contactedStageId,
         });
       } catch (e) {
         console.warn(

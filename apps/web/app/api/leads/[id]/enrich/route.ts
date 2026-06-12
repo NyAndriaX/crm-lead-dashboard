@@ -10,6 +10,7 @@ import { z } from "zod";
 import { handler, json, parseBody, requirePermission, ApiError } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
 import { enrichLeadById, ALL_PROVIDERS, type EnrichProvider } from "@/lib/services/enrichment";
+import { toScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,7 @@ export const POST = handler<Ctx>(async (req, { params }) => {
   }
 
   try {
-    const result = await enrichLeadById(id, providers);
+    const result = await enrichLeadById(id, providers, toScope(session));
     await audit({
       userId: session.sub,
       action: "lead.enrich",

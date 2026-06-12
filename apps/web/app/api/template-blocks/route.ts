@@ -13,15 +13,15 @@ const createSchema = z.object({
   isPublic: z.boolean().optional(),
 });
 
-export const GET = handler(async (req) => {
-  await requirePermission("settings:manage");
-  const blocks = await listTemplateBlocks();
+export const GET = handler(async () => {
+  const session = await requirePermission("settings:manage");
+  const blocks = await listTemplateBlocks(session.sub);
   return json({ data: blocks });
 });
 
 export const POST = handler(async (req) => {
-  await requirePermission("settings:manage");
+  const session = await requirePermission("settings:manage");
   const input = await parseBody(req, createSchema);
-  const block = await createTemplateBlock(input);
+  const block = await createTemplateBlock(input, session.sub);
   return created({ data: block });
 });

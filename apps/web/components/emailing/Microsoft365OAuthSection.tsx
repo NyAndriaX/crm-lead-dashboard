@@ -18,6 +18,7 @@ import {
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
 import { extractApiError, showSuccessPopup } from "@/lib/feedback";
+import { validateAzureClientSecret } from "@/lib/oauth/microsoftSchemas";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -144,10 +145,10 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
     return fromForm || clientSecretRef.current || azureCreds?.clientSecret?.trim() || "";
   }
 
-  function buildCredsForApi(): AzureCreds | null {
+  function buildCredsForApi(requireSecret = false): AzureCreds | null {
     if (!azureCreds) return null;
     const clientSecret = resolveClientSecret();
-    if (!clientSecret) return null;
+    if (requireSecret && !clientSecret) return null;
     return { ...azureCreds, clientSecret };
   }
 
@@ -172,7 +173,7 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
 
   async function handleStep1() {
     try {
-      const values = await form.validateFields(["tenantId", "clientId", "clientSecret", "mailbox"]);
+      const values = await form.validateFields(["tenantId", "clientId", "mailbox"]);
       if (setupMode === "existing" && !configId) {
         setError("Sélectionnez un compte IMAP ou SMTP existant, ou choisissez « Nouveau compte Outlook ».");
         return;
@@ -195,8 +196,13 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
 
   async function generateDeviceCode() {
     const creds = buildCredsForApi();
-    if (!creds?.tenantId || !creds?.clientId || !creds?.clientSecret) {
+    if (!creds?.tenantId || !creds?.clientId) {
       setError("Identifiants Azure manquants — revenez à l'étape 1 et validez à nouveau.");
+      return;
+    }
+    const secretErr = validateAzureClientSecret(creds.clientSecret, creds.clientId);
+    if (secretErr) {
+      setError(secretErr);
       return;
     }
     setLoading(true);
@@ -224,15 +230,17 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
   }
 
   async function pollToken() {
-    if (!deviceCode) return;
-    const creds = buildCredsForApi();
-    if (!creds) {
-      setError(
-        "Client Secret manquant. Saisissez la Valeur du secret Azure ci-dessous (pas l'ID du secret), puis réessayez.",
-      );
+    if (!deviceCode || !azureCreds) return;
+    const fromForm = String(form.getFieldValue("clientSecret") ?? "").trim();
+    const clientSecret = fromForm || resolveClientSecret();
+    const secretErr = validateAzureClientSecret(clientSecret, azureCreds.clientId);
+    if (secretErr) {
+      setError(secretErr);
       return;
     }
-    clientSecretRef.current = creds.clientSecret;
+    const creds: AzureCreds = { ...azureCreds, clientSecret };
+    clientSecretRef.current = clientSecret;
+    persistWizard({ azureCreds: creds });
     setPolling(true);
     setError(null);
     try {
@@ -259,9 +267,14 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
       setError("Aucun refresh token reçu — assurez-vous que offline_access est accordé.");
       return;
     }
-    const creds = buildCredsForApi();
+    const creds = buildCredsForApi(false);
     if (!creds) {
       setError("Identifiants Azure manquants — recommencez le workflow.");
+      return;
+    }
+    const secretErr = validateAzureClientSecret(creds.clientSecret, creds.clientId);
+    if (secretErr) {
+      setError(secretErr);
       return;
     }
     setLoading(true);
@@ -523,10 +536,10 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
                 <Form.Item
                   name="clientSecret"
                   label={<Text strong>Client Secret</Text>}
-                  rules={[{ required: true, message: "Requis" }]}
-                  tooltip="Azure Portal → Certificats et secrets → Nouveau secret client → copiez la Valeur (pas l'ID du secret)"
+                  tooltip="Requis si l'app Azure est « Web ». Optionnel si « Flux client public » est activé (Authentication → Paramètres avancés)."
+                  extra="Copiez la Valeur du secret (pas l'ID du secret ni le Client ID)."
                 >
-                  <Input.Password placeholder="Valeur du secret" />
+                  <Input.Password placeholder="Valeur du secret (optionnel si flux client public)" autoComplete="off" />
                 </Form.Item>
               </Col>
             </Row>
@@ -672,14 +685,27 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
               </div>
             </div>
 
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 4 }}
+              message="Client Secret"
+              description={
+                <>
+                  Si votre app Azure a <strong>Flux client public</strong> activé (Authentication → Paramètres avancés),
+                  laissez le secret vide et cliquez directement sur Vérifier.
+                  Sinon, collez la <strong>Valeur</strong> du secret (pas l&apos;ID du secret, format UUID).
+                </>
+              }
+            />
+
             <Form form={form} layout="vertical">
               <Form.Item
                 name="clientSecret"
-                label={<Text strong>Client Secret Azure</Text>}
-                rules={[{ required: true, message: "Valeur du secret requise" }]}
-                extra="Collez la Valeur du secret (visible une seule fois à la création), pas l'ID du secret."
+                label={<Text strong>Client Secret Azure (si app confidentielle)</Text>}
+                extra="La Valeur ressemble à une chaîne avec des caractères ~ (pas un UUID xxxxxxxx-xxxx-…)."
               >
-                <Input.Password placeholder="Valeur du secret Azure" autoComplete="off" />
+                <Input.Password placeholder="Laisser vide si flux client public activé" autoComplete="off" />
               </Form.Item>
             </Form>
 

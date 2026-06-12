@@ -1,7 +1,7 @@
 /**
  * Service Séquences de relance (RL-01 / RL-02 / RL-04 / RL-06 / RL-07).
  */
-import { Prisma, prisma, strictCreatorWhere, type DataScope } from "@crm/db";
+import { Prisma, prisma, buildLeadVisibilityWhere, strictCreatorWhere, type DataScope } from "@crm/db";
 import { ApiError } from "../api";
 
 export type SequenceStepInput = {
@@ -179,7 +179,7 @@ export async function listSequenceLeads(sequenceId: string, scope: DataScope) {
   const existing = await getSequence(sequenceId, scope);
   if (!existing) throw new ApiError(404, "Séquence introuvable", "not_found");
   return prisma.sequenceLead.findMany({
-    where: { sequenceId },
+    where: { sequenceId, lead: buildLeadVisibilityWhere(scope) },
     orderBy: { createdAt: "desc" },
     include: {
       lead: {
@@ -213,12 +213,27 @@ export async function enrollLeadsInSequence(
   const firstDelayMs = Math.max(0, Math.floor(Number(steps[0]?.delayDays ?? 0))) * 24 * 3600 * 1000;
   const nextSendAt = new Date(Date.now() + firstDelayMs);
 
+  const visibleIds = (
+    await prisma.lead.findMany({
+      where: {
+        AND: [
+          buildLeadVisibilityWhere(scope),
+          { id: { in: leadIds }, deletedAt: null },
+        ],
+      },
+      select: { id: true },
+    })
+  ).map((l) => l.id);
+  if (visibleIds.length === 0) {
+    return { enrolled: 0, skipped: leadIds.length };
+  }
+
   const existing = await prisma.sequenceLead.findMany({
-    where: { sequenceId, leadId: { in: leadIds }, status: { in: ["active", "paused"] } },
+    where: { sequenceId, leadId: { in: visibleIds }, status: { in: ["active", "paused"] } },
     select: { leadId: true },
   });
   const existingSet = new Set(existing.map((e) => e.leadId));
-  const toCreate = leadIds.filter((id) => !existingSet.has(id));
+  const toCreate = visibleIds.filter((id) => !existingSet.has(id));
   if (toCreate.length === 0) return { enrolled: 0, skipped: leadIds.length };
 
   await prisma.sequenceLead.createMany({

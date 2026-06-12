@@ -44,6 +44,9 @@ COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/yarn.lock ./yarn.lock
 COPY --from=build /app/apps/worker ./apps/worker
 COPY --from=build /app/packages ./packages
+# Schéma Prisma + scripts DB (db push, init-prod, migrate-data-owners au démarrage)
+COPY --from=build /app/packages/db/prisma ./packages/db/prisma
+COPY --from=build /app/packages/db/scripts ./packages/db/scripts
 COPY scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
 RUN chmod +x ./scripts/docker-entrypoint.sh
 

@@ -140,21 +140,28 @@ function recipientRaw(parsed: ParsedMail): string {
   return to.text ?? "";
 }
 
-async function matchLeadId(parsed: ParsedMail): Promise<string | null> {
+async function matchLeadId(parsed: ParsedMail, ownerUserId: string | null): Promise<string | null> {
+  const leadScope = ownerUserId
+    ? { OR: [{ ownerUserId }, { assignedToId: ownerUserId }] }
+    : {};
   // 1. Threading par Message-ID / In-Reply-To / References
   const refIds = extractRefIds(parsed);
   if (refIds.length > 0) {
     const prior = await prisma.inboxMessage.findFirst({
-      where: { messageId: { in: refIds }, leadId: { not: null } },
+      where: {
+        messageId: { in: refIds },
+        leadId: { not: null },
+        ...(ownerUserId ? { ownerUserId } : {}),
+      },
       select: { leadId: true },
     });
     if (prior?.leadId) return prior.leadId;
   }
-  // 2. Adresse expéditeur → emailHash
+  // 2. Adresse expéditeur → emailHash (limité au périmètre du propriétaire IMAP)
   const addr = senderEmail(parsed);
   if (addr) {
     const lead = await prisma.lead.findFirst({
-      where: { emailHash: emailHash(addr), deletedAt: null },
+      where: { emailHash: emailHash(addr), deletedAt: null, ...leadScope },
       select: { id: true },
     });
     if (lead) return lead.id;
@@ -193,6 +200,7 @@ async function notifyLeadAssignee(args: {
 
 async function onReplyReceived(args: {
   leadId: string;
+  inboxOwnerUserId: string | null;
   fromAddress: string | null;
   subject: string | null;
   inboundBodyText: string | null;
@@ -307,11 +315,17 @@ async function onReplyReceived(args: {
   // Retrouver la dernière campagne liée à ce lead (pour l'auto-répondeur par campagne).
   let lastCampaignId: string | null = null;
   try {
-    const lastEvent = await prisma.emailEvent.findFirst({
-      where: { leadId: args.leadId, campaignId: { not: null } },
-      orderBy: { occurredAt: "desc" },
-      select: { campaignId: true },
-    });
+    const lastEvent = args.inboxOwnerUserId
+      ? await prisma.emailEvent.findFirst({
+          where: {
+            leadId: args.leadId,
+            campaignId: { not: null },
+            campaign: { createdById: args.inboxOwnerUserId },
+          },
+          orderBy: { occurredAt: "desc" },
+          select: { campaignId: true },
+        })
+      : null;
     lastCampaignId = lastEvent?.campaignId ?? null;
   } catch { /* best-effort */ }
 
@@ -361,7 +375,7 @@ async function ingestParsedMessage(
   const bodyHtml = typeof parsed.html === "string" ? parsed.html : null;
   const receivedAt = parsed.date ?? new Date();
   const auto = isAutoReply(parsed);
-  const leadId = await matchLeadId(parsed);
+  const leadId = await matchLeadId(parsed, mailbox.ownerUserId);
   const refIds = extractRefIds(parsed);
   const inReplyTo = refIds[0] ?? null;
 
@@ -402,6 +416,7 @@ async function ingestParsedMessage(
   if (leadId) {
     await onReplyReceived({
       leadId,
+      inboxOwnerUserId: mailbox.ownerUserId,
       fromAddress,
       subject,
       inboundBodyText: bodyText,
@@ -425,13 +440,18 @@ async function buildImapAuth(
     row.oauthProvider === "microsoft" &&
     row.oauthTenantId &&
     row.oauthClientId &&
-    row.oauthClientSecretEnc &&
     row.oauthRefreshTokenEnc
   ) {
-    const clientSecret = decryptToken(row.oauthClientSecretEnc);
+    const clientSecret = row.oauthClientSecretEnc
+      ? decryptToken(row.oauthClientSecretEnc)
+      : "";
     const refreshToken = decryptToken(row.oauthRefreshTokenEnc);
     const resp = await getAccessToken(
-      { tenantId: row.oauthTenantId, clientId: row.oauthClientId, clientSecret },
+      {
+        tenantId: row.oauthTenantId,
+        clientId: row.oauthClientId,
+        ...(clientSecret ? { clientSecret } : {}),
+      },
       refreshToken,
     );
     const mailbox = row.oauthMailbox ?? decrypt(Buffer.from(row.loginEnc));
@@ -514,9 +534,13 @@ async function syncOneAccount(row: ImapRow): Promise<{
   }
 }
 
-export async function runImapSync(_ctx: WorkerJobContext): Promise<unknown> {
+export async function runImapSync(ctx: WorkerJobContext): Promise<unknown> {
+  const payload = (ctx.payload ?? {}) as { ownerUserId?: string };
   const accounts = await prisma.imapConfig.findMany({
-    where: { isActive: true },
+    where: {
+      isActive: true,
+      ...(payload.ownerUserId ? { ownerUserId: payload.ownerUserId } : {}),
+    },
     select: {
       id: true,
       ownerUserId: true,

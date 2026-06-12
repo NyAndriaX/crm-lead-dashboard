@@ -97,10 +97,14 @@ export async function deleteKnowledgeBase(id: string, scope: DataScope): Promise
 export async function getKnowledgeBaseContext(
   id: string | null | undefined,
   maxChars = MAX_CONTEXT_CHARS,
+  ownerUserId?: string | null,
 ): Promise<string | null> {
-  if (!id) return null;
-  const kb = await prisma.knowledgeBase.findUnique({
-    where: { id },
+  if (!id || !ownerUserId) return null;
+  const kb = await prisma.knowledgeBase.findFirst({
+    where: {
+      id,
+      ownerUserId,
+    },
     select: { name: true, description: true, contentMd: true },
   });
   if (!kb) return null;
@@ -114,8 +118,9 @@ export async function getKnowledgeBaseContext(
 export async function injectKnowledgeBaseIntoMessages(
   knowledgeBaseId: string | null | undefined,
   messages: OpenAiMessage[],
+  ownerUserId?: string | null,
 ): Promise<OpenAiMessage[]> {
-  const knowledge = await getKnowledgeBaseContext(knowledgeBaseId);
+  const knowledge = await getKnowledgeBaseContext(knowledgeBaseId, MAX_CONTEXT_CHARS, ownerUserId);
   if (!knowledge) return messages;
 
   const block =

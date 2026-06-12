@@ -164,6 +164,10 @@ export async function runScraping(ctx: WorkerJobContext): Promise<unknown> {
         `Scraping auto: ${mission.name}`,
         extraTags,
       );
+        if (!mission.ownerUserId) {
+          console.warn(`[scraping] skip auto-inject mission=${missionId} — ownerUserId manquant`);
+          continue;
+        }
         try {
           const created = await prisma.lead.create({
             data: {
@@ -172,6 +176,7 @@ export async function runScraping(ctx: WorkerJobContext): Promise<unknown> {
               emailEnc: encryptOrNull(em),
               emailHash: em ? emailHash(em) : null,
               phoneEnc: encryptOrNull(raw.phone ?? null),
+              ownerUserId: mission.ownerUserId,
             },
           });
           await prisma.scrapedLeadBuffer.update({
@@ -183,7 +188,7 @@ export async function runScraping(ctx: WorkerJobContext): Promise<unknown> {
           });
           if (seqId) {
             const seq = await prisma.sequence.findUnique({ where: { id: seqId } });
-            if (seq && !seq.isPaused) {
+            if (seq && !seq.isPaused && seq.createdById === mission.ownerUserId) {
               await prisma.sequenceLead.create({
                 data: {
                   sequenceId: seqId,

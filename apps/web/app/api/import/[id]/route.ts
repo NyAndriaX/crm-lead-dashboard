@@ -10,13 +10,13 @@ export const dynamic = "force-dynamic";
 export const GET = handler(async (_req, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
   const session = await requireSession();
-  const job = await getImportJob(id, session.sub, session.role === "ADMIN");
+  const job = await getImportJob(id, session.sub);
   return json({ data: job });
 });
 
 export const DELETE = handler(async (_req, ctx: { params: Promise<{ id: string }> }) => {
   const { id } = await ctx.params;
   const session = await requirePermission("import:run");
-  await deleteImportJob(id, session.sub, session.role === "ADMIN");
+  await deleteImportJob(id, session.sub);
   return noContent();
 });

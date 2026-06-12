@@ -6,6 +6,7 @@ import { z } from "zod";
 import { handler, json, parseBody, requirePermission } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
 import { importScraperPayloadToBuffer } from "@/lib/services/scraping";
+import { toScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,7 @@ export const POST = handler<Ctx>(async (req, { params }) => {
   const { id: missionId } = await params;
   z.string().min(1).parse(missionId);
   const payload = await parseBody(req, bodySchema);
-  const result = await importScraperPayloadToBuffer(missionId, payload);
+  const result = await importScraperPayloadToBuffer(missionId, payload, toScope(session));
   await audit({
     userId: session.sub,
     action: "scraping.results.import",

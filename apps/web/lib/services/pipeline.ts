@@ -87,16 +87,22 @@ export async function syncPipelineStageForStatus(
   scope: DataScope,
   userId?: string | null,
 ): Promise<{ stageId: string | null; changed: boolean }> {
-  await ensureDefaultPipelineStages(scope.userId);
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { deletedAt: true, pipelineStageId: true, ownerUserId: true },
+  });
+  if (!lead || lead.deletedAt) {
+    return { stageId: null, changed: false };
+  }
+
+  const stageOwnerId = lead.ownerUserId ?? scope.userId;
+  await ensureDefaultPipelineStages(stageOwnerId);
   const stages = await prisma.pipelineStage.findMany({
-    where: { ownerUserId: scope.userId },
+    where: { ownerUserId: stageOwnerId },
     orderBy: { order: "asc" },
   });
   const stageId = resolveStageIdForStatus(status, stages);
-  if (!stageId) return { stageId: null, changed: false };
-
-  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
-  if (!lead || lead.deletedAt || lead.pipelineStageId === stageId) {
+  if (!stageId || lead.pipelineStageId === stageId) {
     return { stageId, changed: false };
   }
 

@@ -1,11 +1,17 @@
 /**
  * Service Bulk Leads — opérations groupées sur une sélection de leads.
  *
- * Toutes les opérations sont idempotentes et tolérantes (un ID introuvable
+ * Toutes les opérations sont idempotentes et tolérantes (un ID hors périmètre
  * est silencieusement ignoré, on retourne `succeeded` + `failed` détaillés).
  */
-import { prisma } from "@crm/db";
-import { syncTags, type Prisma } from "@crm/db";
+import {
+  prisma,
+  syncTags,
+  buildLeadVisibilityWhere,
+  strictCreatorWhere,
+  type DataScope,
+  type Prisma,
+} from "@crm/db";
 
 const MAX_IDS = 1000;
 
@@ -20,26 +26,34 @@ function clampIds(ids: string[]): string[] {
   return Array.from(new Set(ids)).slice(0, MAX_IDS);
 }
 
-export async function bulkSoftDelete(ids: string[]): Promise<BulkResult> {
+function visibleLeadWhere(scope: DataScope, extra: Prisma.LeadWhereInput = {}): Prisma.LeadWhereInput {
+  return { AND: [buildLeadVisibilityWhere(scope), extra] };
+}
+
+export async function bulkSoftDelete(ids: string[], scope: DataScope): Promise<BulkResult> {
   const list = clampIds(ids);
   const now = new Date();
   const r = await prisma.lead.updateMany({
-    where: { id: { in: list }, deletedAt: null },
+    where: visibleLeadWhere(scope, { id: { in: list }, deletedAt: null }),
     data: { deletedAt: now, updatedAt: now },
   });
   return { requested: list.length, succeeded: r.count, failed: list.length - r.count, errors: [] };
 }
 
-export async function bulkRestore(ids: string[]): Promise<BulkResult> {
+export async function bulkRestore(ids: string[], scope: DataScope): Promise<BulkResult> {
   const list = clampIds(ids);
   const r = await prisma.lead.updateMany({
-    where: { id: { in: list }, deletedAt: { not: null } },
+    where: visibleLeadWhere(scope, { id: { in: list }, deletedAt: { not: null } }),
     data: { deletedAt: null, updatedAt: new Date() },
   });
   return { requested: list.length, succeeded: r.count, failed: list.length - r.count, errors: [] };
 }
 
-export async function bulkAssign(ids: string[], assignedToId: string | null): Promise<BulkResult> {
+export async function bulkAssign(
+  ids: string[],
+  assignedToId: string | null,
+  scope: DataScope,
+): Promise<BulkResult> {
   const list = clampIds(ids);
   if (assignedToId) {
     const user = await prisma.user.findUnique({
@@ -54,13 +68,13 @@ export async function bulkAssign(ids: string[], assignedToId: string | null): Pr
     }
   }
   const r = await prisma.lead.updateMany({
-    where: { id: { in: list }, deletedAt: null },
+    where: visibleLeadWhere(scope, { id: { in: list }, deletedAt: null }),
     data: { assignedToId, lastActionAt: new Date() },
   });
-  // History entry per lead
   await prisma.leadHistory.createMany({
     data: list.map((leadId) => ({
       leadId,
+      userId: scope.userId,
       type: assignedToId ? "assigned" : "unassigned",
       payload: { bulk: true, to: assignedToId } as object,
     })),
@@ -71,15 +85,17 @@ export async function bulkAssign(ids: string[], assignedToId: string | null): Pr
 export async function bulkSetStatus(
   ids: string[],
   status: "NOUVEAU" | "CONTACTE" | "QUALIFIE" | "EN_DISCUSSION" | "CONVERTI" | "PERDU",
+  scope: DataScope,
 ): Promise<BulkResult> {
   const list = clampIds(ids);
   const r = await prisma.lead.updateMany({
-    where: { id: { in: list }, deletedAt: null },
+    where: visibleLeadWhere(scope, { id: { in: list }, deletedAt: null }),
     data: { status, lastActionAt: new Date() },
   });
   await prisma.leadHistory.createMany({
     data: list.map((leadId) => ({
       leadId,
+      userId: scope.userId,
       type: "status_change",
       payload: { bulk: true, to: status } as object,
     })),
@@ -88,7 +104,7 @@ export async function bulkSetStatus(
 }
 
 /** Ajoute des tags sans supprimer les existants (set union). */
-export async function bulkAddTags(ids: string[], tags: string[]): Promise<BulkResult> {
+export async function bulkAddTags(ids: string[], tags: string[], scope: DataScope): Promise<BulkResult> {
   const list = clampIds(ids);
   const cleaned = Array.from(new Set(tags.map((t) => t.trim()).filter(Boolean)));
   if (cleaned.length === 0) {
@@ -96,7 +112,7 @@ export async function bulkAddTags(ids: string[], tags: string[]): Promise<BulkRe
   }
   await syncTags(cleaned);
   const leads = await prisma.lead.findMany({
-    where: { id: { in: list }, deletedAt: null },
+    where: visibleLeadWhere(scope, { id: { in: list }, deletedAt: null }),
     select: { id: true, tags: true },
   });
   let succeeded = 0;
@@ -114,6 +130,7 @@ export async function bulkAddTags(ids: string[], tags: string[]): Promise<BulkRe
     await prisma.leadHistory.create({
       data: {
         leadId: lead.id,
+        userId: scope.userId,
         type: "tags_set",
         payload: { bulk: true, added: cleaned, tags: next } as object,
       },
@@ -124,14 +141,14 @@ export async function bulkAddTags(ids: string[], tags: string[]): Promise<BulkRe
 }
 
 /** Retire des tags spécifiques (différence ensembliste). */
-export async function bulkRemoveTags(ids: string[], tags: string[]): Promise<BulkResult> {
+export async function bulkRemoveTags(ids: string[], tags: string[], scope: DataScope): Promise<BulkResult> {
   const list = clampIds(ids);
   const toRemove = new Set(tags.map((t) => t.trim()).filter(Boolean));
   if (toRemove.size === 0) {
     return { requested: list.length, succeeded: 0, failed: 0, errors: [] };
   }
   const leads = await prisma.lead.findMany({
-    where: { id: { in: list }, deletedAt: null },
+    where: visibleLeadWhere(scope, { id: { in: list }, deletedAt: null }),
     select: { id: true, tags: true },
   });
   let succeeded = 0;
@@ -149,6 +166,7 @@ export async function bulkRemoveTags(ids: string[], tags: string[]): Promise<Bul
     await prisma.leadHistory.create({
       data: {
         leadId: lead.id,
+        userId: scope.userId,
         type: "tags_set",
         payload: { bulk: true, removed: [...toRemove], tags: next } as object,
       },
@@ -161,31 +179,43 @@ export async function bulkRemoveTags(ids: string[], tags: string[]): Promise<Bul
 export async function bulkEnrollInSequence(
   ids: string[],
   sequenceId: string,
+  scope: DataScope,
 ): Promise<BulkResult> {
   const list = clampIds(ids);
-  const sequence = await prisma.sequence.findUnique({ where: { id: sequenceId } });
+  const sequence = await prisma.sequence.findFirst({
+    where: { id: sequenceId, ...strictCreatorWhere(scope.userId) },
+  });
   if (!sequence) {
     return {
       requested: list.length, succeeded: 0, failed: list.length,
       errors: [{ id: "*", error: "Séquence introuvable" }],
     };
   }
+  const visibleIds = (
+    await prisma.lead.findMany({
+      where: visibleLeadWhere(scope, { id: { in: list }, deletedAt: null }),
+      select: { id: true },
+    })
+  ).map((l) => l.id);
+  if (visibleIds.length === 0) {
+    return { requested: list.length, succeeded: 0, failed: list.length, errors: [] };
+  }
+
   const steps = Array.isArray(sequence.steps) ? sequence.steps : [];
   const firstDelay = steps.length > 0 && typeof (steps[0] as { delayDays?: number })?.delayDays === "number"
     ? (steps[0] as { delayDays: number }).delayDays
     : 0;
   const nextSendAt = new Date(Date.now() + Math.max(0, firstDelay) * 24 * 3600 * 1000);
 
-  // On enrôle uniquement les leads qui ne sont pas déjà dans cette séquence.
   const existing = await prisma.sequenceLead.findMany({
-    where: { sequenceId, leadId: { in: list } },
+    where: { sequenceId, leadId: { in: visibleIds } },
     select: { leadId: true },
   });
   const existingSet = new Set(existing.map((e) => e.leadId));
-  const toEnroll = list.filter((id) => !existingSet.has(id));
+  const toEnroll = visibleIds.filter((id) => !existingSet.has(id));
 
   if (toEnroll.length === 0) {
-    return { requested: list.length, succeeded: 0, failed: 0, errors: [] };
+    return { requested: list.length, succeeded: 0, failed: list.length - visibleIds.length, errors: [] };
   }
 
   await prisma.sequenceLead.createMany({
@@ -198,17 +228,23 @@ export async function bulkEnrollInSequence(
       nextSendAt,
     })),
   });
-  return { requested: list.length, succeeded: toEnroll.length, failed: 0, errors: [] };
+  return {
+    requested: list.length,
+    succeeded: toEnroll.length,
+    failed: list.length - toEnroll.length,
+    errors: [],
+  };
 }
 
 /** Retire des leads d'une campagne en cours (exclusion + marqueur SENT fictif). */
 export async function bulkExcludeFromCampaign(
   ids: string[],
   campaignId: string,
+  scope: DataScope,
 ): Promise<BulkResult> {
   const list = clampIds(ids);
-  const campaign = await prisma.campaign.findUnique({
-    where: { id: campaignId },
+  const campaign = await prisma.campaign.findFirst({
+    where: { id: campaignId, ...strictCreatorWhere(scope.userId) },
     select: { id: true, status: true, config: true },
   });
   if (!campaign) {
@@ -224,18 +260,23 @@ export async function bulkExcludeFromCampaign(
     };
   }
 
+  const visibleIds = (
+    await prisma.lead.findMany({
+      where: visibleLeadWhere(scope, { id: { in: list }, deletedAt: null }),
+      select: { id: true },
+    })
+  ).map((l) => l.id);
+
   const cfg = (campaign.config ?? {}) as Record<string, unknown>;
   const prev = Array.isArray(cfg.excludedLeadIds) ? (cfg.excludedLeadIds as string[]) : [];
-  const excludedLeadIds = Array.from(new Set([...prev, ...list]));
+  const excludedLeadIds = Array.from(new Set([...prev, ...visibleIds]));
   await prisma.campaign.update({
     where: { id: campaignId },
     data: { config: { ...cfg, excludedLeadIds } as object },
   });
 
   let succeeded = 0;
-  for (const leadId of list) {
-    const exists = await prisma.lead.findFirst({ where: { id: leadId, deletedAt: null }, select: { id: true } });
-    if (!exists) continue;
+  for (const leadId of visibleIds) {
     const already = await prisma.emailEvent.findFirst({
       where: { campaignId, leadId, eventType: "SENT" },
       select: { id: true },
@@ -253,6 +294,7 @@ export async function bulkExcludeFromCampaign(
     await prisma.leadHistory.create({
       data: {
         leadId,
+        userId: scope.userId,
         type: "campaign_excluded",
         payload: { campaignId, bulk: true } as object,
       },

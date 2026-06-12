@@ -28,13 +28,13 @@ export async function getSequenceKnowledgeContext(
   if (!sequenceId) return null;
   const seq = await prisma.sequence.findUnique({
     where: { id: sequenceId },
-    select: { config: true },
+    select: { config: true, createdById: true },
   });
   if (!seq) return null;
 
   const { knowledgeBaseId, knowledgeText } = parseSequenceKnowledgeFromConfig(seq.config);
   const parts: string[] = [];
-  const kbShared = await getKnowledgeBaseContext(knowledgeBaseId, maxChars);
+  const kbShared = await getKnowledgeBaseContext(knowledgeBaseId, maxChars, seq.createdById);
   if (kbShared) parts.push(kbShared);
   const text = knowledgeText?.trim();
   if (text) parts.push(text.slice(0, maxChars));

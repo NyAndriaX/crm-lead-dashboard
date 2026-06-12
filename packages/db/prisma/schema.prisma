@@ -130,6 +130,8 @@ model User {
   createdSequences   Sequence[]      @relation("SequenceCreator")
   createdSegments    Segment[]       @relation("SegmentCreator")
   createdTemplates   Template[]      @relation("TemplateCreator")
+  ownedScrapingMissions ScrapingMission[] @relation("ScrapingMissionOwner")
+  createdWebhooks    WebhookOut[]    @relation("WebhookCreator")
 
   @@index([teamId])
 }
@@ -588,12 +590,17 @@ model ImportJob {
 // ──────────────────────────────────────────────────────────────
 
 model WebhookOut {
-  id        String   @id @default(cuid())
-  url       String
-  events    Json     @default("[]")
-  secret    String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  url         String
+  events      Json     @default("[]")
+  secret      String
+  isActive    Boolean  @default(true)
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  createdBy User? @relation("WebhookCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([createdById])
 }
 
 model ApiCredit {
@@ -720,13 +727,18 @@ model PasswordResetToken {
 // ──────────────────────────────────────────────────────────────
 
 model ScrapingMission {
-  id        String   @id @default(cuid())
-  name      String
-  config    Json
-  schedule  String?
-  status    String   @default("pending")
-  logs      String?  @db.Text
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  name        String
+  config      Json
+  schedule    String?
+  status      String   @default("pending")
+  logs        String?  @db.Text
+  ownerUserId String?
+  createdAt   DateTime @default(now())
+
+  owner User? @relation("ScrapingMissionOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  @@index([ownerUserId])
 }
 
 model ScrapedLeadBuffer {

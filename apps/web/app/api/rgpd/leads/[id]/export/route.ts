@@ -14,6 +14,7 @@ import { z } from "zod";
 import { handler, requirePermission, ApiError } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
 import { exportLead } from "@/lib/services/rgpd";
+import { toScope, scopeError } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ export const GET = handler<Ctx>(async (req, { params }) => {
   const { id: rawId } = await params;
   const leadId = z.string().min(1).parse(rawId);
 
-  const data = await exportLead(leadId);
+  const data = await exportLead(leadId, toScope(session)).catch(scopeError);
   if (!data) throw new ApiError(404, "Lead introuvable", "not_found");
 
   await audit({

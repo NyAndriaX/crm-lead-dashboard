@@ -1,18 +1,22 @@
 import { z } from "zod";
 import { handler, json, requirePermission } from "@/lib/api";
-import { prisma } from "@crm/db";
+import { prisma, assertLeadAccess, strictCreatorWhere } from "@crm/db";
+import { toScope, scopeError } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export const GET = handler<Ctx>(async (_req, { params }) => {
-  await requirePermission("leads:read");
+  const session = await requirePermission("leads:read");
+  const scope = toScope(session);
   const { id: rawId } = await params;
   const leadId = z.string().min(1).parse(rawId);
 
+  await assertLeadAccess(scope, leadId).catch(scopeError);
+
   const events = await prisma.emailEvent.findMany({
-    where: { leadId },
+    where: { leadId, campaign: strictCreatorWhere(scope.userId) },
     orderBy: { occurredAt: "desc" },
     take: 200,
     include: {
@@ -51,7 +55,7 @@ export const GET = handler<Ctx>(async (_req, { params }) => {
   }
 
   const seqLeads = await prisma.sequenceLead.findMany({
-    where: { leadId },
+    where: { leadId, sequence: strictCreatorWhere(scope.userId) },
     include: { sequence: { select: { id: true, name: true, isPaused: true } } },
   });
 

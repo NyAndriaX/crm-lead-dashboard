@@ -1,14 +1,29 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Button, Card, Form, Image, Input, Space, Spin, Typography, Upload, message } from "antd";
+import { Button, Card, Form, Image, Input, InputNumber, Space, Spin, Typography, Upload, message } from "antd";
 import { BgColorsOutlined, UploadOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
 import { extractApiError, showErrorPopup, showSuccessPopup } from "@/lib/feedback";
+import {
+  DEFAULT_ICON_SIZE_LOGIN,
+  DEFAULT_ICON_SIZE_SIDEBAR,
+} from "@/lib/branding";
 
 const { Title, Paragraph, Text } = Typography;
 
-type Branding = { siteName?: string; siteIconUrl?: string | null };
+type Branding = {
+  siteName?: string;
+  siteIconUrl?: string | null;
+  siteIconSizeSidebar?: number;
+  siteIconSizeLogin?: number;
+};
+
+type BrandingForm = {
+  siteName?: string;
+  siteIconSizeSidebar?: number;
+  siteIconSizeLogin?: number;
+};
 
 async function imageFileToDataUrl(file: File, maxPx = 128): Promise<string> {
   const blobUrl = URL.createObjectURL(file);
@@ -35,7 +50,7 @@ async function imageFileToDataUrl(file: File, maxPx = 128): Promise<string> {
 }
 
 export function BrandingSection() {
-  const [form] = Form.useForm<{ siteName?: string }>();
+  const [form] = Form.useForm<BrandingForm>();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [iconPreview, setIconPreview] = useState<string | null>(null);
@@ -45,7 +60,11 @@ export function BrandingSection() {
     setLoading(true);
     try {
       const { data } = await api.get<{ data: Branding }>("/organization/branding");
-      form.setFieldsValue({ siteName: data.data.siteName });
+      form.setFieldsValue({
+        siteName: data.data.siteName,
+        siteIconSizeSidebar: data.data.siteIconSizeSidebar ?? DEFAULT_ICON_SIZE_SIDEBAR,
+        siteIconSizeLogin: data.data.siteIconSizeLogin ?? DEFAULT_ICON_SIZE_LOGIN,
+      });
       const icon = data.data.siteIconUrl ?? null;
       if (icon?.startsWith("data:")) {
         setIconPreview(icon);
@@ -64,13 +83,16 @@ export function BrandingSection() {
   useEffect(() => { void load(); }, [load]);
 
   async function save() {
-    const siteName = form.getFieldValue("siteName") as string | undefined;
+    const values = form.getFieldsValue();
+    const siteName = values.siteName as string | undefined;
     const siteIconUrl = iconPreview ?? (iconUrlInput.trim() || null);
     setSaving(true);
     try {
       await api.put("/organization/branding", {
         siteName: siteName?.trim() || undefined,
         siteIconUrl,
+        siteIconSizeSidebar: values.siteIconSizeSidebar ?? DEFAULT_ICON_SIZE_SIDEBAR,
+        siteIconSizeLogin: values.siteIconSizeLogin ?? DEFAULT_ICON_SIZE_LOGIN,
       });
       showSuccessPopup(
         "Identité enregistrée",
@@ -100,6 +122,20 @@ export function BrandingSection() {
             <Input placeholder="CRM Lead Dashboard" maxLength={80} />
           </Form.Item>
           <Form.Item
+            name="siteIconSizeSidebar"
+            label="Taille icône — barre latérale (px)"
+            extra="Affichée en haut à gauche du tableau de bord."
+          >
+            <InputNumber min={16} max={64} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item
+            name="siteIconSizeLogin"
+            label="Taille icône — page de connexion (px)"
+            extra="Affichée sur l'écran de login (desktop et mobile)."
+          >
+            <InputNumber min={24} max={80} style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item
             label="URL de l'icône (optionnel)"
             extra="URL publique https://… ou uploadez une image ci-dessous."
           >
@@ -125,7 +161,7 @@ export function BrandingSection() {
                 alt="Aperçu icône"
                 width={64}
                 height={64}
-                style={{ borderRadius: 12, objectFit: "cover", border: "1px solid #f0f0f0" }}
+                style={{ borderRadius: 12, objectFit: "contain", border: "1px solid #f0f0f0", background: "#fafafa" }}
                 preview={{ mask: "Agrandir" }}
               />
             </div>

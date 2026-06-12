@@ -28,6 +28,7 @@ type Health = {
 };
 
 type Capacity = {
+  scoped?: boolean;
   leads: { used: number; active: number; limit: number; usagePct: number };
   emailsToday: { used: number; targetLimit: number; smtpDailyCapacity: number; usagePct: number; note: string };
   inboxMessages: number;
@@ -139,6 +140,14 @@ export function SystemSection() {
       {/* P-02 — Capacité */}
       {capacity && (
         <Card size="small" title={<Space><ThunderboltOutlined style={{ color: "#1677ff" }} /> Capacité (P-02)</Space>}>
+          {capacity.scoped ? (
+            <Alert
+              style={{ marginBottom: 12 }}
+              type="info"
+              showIcon
+              message="Métriques limitées à votre périmètre (leads, emails et comptes qui vous appartiennent)."
+            />
+          ) : null}
           <Row gutter={[24, 16]}>
             <Col xs={24} md={12}>
               <Text strong>Leads — {capacity.leads.used.toLocaleString("fr-FR")} / {capacity.leads.limit.toLocaleString("fr-FR")}</Text>

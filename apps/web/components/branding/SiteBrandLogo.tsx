@@ -7,6 +7,7 @@ import { useSiteBranding } from "@/lib/useSiteBranding";
 const { Text } = Typography;
 
 type Props = {
+  /** Surcharge la taille configurée dans Paramètres → Identité du site. */
   iconSize?: number;
   nameSize?: number;
   /** light = texte blanc (panneau login gauche), dark = texte standard */
@@ -17,13 +18,14 @@ type Props = {
 };
 
 export function SiteBrandLogo({
-  iconSize = 44,
+  iconSize: iconSizeProp,
   nameSize = 18,
   variant = "light",
   layout = "horizontal",
   showName = true,
 }: Props) {
-  const { siteName, siteIconUrl } = useSiteBranding();
+  const { siteName, siteIconUrl, siteIconSizeLogin } = useSiteBranding();
+  const iconSize = iconSizeProp ?? siteIconSizeLogin;
 
   const iconBox = (
     <div
@@ -51,7 +53,7 @@ export function SiteBrandLogo({
         <img
           src={siteIconUrl}
           alt=""
-          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          style={{ width: "100%", height: "100%", objectFit: "contain" }}
         />
       ) : (
         <RocketFilled

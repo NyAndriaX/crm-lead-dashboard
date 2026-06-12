@@ -3,7 +3,7 @@
 #   all     — web + worker (défaut, un seul conteneur)
 #   web     — Next.js standalone uniquement (+ db push / init-prod)
 #   worker  — worker Agenda uniquement
-#   db-init — prisma generate + init-prod (one-shot)
+#   db-init — prisma generate + db push + init-prod + migrate-data-owners (one-shot)
 set -e
 
 SCHEMA="packages/db/prisma/schema.prisma"
@@ -41,7 +41,8 @@ db_push() {
   if [ "${SKIP_DB_PUSH}" = "true" ] || [ "${SKIP_DB_PUSH}" = "1" ]; then
     return 0
   fi
-  echo "▶ prisma db push..."
+  echo "▶ prisma generate + db push..."
+  npx prisma generate --schema="$SCHEMA"
   npx prisma db push --schema="$SCHEMA" --skip-generate
 }
 

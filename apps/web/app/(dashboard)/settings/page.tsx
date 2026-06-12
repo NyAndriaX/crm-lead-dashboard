@@ -51,7 +51,7 @@ const { Title, Text, Paragraph } = Typography;
 interface AdminStats {
   leads: { total: number; active: number; newToday: number; newThisWeek: number; newThisMonth: number };
   byStatus: Record<string, number>;
-  users: { total: number; active: number };
+  users: { total: number; active: number } | null;
   recentImports: { id: string; fileName: string; status: string; importedRows: number; totalRows: number; createdAt: string; user?: { name: string } }[];
 }
 
@@ -472,7 +472,9 @@ function OverviewTab() {
           { label: "Total leads", value: stats.leads.total, color: "#1677ff", icon: <TeamOutlined />, sub: `${stats.leads.active} actifs` },
           { label: "Nouveaux aujourd'hui", value: stats.leads.newToday, color: "#13c2c2", icon: <CalendarOutlined />, sub: `${stats.leads.newThisWeek} cette semaine` },
           { label: "Ce mois", value: stats.leads.newThisMonth, color: "#722ed1", icon: <FireOutlined />, sub: "leads créés" },
-          { label: "Utilisateurs actifs", value: stats.users.active, color: "#52c41a", icon: <UserOutlined />, sub: `/ ${stats.users.total} comptes` },
+          ...(stats.users
+            ? [{ label: "Utilisateurs actifs", value: stats.users.active, color: "#52c41a", icon: <UserOutlined />, sub: `/ ${stats.users.total} comptes` }]
+            : []),
         ].map(({ label, value, color, icon, sub }) => (
           <Col xs={24} sm={12} xl={6} key={label}>
             <Card styles={{ body: { padding: "16px 18px" } }} style={{ borderTop: `3px solid ${color}` }}>

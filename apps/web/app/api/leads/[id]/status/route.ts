@@ -18,6 +18,6 @@ export const POST = handler<Ctx>(async (req, { params }) => {
   const lead = await changeStatus(id, input, scope);
   await audit({ userId: s.sub, action: "lead.status_change", entityType: "lead", entityId: id, ip: clientIp(req), diff: input });
   // INT-01 : webhook leadStatusChanged
-  void emitWebhookEvent("leadStatusChanged", { leadId: id, status: input.status });
+  void emitWebhookEvent("leadStatusChanged", { leadId: id, status: input.status }, scope.userId);
   return json(lead);
 });

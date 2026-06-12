@@ -11,7 +11,8 @@
  *    permettre au destinataire de vérifier l'authenticité.
  */
 import * as crypto from "node:crypto";
-import { prisma } from "@crm/db";
+import { prisma, strictCreatorWhere, type DataScope } from "@crm/db";
+import { ApiError } from "@/lib/api";
 
 export type WebhookEvent =
   | "newLead"
@@ -44,19 +45,23 @@ export type WebhookItem = {
   createdAt: Date;
 };
 
-export async function listWebhooks(): Promise<WebhookItem[]> {
+export async function listWebhooks(scope: DataScope): Promise<WebhookItem[]> {
   return prisma.webhookOut.findMany({
+    where: strictCreatorWhere(scope.userId),
     select: { id: true, url: true, events: true, isActive: true, createdAt: true },
     orderBy: { createdAt: "desc" },
   });
 }
 
-export async function createWebhook(input: {
-  url: string;
-  events: string[];
-  secret?: string;
-  isActive?: boolean;
-}): Promise<WebhookItem> {
+export async function createWebhook(
+  scope: DataScope,
+  input: {
+    url: string;
+    events: string[];
+    secret?: string;
+    isActive?: boolean;
+  },
+): Promise<WebhookItem> {
   const secret = input.secret ?? crypto.randomBytes(32).toString("base64url");
   return prisma.webhookOut.create({
     data: {
@@ -64,15 +69,26 @@ export async function createWebhook(input: {
       events: input.events,
       secret,
       isActive: input.isActive ?? true,
+      createdById: scope.userId,
     },
     select: { id: true, url: true, events: true, isActive: true, createdAt: true },
   });
 }
 
+async function assertWebhookAccess(scope: DataScope, id: string) {
+  const w = await prisma.webhookOut.findFirst({
+    where: { id, ...strictCreatorWhere(scope.userId) },
+    select: { id: true },
+  });
+  if (!w) throw new ApiError(404, "Webhook introuvable", "not_found");
+}
+
 export async function updateWebhook(
   id: string,
+  scope: DataScope,
   input: { url?: string; events?: string[]; isActive?: boolean },
 ): Promise<WebhookItem> {
+  await assertWebhookAccess(scope, id);
   return prisma.webhookOut.update({
     where: { id },
     data: input,
@@ -80,12 +96,14 @@ export async function updateWebhook(
   });
 }
 
-export async function deleteWebhook(id: string): Promise<void> {
+export async function deleteWebhook(id: string, scope: DataScope): Promise<void> {
+  await assertWebhookAccess(scope, id);
   await prisma.webhookOut.delete({ where: { id } });
 }
 
 /** Retourne le secret en clair pour permettre la vérification HMAC côté tiers. */
-export async function revealWebhookSecret(id: string): Promise<string | null> {
+export async function revealWebhookSecret(id: string, scope: DataScope): Promise<string | null> {
+  await assertWebhookAccess(scope, id);
   const w = await prisma.webhookOut.findUnique({ where: { id }, select: { secret: true } });
   return w?.secret ?? null;
 }
@@ -102,9 +120,15 @@ function signBody(body: string, secret: string): string {
 export async function emitWebhookEvent(
   event: WebhookEvent,
   payload: unknown,
+  ownerUserId?: string | null,
 ): Promise<{ dispatched: number; failed: number }> {
+  if (!ownerUserId) return { dispatched: 0, failed: 0 };
   const targets = await prisma.webhookOut.findMany({
-    where: { isActive: true, events: { array_contains: event } },
+    where: {
+      isActive: true,
+      events: { array_contains: event },
+      createdById: ownerUserId,
+    },
     select: { id: true, url: true, secret: true },
   });
   if (targets.length === 0) return { dispatched: 0, failed: 0 };
@@ -150,8 +174,13 @@ export async function emitWebhookEvent(
 }
 
 /** Test manuel d'un webhook (envoi d'un payload d'exemple). */
-export async function testWebhook(id: string): Promise<{ ok: boolean; status?: number; error?: string }> {
-  const wh = await prisma.webhookOut.findUnique({ where: { id } });
+export async function testWebhook(
+  id: string,
+  scope: DataScope,
+): Promise<{ ok: boolean; status?: number; error?: string }> {
+  const wh = await prisma.webhookOut.findFirst({
+    where: { id, ...strictCreatorWhere(scope.userId) },
+  });
   if (!wh) return { ok: false, error: "Webhook introuvable" };
   const body = JSON.stringify({
     event: "test",

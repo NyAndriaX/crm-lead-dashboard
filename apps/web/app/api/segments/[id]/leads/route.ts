@@ -15,6 +15,6 @@ export const GET = handler<Ctx>(async (req, { params }) => {
   const url = new URL(req.url);
   const page = Number(url.searchParams.get("page") ?? "1");
   const pageSize = Number(url.searchParams.get("pageSize") ?? "25");
-  const result = await listSegmentLeads(row.filters, { page, pageSize });
+  const result = await listSegmentLeads(scope, row.filters, { page, pageSize });
   return json(result);
 });

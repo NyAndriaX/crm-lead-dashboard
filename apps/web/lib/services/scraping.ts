@@ -20,7 +20,8 @@ import {
   type MissionSchedulePlan,
   type ScrapedLead,
 } from "@crm/db";
-import { prisma, type Prisma } from "@crm/db";
+import { prisma, strictOwnerWhere, type DataScope, type Prisma, Role } from "@crm/db";
+import { ApiError } from "@/lib/api";
 import { enqueue } from "@/lib/jobs";
 import { encryptOrNull, emailHash } from "@/lib/crypto";
 import { isScrapedLeadDuplicateInCrm } from "@/lib/scraping/dedup";
@@ -36,9 +37,10 @@ import { syncTags } from "@crm/db";
  */
 const AUTO_ENRICH_CAP = Number(process.env.SCRAPING_AUTOENRICH_CAP ?? 50);
 
-async function autoEnrichAndBrief(leadId: string, actorId?: string | null): Promise<void> {
+async function autoEnrichAndBrief(leadId: string, ownerUserId: string, actorId?: string | null): Promise<void> {
   try {
-    await enrichLeadById(leadId, ["email", "emailVerify", "company", "news"]);
+    const scope: DataScope = { userId: ownerUserId, role: Role.COMMERCIAL };
+    await enrichLeadById(leadId, ["email", "emailVerify", "company", "news"], scope);
     const lead = await prisma.lead.findUnique({
       where: { id: leadId },
       select: {
@@ -123,6 +125,14 @@ async function enqueueScheduledRun(missionId: string, cfg: MissionConfig): Promi
   }
 }
 
+async function assertMissionAccess(scope: DataScope, missionId: string): Promise<void> {
+  const m = await prisma.scrapingMission.findFirst({
+    where: { id: missionId, ...strictOwnerWhere(scope.userId) },
+    select: { id: true },
+  });
+  if (!m) throw new ApiError(404, "Mission introuvable", "not_found");
+}
+
 async function bufferCounts(missionId: string) {
   const groups = await prisma.scrapedLeadBuffer.groupBy({
     by: ["status"],
@@ -133,8 +143,11 @@ async function bufferCounts(missionId: string) {
   return { pending: get("pending"), accepted: get("accepted"), rejected: get("rejected") };
 }
 
-export async function listMissions(): Promise<MissionDTO[]> {
-  const missions = await prisma.scrapingMission.findMany({ orderBy: { createdAt: "desc" } });
+export async function listMissions(scope: DataScope): Promise<MissionDTO[]> {
+  const missions = await prisma.scrapingMission.findMany({
+    where: strictOwnerWhere(scope.userId),
+    orderBy: { createdAt: "desc" },
+  });
   const out: MissionDTO[] = [];
   for (const m of missions) {
     const config = normalizeMissionConfig(m.config);
@@ -153,8 +166,10 @@ export async function listMissions(): Promise<MissionDTO[]> {
   return out;
 }
 
-export async function getMission(id: string): Promise<MissionDTO | null> {
-  const m = await prisma.scrapingMission.findUnique({ where: { id } });
+export async function getMission(id: string, scope: DataScope): Promise<MissionDTO | null> {
+  const m = await prisma.scrapingMission.findFirst({
+    where: { id, ...strictOwnerWhere(scope.userId) },
+  });
   if (!m) return null;
   const config = normalizeMissionConfig(m.config);
   return {
@@ -170,10 +185,10 @@ export async function getMission(id: string): Promise<MissionDTO | null> {
   };
 }
 
-export async function createMission(input: {
-  name: string;
-  config: unknown;
-}): Promise<MissionDTO> {
+export async function createMission(
+  scope: DataScope,
+  input: { name: string; config: unknown },
+): Promise<MissionDTO> {
   const config = normalizeMissionConfig(input.config);
   const m = await prisma.scrapingMission.create({
     data: {
@@ -181,17 +196,20 @@ export async function createMission(input: {
       config: config as object,
       schedule: legacyScheduleField(config.schedulePlan),
       status: "pending",
+      ownerUserId: scope.userId,
     },
   });
   await enqueueScheduledRun(m.id, config);
-  const dto = await getMission(m.id);
+  const dto = await getMission(m.id, scope);
   return dto!;
 }
 
 export async function updateMission(
   id: string,
+  scope: DataScope,
   input: { name?: string; config?: unknown },
 ): Promise<void> {
+  await assertMissionAccess(scope, id);
   const data: Prisma.ScrapingMissionUpdateInput = {};
   if (input.name !== undefined) data.name = input.name;
   if (input.config !== undefined) {
@@ -214,7 +232,8 @@ export async function updateMission(
   }
 }
 
-export async function deleteMission(id: string): Promise<void> {
+export async function deleteMission(id: string, scope: DataScope): Promise<void> {
+  await assertMissionAccess(scope, id);
   await prisma.scrapedLeadBuffer.deleteMany({ where: { missionId: id } });
   await prisma.scrapingMission.delete({ where: { id } });
 }
@@ -236,8 +255,10 @@ export type BufferItem = {
 
 export async function listBuffer(
   missionId: string,
+  scope: DataScope,
   status?: string,
 ): Promise<BufferItem[]> {
+  await assertMissionAccess(scope, missionId);
   const rows = await prisma.scrapedLeadBuffer.findMany({
     where: { missionId, ...(status ? { status } : {}) },
     orderBy: { createdAt: "desc" },
@@ -252,9 +273,15 @@ export async function listBuffer(
   }));
 }
 
-export async function setBufferStatus(ids: string[], status: "accepted" | "rejected"): Promise<number> {
+export async function setBufferStatus(
+  missionId: string,
+  ids: string[],
+  status: "accepted" | "rejected",
+  scope: DataScope,
+): Promise<number> {
+  await assertMissionAccess(scope, missionId);
   const res = await prisma.scrapedLeadBuffer.updateMany({
-    where: { id: { in: ids } },
+    where: { id: { in: ids }, missionId },
     data: { status },
   });
   return res.count;
@@ -267,8 +294,12 @@ export async function setBufferStatus(ids: string[], status: "accepted" | "rejec
 export async function importScraperPayloadToBuffer(
   missionId: string,
   payload: unknown,
+  scope: DataScope,
 ): Promise<{ inserted: number; duplicates: number; filteredNoEmail: number }> {
-  const mission = await prisma.scrapingMission.findUnique({ where: { id: missionId } });
+  await assertMissionAccess(scope, missionId);
+  const mission = await prisma.scrapingMission.findFirst({
+    where: { id: missionId, ...strictOwnerWhere(scope.userId) },
+  });
   const cfg = normalizeMissionConfig(mission?.config);
   const { leads } = parseScraperPayload(payload);
   let inserted = 0;
@@ -348,6 +379,7 @@ export function resolveInjectionTags(
 
 export async function injectAcceptedLeads(
   missionId: string,
+  scope: DataScope,
   actorId?: string,
   injectionTags: string[] = [],
 ): Promise<{
@@ -355,8 +387,9 @@ export async function injectAcceptedLeads(
   skippedDuplicate: number;
   skippedInvalid: number;
 }> {
-  const mission = await prisma.scrapingMission.findUnique({
-    where: { id: missionId },
+  await assertMissionAccess(scope, missionId);
+  const mission = await prisma.scrapingMission.findFirst({
+    where: { id: missionId, ...strictOwnerWhere(scope.userId) },
     select: { config: true },
   });
   const tags = resolveInjectionTags(mission?.config, injectionTags);
@@ -404,6 +437,7 @@ export async function injectAcceptedLeads(
         emailEnc: encryptOrNull(email),
         emailHash: email ? emailHash(email) : null,
         phoneEnc: encryptOrNull(raw.phone ?? null),
+        ownerUserId: actorId ?? scope.userId,
       },
     });
     await prisma.leadHistory.create({
@@ -423,7 +457,7 @@ export async function injectAcceptedLeads(
     // A1 (F1) — enrichissement + brief de qualification IA automatiques,
     // plafonné et best-effort (n'invalide jamais l'injection).
     if (injected <= AUTO_ENRICH_CAP) {
-      await autoEnrichAndBrief(lead.id, actorId);
+      await autoEnrichAndBrief(lead.id, actorId ?? scope.userId, actorId);
     }
   }
 

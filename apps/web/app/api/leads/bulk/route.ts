@@ -16,6 +16,7 @@ import {
   bulkSoftDelete, bulkRestore, bulkAssign, bulkSetStatus,
   bulkAddTags, bulkRemoveTags, bulkEnrollInSequence, bulkExcludeFromCampaign,
 } from "@/lib/services/leadsBulk";
+import { toScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -78,32 +79,33 @@ export const POST = handler(async (req) => {
       perm = "leads:write";
   }
   const session = await requirePermission(perm);
+  const scope = toScope(session);
 
   let result;
   switch (input.action) {
     case "delete":
-      result = await bulkSoftDelete(input.ids);
+      result = await bulkSoftDelete(input.ids, scope);
       break;
     case "restore":
-      result = await bulkRestore(input.ids);
+      result = await bulkRestore(input.ids, scope);
       break;
     case "assign":
-      result = await bulkAssign(input.ids, input.assignedToId);
+      result = await bulkAssign(input.ids, input.assignedToId, scope);
       break;
     case "status":
-      result = await bulkSetStatus(input.ids, input.status);
+      result = await bulkSetStatus(input.ids, input.status, scope);
       break;
     case "tags-add":
-      result = await bulkAddTags(input.ids, input.tags);
+      result = await bulkAddTags(input.ids, input.tags, scope);
       break;
     case "tags-remove":
-      result = await bulkRemoveTags(input.ids, input.tags);
+      result = await bulkRemoveTags(input.ids, input.tags, scope);
       break;
     case "enroll-sequence":
-      result = await bulkEnrollInSequence(input.ids, input.sequenceId);
+      result = await bulkEnrollInSequence(input.ids, input.sequenceId, scope);
       break;
     case "exclude-campaign":
-      result = await bulkExcludeFromCampaign(input.ids, input.campaignId);
+      result = await bulkExcludeFromCampaign(input.ids, input.campaignId, scope);
       break;
     default:
       throw new ApiError(400, "Action inconnue", "unknown_action");

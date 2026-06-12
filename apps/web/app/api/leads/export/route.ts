@@ -4,6 +4,7 @@ import { audit, clientIp } from "@/lib/audit";
 import { exportLeadsQuery } from "@/lib/schemas/lead";
 import { collectLeadsForExport, EXPORT_COLUMNS, type ExportColumn } from "@/lib/services/leads";
 import { toCsv } from "@/lib/csv";
+import { toScope } from "@/lib/scope";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export const GET = handler(async (req) => {
   const requested = (q.columns?.split(",").map((c) => c.trim()).filter(Boolean) ?? []) as ExportColumn[];
   const columns = (requested.length ? requested.filter((c) => (EXPORT_COLUMNS as readonly string[]).includes(c)) : [...EXPORT_COLUMNS]) as ExportColumn[];
 
-  const rows = await collectLeadsForExport(q, columns);
+  const rows = await collectLeadsForExport(q, columns, toScope(s));
   await audit({ userId: s.sub, action: "leads.export", ip: clientIp(req), diff: { format: q.format, count: rows.length } });
 
   const stamp = new Date().toISOString().slice(0, 10);

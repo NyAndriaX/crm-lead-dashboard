@@ -70,7 +70,7 @@ function buildNav(role: ShellUser["role"], collapsed: boolean): MenuProps["items
 export default function DashboardShell({ user, children }: { user: ShellUser; children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const { siteName, siteIconUrl } = useSiteBranding();
+  const { siteName, siteIconUrl, siteIconSizeSidebar } = useSiteBranding();
   const pathname = usePathname();
   const router = useRouter();
   const { token } = antdTheme.useToken();
@@ -154,7 +154,7 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
           >
             {siteIconUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={siteIconUrl} alt="" style={{ width: 28, height: 28, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
+              <img src={siteIconUrl} alt="" style={{ width: siteIconSizeSidebar, height: siteIconSizeSidebar, borderRadius: 8, objectFit: "contain", flexShrink: 0 }} />
             ) : (
               <div
                 style={{
@@ -199,7 +199,7 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
             <Space size={10}>
               {siteIconUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={siteIconUrl} alt="" style={{ width: 28, height: 28, borderRadius: 8, objectFit: "cover" }} />
+                <img src={siteIconUrl} alt="" style={{ width: siteIconSizeSidebar, height: siteIconSizeSidebar, borderRadius: 8, objectFit: "contain" }} />
               ) : (
                 <DashboardOutlined style={{ color: "#fff", fontSize: 18 }} />
               )}

@@ -8,13 +8,11 @@
  * appels métier — il suffira de dériver l'orgId du contexte requête.
  */
 import { prisma } from "@crm/db";
+import { parseBrandingSizes, type OrgBranding } from "@/lib/branding";
 
 export const DEFAULT_ORG_ID = "default";
 
-export type OrgBranding = {
-  siteName?: string;
-  siteIconUrl?: string | null;
-};
+export type { OrgBranding };
 
 export type OrgInfo = {
   id: string;
@@ -26,13 +24,7 @@ export type OrgInfo = {
 };
 
 function parseBranding(settings: unknown): OrgBranding {
-  if (!settings || typeof settings !== "object") return {};
-  const s = settings as Record<string, unknown>;
-  const branding = (s.branding ?? {}) as Record<string, unknown>;
-  return {
-    siteName: typeof branding.siteName === "string" ? branding.siteName : undefined,
-    siteIconUrl: typeof branding.siteIconUrl === "string" ? branding.siteIconUrl : undefined,
-  };
+  return parseBrandingSizes(settings);
 }
 
 /** Retourne l'organisation courante, en la créant au premier accès. */
