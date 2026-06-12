@@ -3,9 +3,10 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Card, Form, Input, Button, Typography, Alert, message } from "antd";
+import { Card, Form, Input, Button, Typography, Alert } from "antd";
 import { LockOutlined, ArrowLeftOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -17,18 +18,15 @@ function ResetPasswordInner() {
 
   async function onFinish(values: { password: string; confirm: string }) {
     if (values.password !== values.confirm) {
-      message.error("Les mots de passe ne correspondent pas.");
+      notifyError("Les mots de passe ne correspondent pas.");
       return;
     }
     setLoading(true);
     try {
       await api.post("/auth/reset-password", { token, password: values.password });
-      message.success("Mot de passe mis à jour.");
+      notifySuccess("Mot de passe mis à jour.");
       router.replace("/login");
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message;
-      message.error(msg ?? "Lien invalide ou expiré.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Lien invalide ou expiré."); } finally {
       setLoading(false);
     }
   }

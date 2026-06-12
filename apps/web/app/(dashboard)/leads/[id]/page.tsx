@@ -2,22 +2,28 @@
 
 import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  Card, Descriptions, Timeline, Tag, Select, Button, Space, Typography, Progress,
-  message, Skeleton, Result, Row, Col, Modal, Empty, Popconfirm, Form, Input,
-  InputNumber, List, Upload,
-} from "antd";
+import { Card, Descriptions, Timeline, Tag, Select, Button, Space, Typography, Progress, Skeleton, Result, Row, Col, Modal, Empty, Popconfirm, Form, Input, InputNumber, List, Upload } from "antd";
 import {
   ArrowLeftOutlined, ReloadOutlined, MailOutlined, ThunderboltOutlined, DeleteOutlined,
   EuroOutlined, UploadOutlined, FileOutlined, SaveOutlined, RocketOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
+import { fetchTags } from "@/lib/tagsClient";
 import SafeHtml from "@/components/SafeHtml";
 import { LeadEnrichmentCard } from "@/components/leads/LeadEnrichmentCard";
 import { STATUS_LABELS, STATUS_COLORS, allowedTransitions } from "@/lib/leadStatus";
 import { LEAD_NOTE_LEGAL_BASES, legalBasisLabel } from "@/lib/leadLegalBasis";
 import { useBreakpoint, useIsMobile } from "@/lib/responsive";
 import type { LeadStatus } from "@crm/db";
+import {
+  applyApiFieldErrors,
+  extractApiError,
+  notifyApiError,
+  notifyError,
+  notifyInfo,
+  notifySuccess,
+  notifyWarning,
+} from "@/lib/feedback";
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -108,13 +114,15 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
       });
     } catch (e) {
       if ((e as { response?: { status?: number } }).response?.status === 404) setNotFound(true);
-      else message.error("Impossible de charger le lead.");
+      else notifyApiError(e, "Impossible de charger le lead.");
     } finally { setLoading(false); }
   }, [id]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { api.get<{ data: UserLite[] }>("/users").then((r) => setUsers(r.data.data)).catch(() => {}); }, []);
-  useEffect(() => { api.get<{ data: TagRef[] }>("/tags").then((r) => setTagsRef(r.data.data ?? [])).catch(() => {}); }, []);
+  useEffect(() => {
+    void fetchTags().then(setTagsRef).catch(() => {});
+  }, []);
   useEffect(() => {
     api.get<{ data: { id: string; name: string }[] }>("/pipeline-stages").then((r) => setStages(r.data.data)).catch(() => {});
   }, []);
@@ -122,37 +130,35 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   async function changeStatus(to: LeadStatus) {
     try {
       const { data } = await api.post<LeadDTO>(`/leads/${id}/status`, { status: to });
-      setLead(data); message.success(`Statut → ${STATUS_LABELS[to]} (pipeline synchronisé)`); void load();
-    } catch (e) { message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Échec du changement de statut."); }
+      setLead(data); notifySuccess(`Statut → ${STATUS_LABELS[to]} (pipeline synchronisé)`); void load();
+    } catch (e) { notifyApiError(e, "Échec du changement de statut."); }
   }
   async function changePipelineStage(stageId: string) {
     try {
       await api.post(`/leads/${id}/pipeline-stage`, { stageId });
-      message.success("Colonne pipeline mise à jour"); void load();
-    } catch (e) {
-      message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Échec");
-    }
+      notifySuccess("Colonne pipeline mise à jour"); void load();
+    } catch (e) { notifyApiError(e, "Échec"); }
   }
   async function savePotential() {
     try {
       const { data } = await api.put<LeadDTO>(`/leads/${id}`, { businessPotentialEur: potential });
-      setLead(data); message.success("Potentiel enregistré");
-    } catch { message.error("Enregistrement impossible"); }
+      setLead(data); notifySuccess("Potentiel enregistré");
+    } catch (e) { notifyApiError(e, "Enregistrement impossible"); }
   }
   async function addNote() {
     const values = await noteForm.validateFields();
     try {
       await api.post(`/leads/${id}/notes`, values);
       noteForm.resetFields();
-      message.success("Note ajoutée");
+      notifySuccess("Note ajoutée");
       void load();
-    } catch { message.error("Impossible d'ajouter la note"); }
+    } catch (e) { notifyApiError(e, "Impossible d'ajouter la note"); }
   }
   async function assign(userId: string | null) {
     try {
       const { data } = await api.post<LeadDTO>(`/leads/${id}/assign`, { assignedToId: userId });
-      setLead(data); message.success(userId ? "Lead assigné" : "Lead désassigné"); void load();
-    } catch { message.error("Échec de l'assignation."); }
+      setLead(data); notifySuccess(userId ? "Lead assigné" : "Lead désassigné"); void load();
+    } catch (e) { notifyApiError(e, "Échec de l'assignation."); }
   }
   async function saveLeadFields() {
     setSavingLead(true);
@@ -165,10 +171,11 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
         website: values.website || null,
       });
       setLead(data);
-      message.success("Lead enregistré");
+      notifySuccess("Lead enregistré");
       void load();
-    } catch {
-      message.error("Enregistrement impossible");
+    } catch (e) {
+      applyApiFieldErrors(e, editForm);
+      notifyApiError(e, "Enregistrement impossible");
     } finally {
       setSavingLead(false);
     }
@@ -177,35 +184,32 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   async function deleteDocument(docId: string) {
     try {
       await api.delete(`/leads/${id}/documents/${docId}`);
-      message.success("Document supprimé");
+      notifySuccess("Document supprimé");
       void load();
-    } catch {
-      message.error("Suppression impossible");
-    }
+    } catch (e) { notifyApiError(e, "Suppression impossible"); }
   }
 
   async function saveTags() {
     setSavingTags(true);
     try {
       const { data } = await api.put<LeadDTO>(`/leads/${id}/tags`, { tags });
-      setLead(data); message.success("Tags enregistrés"); void load();
-    } catch { message.error("Échec de l'enregistrement des tags."); }
+      setLead(data); notifySuccess("Tags enregistrés"); void load();
+      void fetchTags().then(setTagsRef).catch(() => {});
+    } catch (e) { notifyApiError(e, "Échec de l'enregistrement des tags."); }
     finally { setSavingTags(false); }
   }
   async function recalc() {
-    try { const { data } = await api.post<{ score: number }>(`/leads/${id}/recalculate-score`); setLead((l) => (l ? { ...l, score: data.score } : l)); message.success(`Score : ${data.score}`); }
-    catch { message.error("Échec du recalcul."); }
+    try { const { data } = await api.post<{ score: number }>(`/leads/${id}/recalculate-score`); setLead((l) => (l ? { ...l, score: data.score } : l)); notifySuccess(`Score : ${data.score}`); }
+    catch (e) { notifyApiError(e, "Échec du recalcul."); }
   }
 
   async function deleteThreadMessage(messageId: string) {
     try {
       await api.delete(`/inbox/${messageId}`);
-      message.success("Message supprimé");
+      notifySuccess("Message supprimé");
       await load();
     } catch (e) {
-      message.error(
-        (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Suppression impossible",
-      );
+      notifyApiError(e, "Suppression impossible");
     }
   }
 
@@ -222,9 +226,10 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
       });
       await load();
     } catch (e) {
+      notifyApiError(e, "Échec de la relance IA.");
       setAiNotice({
         kind: "error",
-        text: (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Échec de la relance IA.",
+        text: extractApiError(e, "Échec de la relance IA."),
       });
     } finally {
       setAiRetryingId(null);
@@ -233,7 +238,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   function confirmDelete() {
     Modal.confirm({
       title: "Archiver ce lead ?", content: "Le lead sera soft-deleté (restaurable).", okText: "Archiver", okButtonProps: { danger: true },
-      onOk: async () => { await api.delete(`/leads/${id}`); message.success("Lead archivé"); void load(); },
+      onOk: async () => { await api.delete(`/leads/${id}`); notifySuccess("Lead archivé"); void load(); },
     });
   }
 
@@ -562,10 +567,13 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                   const fd = new FormData();
                   fd.append("file", file as File);
                   await api.post(`/leads/${id}/documents`, fd, { headers: { "Content-Type": "multipart/form-data" } });
-                  message.success("Document ajouté");
+                  notifySuccess("Document ajouté");
                   void load();
                   onSuccess?.(file);
-                } catch (e) { onError?.(e as Error); }
+                } catch (e) {
+                  notifyApiError(e, "Impossible d'ajouter le document");
+                  onError?.(e as Error);
+                }
               }}
               showUploadList={false}
             >

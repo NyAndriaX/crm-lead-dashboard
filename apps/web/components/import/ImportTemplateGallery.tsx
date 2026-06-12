@@ -8,15 +8,13 @@
  * aperçu (drawer) avec les colonnes incluses et les lignes d'exemple.
  */
 import { useEffect, useState } from "react";
-import {
-  Card, Col, Row, Space, Tag, Button, Drawer, Typography, Table, Tooltip,
-  Skeleton, message,
-} from "antd";
+import { Card, Col, Row, Space, Tag, Button, Drawer, Typography, Table, Tooltip, Skeleton } from "antd";
 import {
   DownloadOutlined, EyeOutlined, FileExcelOutlined, FileTextOutlined,
   AppstoreOutlined,
 } from "@ant-design/icons";
-import { api } from "@/lib/client";
+import { api, apiFetch } from "@/lib/client";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -46,9 +44,7 @@ export function ImportTemplateGallery() {
       try {
         const { data } = await api.get<{ data: TemplateMeta[] }>("/import/templates");
         setTemplates(data.data);
-      } catch {
-        message.error("Impossible de charger les modèles.");
-      } finally {
+      } catch (e) { notifyApiError(e, "Impossible de charger les modèles."); } finally {
         setLoading(false);
       }
     })();
@@ -62,7 +58,7 @@ export function ImportTemplateGallery() {
     setLoadingPreview(true);
     try {
       // On télécharge le CSV pour parser un aperçu rapide
-      const r = await fetch(downloadUrl(meta.id, "csv"), { credentials: "include" });
+      const r = await apiFetch(downloadUrl(meta.id, "csv"));
       const text = await r.text();
       const lines = text.replace(/^﻿/, "").split("\n").filter(Boolean);
       const headers = (lines[0] ?? "").split(";");
@@ -73,9 +69,7 @@ export function ImportTemplateGallery() {
         return o;
       });
       setPreviewOpen({ ...meta, columns: headers, examples: rows });
-    } catch {
-      message.error("Aperçu indisponible.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Aperçu indisponible."); } finally {
       setLoadingPreview(false);
     }
   }

@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
 import { prisma } from "@crm/db";
+import { json } from "@/lib/api";
 
 /**
  * Healthcheck — P-03 (Disponibilité, monitoring/alerting).
@@ -49,7 +49,7 @@ export async function GET() {
 
   const status = db === "ok" ? (worker === "stale" ? "degraded" : "ok") : "degraded";
 
-  return NextResponse.json(
+  return json(
     {
       status,
       service: "crm-web",

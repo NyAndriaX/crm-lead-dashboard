@@ -7,6 +7,7 @@ import {
   DEFAULT_SITE_NAME,
   type OrgBranding,
 } from "@/lib/branding";
+import { apiFetch } from "@/lib/client";
 
 export type SiteBranding = OrgBranding;
 
@@ -17,7 +18,7 @@ export function useSiteBranding() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    fetch("/api/organization/branding")
+    apiFetch("/api/organization/branding")
       .then((r) => r.json())
       .then((j: { data?: SiteBranding }) => setBranding(j.data ?? {}))
       .catch(() => {})

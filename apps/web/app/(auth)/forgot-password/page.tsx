@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Card, Form, Input, Button, Typography, Alert, message } from "antd";
+import { Card, Form, Input, Button, Typography, Alert } from "antd";
 import { MailOutlined, ArrowLeftOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
-import { extractApiError, showErrorPopup, showSuccessPopup } from "@/lib/feedback";
 import { SiteBrandLogo } from "@/components/branding/SiteBrandLogo";
+import { notifyApiError, notifySuccess } from "@/lib/feedback";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -19,14 +19,12 @@ export default function ForgotPasswordPage() {
     try {
       await api.post("/auth/forgot-password", values);
       setSent(true);
-      showSuccessPopup(
+      notifySuccess(
         "Demande enregistrée",
         "Si un compte existe avec cet email, un lien de réinitialisation a été envoyé. Vérifiez votre boîte mail et les spams.",
       );
     } catch (e) {
-      const msg = extractApiError(e, "Impossible d'envoyer l'email.");
-      showErrorPopup("Envoi impossible", msg);
-      message.error(msg);
+      notifyApiError(e, "Impossible d'envoyer l'email.", "Envoi impossible");
     } finally {
       setLoading(false);
     }

@@ -12,10 +12,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import {
-  Alert, Button, Card, Col, Empty, Progress, Row, Segmented,
-  Space, Spin, Statistic, Table, Tag, Typography, Tabs, message,
-} from "antd";
+import { Alert, Button, Card, Col, Empty, Progress, Row, Segmented, Space, Spin, Statistic, Table, Tag, Typography, Tabs } from "antd";
 import {
   BarChartOutlined, DollarOutlined, DownloadOutlined, FireOutlined,
   LineChartOutlined, MailOutlined, RiseOutlined, TeamOutlined,
@@ -23,6 +20,7 @@ import {
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Title, Text } = Typography;
 
@@ -68,9 +66,7 @@ function GlobalView({ period }: { period: Period }) {
     try {
       const { data } = await api.get<{ data: GlobalKpis }>(`/analytics/global?period=${period}`);
       setKpis(data.data);
-    } catch {
-      message.error("Impossible de charger les KPIs.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger les KPIs."); } finally {
       setLoading(false);
     }
   }, [period]);
@@ -236,9 +232,7 @@ function CampaignsView() {
     try {
       const { data } = await api.get<{ data: CampaignReport[] }>("/analytics/campaigns");
       setRows(data.data);
-    } catch {
-      message.error("Impossible de charger les rapports campagne.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger les rapports campagne."); } finally {
       setLoading(false);
     }
   }, []);
@@ -367,9 +361,7 @@ function TimelineView({ period }: { period: Period }) {
       );
       setBuckets(data.data.buckets);
       setSources(data.data.sources);
-    } catch {
-      message.error("Impossible de charger l'évolution.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger l'évolution."); } finally {
       setLoading(false);
     }
   }, [period, granularity]);
@@ -495,9 +487,7 @@ function SalesView({ period }: { period: Period }) {
         `/analytics/sales-performance?period=${period}`,
       );
       setRows(data.data);
-    } catch {
-      message.error("Impossible de charger la performance commerciale.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger la performance commerciale."); } finally {
       setLoading(false);
     }
   }, [period]);
@@ -686,9 +676,7 @@ function PipelineView() {
       try {
         const res = await api.get<{ data: PipelineAnalytics }>("/analytics/pipeline");
         setData(res.data.data);
-      } catch {
-        message.error("Impossible de charger les métriques pipeline.");
-      } finally {
+      } catch (e) { notifyApiError(e, "Impossible de charger les métriques pipeline."); } finally {
         setLoading(false);
       }
     })();

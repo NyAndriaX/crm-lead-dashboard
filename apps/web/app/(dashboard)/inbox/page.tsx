@@ -2,16 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import {
-  Table, Input, Select, Tag, Space, Button, Badge, Drawer, Typography, Divider, Form,
-  message, Tooltip, Switch, Empty, Card, Popconfirm, Modal,
-} from "antd";
+import { Table, Input, Select, Tag, Space, Button, Badge, Drawer, Typography, Divider, Form, Tooltip, Switch, Empty, Card, Popconfirm, Modal } from "antd";
 import { ReloadOutlined, MailOutlined, CheckOutlined, SendOutlined, TagsOutlined, ThunderboltOutlined, DeleteOutlined, SyncOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
 import { smtpSelectOptions, type SmtpOptionLike } from "@/lib/emailAccounts";
 import SafeHtml from "@/components/SafeHtml";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
 import type { LeadStatus } from "@crm/db";
+import { extractApiError, notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -88,9 +86,7 @@ export default function InboxPage() {
       const r = await api.get<{ data: InboxItem[]; total: number }>(`/inbox?${params.toString()}`);
       setData(r.data.data);
       setTotal(r.data.total);
-    } catch {
-      message.error("Impossible de charger la boîte de réception.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger la boîte de réception."); } finally {
       setLoading(false);
     }
   }, [page, pageSize, search, unreadOnly]);
@@ -122,15 +118,13 @@ export default function InboxPage() {
       form.resetFields();
       const replySubj = item.subject ? (item.subject.startsWith("Re:") ? item.subject : `Re: ${item.subject}`) : "";
       form.setFieldsValue({ subject: replySubj });
-    } catch {
-      message.error("Impossible d'ouvrir le message.");
-    }
+    } catch (e) { notifyApiError(e, "Impossible d'ouvrir le message."); }
   }
 
   async function searchImapServer() {
     const q = search.trim();
     if (!q) {
-      message.warning("Saisissez un terme de recherche.");
+      notifyWarning("Saisissez un terme de recherche.");
       return;
     }
     setImapSearching(true);
@@ -140,11 +134,9 @@ export default function InboxPage() {
       }>("/inbox/imap-search", { query: q });
       setImapHits(data.data.hits);
       setImapModalOpen(true);
-      if (data.data.ok) message.success(data.data.message);
-      else message.warning(data.data.message);
-    } catch {
-      message.error("Recherche IMAP impossible.");
-    } finally {
+      if (data.data.ok) notifySuccess(data.data.message);
+      else notifyWarning(data.data.message);
+    } catch (e) { notifyApiError(e, "Recherche IMAP impossible."); } finally {
       setImapSearching(false);
     }
   }
@@ -153,11 +145,9 @@ export default function InboxPage() {
     setSyncing(true);
     try {
       await api.post("/imap-configs/sync", {});
-      message.success("Synchronisation IMAP demandée. Les nouveaux emails apparaîtront dans quelques secondes.");
+      notifySuccess("Synchronisation IMAP demandée. Les nouveaux emails apparaîtront dans quelques secondes.");
       setTimeout(() => void load(), 4000);
-    } catch {
-      message.error("Synchronisation impossible — vérifiez votre configuration IMAP.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Synchronisation impossible — vérifiez votre configuration IMAP."); } finally {
       setSyncing(false);
     }
   }
@@ -166,9 +156,7 @@ export default function InboxPage() {
     try {
       await api.patch(`/inbox/${item.id}`, { isRead: !item.isRead });
       setData((rows) => rows.map((x) => (x.id === item.id ? { ...x, isRead: !x.isRead } : x)));
-    } catch {
-      message.error("Échec de la mise à jour.");
-    }
+    } catch (e) { notifyApiError(e, "Échec de la mise à jour."); }
   }
 
   async function recategorize(item: InboxItem) {
@@ -177,21 +165,18 @@ export default function InboxPage() {
         `/inbox/${item.id}/categorize`,
       );
       setData((rows) => rows.map((x) => (x.id === item.id ? { ...x, category: data.data.category } : x)));
-      message.success(`Catégorie : ${CATEGORY_LABEL[data.data.category] ?? data.data.category} (${data.data.source})`);
-    } catch {
-      message.error("Échec de la catégorisation.");
-    }
+      notifySuccess(`Catégorie : ${CATEGORY_LABEL[data.data.category] ?? data.data.category} (${data.data.source})`);
+    } catch (e) { notifyApiError(e, "Échec de la catégorisation."); }
   }
 
   async function deleteMessage(target: Pick<InboxItem, "id">) {
     try {
       await api.delete(`/inbox/${target.id}`);
-      message.success("Message supprimé");
+      notifySuccess("Message supprimé");
       if (opened?.id === target.id) setOpened(null);
       await load();
     } catch (e) {
-      const errMsg = (e as { response?: { data?: { message?: string } } }).response?.data?.message;
-      message.error(errMsg ?? "Suppression impossible");
+      notifyApiError(e, "Suppression impossible");
     }
   }
 
@@ -212,8 +197,8 @@ export default function InboxPage() {
       setThread(t.data.data);
       await load();
     } catch (e) {
-      const errMsg = (e as { response?: { data?: { message?: string } } }).response?.data?.message;
-      setAiNotice({ kind: "error", text: errMsg ?? "Échec de la relance IA." });
+      notifyApiError(e, "Échec de la relance IA.");
+      setAiNotice({ kind: "error", text: extractApiError(e, "Échec de la relance IA.") });
     } finally {
       setAiRetrying(false);
     }
@@ -225,17 +210,14 @@ export default function InboxPage() {
       const values = await form.validateFields();
       setSending(true);
       await api.post(`/inbox/${opened.id}/reply`, values);
-      message.success("Réponse envoyée");
+      notifySuccess("Réponse envoyée");
       form.resetFields();
       if (opened.leadId) {
         const t = await api.get<{ data: ThreadItem[] }>(`/leads/${opened.leadId}/thread`);
         setThread(t.data.data);
       }
       await load();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message;
-      if (msg) message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, "Une erreur est survenue"); } finally {
       setSending(false);
     }
   }

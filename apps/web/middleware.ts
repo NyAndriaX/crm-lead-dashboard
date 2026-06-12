@@ -34,6 +34,14 @@ function isPublic(pathname: string) {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
 
+/** En-têtes anti-cache sur toutes les réponses /api (filet de sécurité côté edge). */
+function withApiNoStore(res: NextResponse): NextResponse {
+  res.headers.set("Cache-Control", "private, no-store, no-cache, must-revalidate");
+  res.headers.set("Pragma", "no-cache");
+  res.headers.set("Expires", "0");
+  return res;
+}
+
 /** Journalise chaque requête en NODE_ENV=development (image runtime Dokploy / debug). */
 function logRequest(req: NextRequest) {
   if (process.env.NODE_ENV !== "development") return;
@@ -44,13 +52,21 @@ function logRequest(req: NextRequest) {
 export function middleware(req: NextRequest) {
   logRequest(req);
   const { pathname } = req.nextUrl;
-  if (isPublic(pathname)) return NextResponse.next();
+  const isApi = pathname.startsWith("/api/");
+
+  if (isPublic(pathname)) {
+    return isApi ? withApiNoStore(NextResponse.next()) : NextResponse.next();
+  }
 
   const hasToken = Boolean(req.cookies.get(ACCESS_COOKIE)?.value);
-  if (hasToken) return NextResponse.next();
+  if (hasToken) {
+    return isApi ? withApiNoStore(NextResponse.next()) : NextResponse.next();
+  }
 
-  if (pathname.startsWith("/api/")) {
-    return NextResponse.json({ error: "unauthenticated", message: "Authentification requise" }, { status: 401 });
+  if (isApi) {
+    return withApiNoStore(
+      NextResponse.json({ error: "unauthenticated", message: "Authentification requise" }, { status: 401 }),
+    );
   }
   const loginUrl = new URL("/login", req.url);
   loginUrl.searchParams.set("next", pathname);

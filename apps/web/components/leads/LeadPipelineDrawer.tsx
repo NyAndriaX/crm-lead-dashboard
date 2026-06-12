@@ -1,10 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  Button, Descriptions, Drawer, Form, Input, InputNumber, List, Select, Space,
-  Tag, Typography, Upload, message, Popconfirm,
-} from "antd";
+import { Button, Descriptions, Drawer, Form, Input, InputNumber, List, Select, Space, Tag, Typography, Upload, Popconfirm } from "antd";
 import {
   DeleteOutlined, EuroOutlined, FileOutlined, LinkOutlined, UploadOutlined,
 } from "@ant-design/icons";
@@ -13,6 +10,7 @@ import { api } from "@/lib/client";
 import { LEAD_NOTE_LEGAL_BASES, legalBasisLabel } from "@/lib/leadLegalBasis";
 import { STATUS_COLORS, STATUS_LABELS, allowedTransitions } from "@/lib/leadStatus";
 import type { LeadStatus } from "@crm/db";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -89,9 +87,7 @@ export function LeadPipelineDrawer({
       setPotential(l.data.businessPotentialEur);
       setNotes(n.data.data);
       setDocuments(d.data.data);
-    } catch {
-      message.error("Impossible de charger le lead.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger le lead."); } finally {
       setLoading(false);
     }
   }, [leadId]);
@@ -105,24 +101,20 @@ export function LeadPipelineDrawer({
     try {
       const { data } = await api.post<LeadDetail>(`/leads/${leadId}/status`, { status });
       setLead(data);
-      message.success(`Statut → ${STATUS_LABELS[status]}`);
+      notifySuccess(`Statut → ${STATUS_LABELS[status]}`);
       onUpdated?.();
       void load();
-    } catch (e) {
-      message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Échec");
-    }
+    } catch (e) { notifyApiError(e, "Échec"); }
   }
 
   async function changeStage(stageId: string) {
     if (!leadId) return;
     try {
       await api.post(`/leads/${leadId}/pipeline-stage`, { stageId });
-      message.success("Colonne pipeline mise à jour");
+      notifySuccess("Colonne pipeline mise à jour");
       onUpdated?.();
       void load();
-    } catch (e) {
-      message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Échec");
-    }
+    } catch (e) { notifyApiError(e, "Échec"); }
   }
 
   async function savePotential() {
@@ -133,11 +125,9 @@ export function LeadPipelineDrawer({
         businessPotentialEur: potential,
       });
       setLead(data);
-      message.success("Potentiel enregistré");
+      notifySuccess("Potentiel enregistré");
       onUpdated?.();
-    } catch {
-      message.error("Enregistrement impossible");
-    } finally {
+    } catch (e) { notifyApiError(e, "Enregistrement impossible"); } finally {
       setSavingPotential(false);
     }
   }
@@ -148,12 +138,10 @@ export function LeadPipelineDrawer({
     try {
       await api.post(`/leads/${leadId}/notes`, values);
       noteForm.resetFields();
-      message.success("Note ajoutée");
+      notifySuccess("Note ajoutée");
       void load();
       onUpdated?.();
-    } catch {
-      message.error("Impossible d'ajouter la note");
-    }
+    } catch (e) { notifyApiError(e, "Impossible d'ajouter la note"); }
   }
 
   async function removeNote(noteId: string) {
@@ -161,9 +149,7 @@ export function LeadPipelineDrawer({
     try {
       await api.delete(`/leads/${leadId}/notes/${noteId}`);
       void load();
-    } catch {
-      message.error("Suppression impossible");
-    }
+    } catch (e) { notifyApiError(e, "Suppression impossible"); }
   }
 
   return (
@@ -301,11 +287,12 @@ export function LeadPipelineDrawer({
                   await api.post(`/leads/${leadId}/documents`, fd, {
                     headers: { "Content-Type": "multipart/form-data" },
                   });
-                  message.success("Document ajouté");
+                  notifySuccess("Document ajouté");
                   void load();
                   onUpdated?.();
                   onSuccess?.(file);
                 } catch (e) {
+                  notifyApiError(e, "Impossible d'ajouter le document");
                   onError?.(e as Error);
                 }
               }}

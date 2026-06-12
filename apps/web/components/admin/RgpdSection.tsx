@@ -12,15 +12,13 @@
  *   2. Suppressions RGPD — blacklist permanente, réintégration interdite.
  */
 import { useCallback, useEffect, useState } from "react";
-import {
-  Alert, Button, Card, Col, Collapse, Form, Input, message, Modal, Popconfirm,
-  Row, Space, Table, Tabs, Tag, Typography,
-} from "antd";
+import { Alert, Button, Card, Col, Collapse, Form, Input, Modal, Popconfirm, Row, Space, Table, Tabs, Tag, Typography } from "antd";
 import {
   DeleteOutlined, DownloadOutlined, FileTextOutlined, RollbackOutlined,
   SafetyCertificateOutlined, StopOutlined, WarningOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -96,9 +94,7 @@ export function RgpdSection() {
     try {
       const { data } = await api.get<{ data: DataProcessing[] }>("/rgpd/registry");
       setRegistry(data.data);
-    } catch {
-      message.error("Impossible de charger le registre.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger le registre."); } finally {
       setLoading(false);
     }
   }, []);
@@ -113,9 +109,7 @@ export function RgpdSection() {
       setArchived(data.data);
       setArchivedTotal(data.total);
       setArchivedPage(data.page);
-    } catch {
-      message.error("Impossible de charger les leads archivés.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger les leads archivés."); } finally {
       setArchivedLoading(false);
     }
   }, []);
@@ -130,9 +124,7 @@ export function RgpdSection() {
       setErased(data.data);
       setErasedTotal(data.total);
       setErasedPage(data.page);
-    } catch {
-      message.error("Impossible de charger les suppressions RGPD.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger les suppressions RGPD."); } finally {
       setErasedLoading(false);
     }
   }, []);
@@ -159,13 +151,13 @@ export function RgpdSection() {
     a.click();
     document.body.removeChild(a);
     setActionOpen(null);
-    message.success("Export en cours de téléchargement…");
+    notifySuccess("Export en cours de téléchargement…");
   }
 
   async function doErase() {
     const { leadId, confirm } = await leadIdForm.validateFields();
     if (confirm !== "EFFACER") {
-      message.error("Tapez exactement EFFACER pour confirmer.");
+      notifyError("Tapez exactement EFFACER pour confirmer.");
       return;
     }
     setWorking(true);
@@ -174,13 +166,10 @@ export function RgpdSection() {
         `/rgpd/leads/${encodeURIComponent(leadId)}/erase`,
       );
       setEraseResult(data.data);
-      message.success("Lead effacé définitivement — email bloqué pour toute réintégration.");
+      notifySuccess("Lead effacé définitivement — email bloqué pour toute réintégration.");
       void fetchErased(1);
       void fetchArchived(archivedPage);
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, "Erreur"); } finally {
       setWorking(false);
     }
   }
@@ -189,12 +178,9 @@ export function RgpdSection() {
     setRestoringId(id);
     try {
       await api.post(`/leads/${encodeURIComponent(id)}/restore`);
-      message.success("Lead réintégré dans le CRM.");
+      notifySuccess("Lead réintégré dans le CRM.");
       void fetchArchived(archivedPage);
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, "Erreur"); } finally {
       setRestoringId(null);
     }
   }
@@ -293,12 +279,10 @@ export function RgpdSection() {
                               onConfirm={async () => {
                                 try {
                                   await api.post(`/rgpd/archived-leads/${encodeURIComponent(r.id)}/erase`);
-                                  message.success("Lead passé en suppression RGPD.");
+                                  notifySuccess("Lead passé en suppression RGPD.");
                                   void fetchArchived(archivedPage);
                                   void fetchErased(1);
-                                } catch (e) {
-                                  message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur");
-                                }
+                                } catch (e) { notifyApiError(e, "Erreur"); }
                               }}
                             >
                               <Button type="link" size="small" danger icon={<StopOutlined />}>

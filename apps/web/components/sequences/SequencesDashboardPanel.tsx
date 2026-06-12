@@ -9,16 +9,14 @@
  *    nb total envoyés, prochaine action programmée, distribution stoppedReason.
  */
 import { useCallback, useEffect, useState } from "react";
-import {
-  Card, Col, Empty, Progress, Row, Space, Spin, Statistic, Table, Tag, Tooltip,
-  Typography, message,
-} from "antd";
+import { Card, Col, Empty, Progress, Row, Space, Spin, Statistic, Table, Tag, Tooltip, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
   ClockCircleOutlined, MailOutlined, PauseCircleOutlined, RetweetOutlined,
   SyncOutlined, TrophyOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Text } = Typography;
 
@@ -81,9 +79,7 @@ export function SequencesDashboardPanel({ refreshKey }: { refreshKey?: number })
     try {
       const { data } = await api.get<{ data: Dashboard }>("/sequences/dashboard");
       setData(data.data);
-    } catch {
-      message.error("Impossible de charger les statistiques des séquences.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger les statistiques des séquences."); } finally {
       setLoading(false);
     }
   }, []);

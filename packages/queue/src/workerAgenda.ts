@@ -1,6 +1,19 @@
-import { prisma } from "@crm/db";
+import { formatPrismaError, prisma } from "@crm/db";
 import { setWorkerAgenda } from "./workerAgendaRef";
 import type { WorkerJobHandler } from "./types";
+
+const loggedWorkerErrors = new Set<string>();
+
+function logWorkerJobError(scope: string, err: unknown): string {
+  const formatted = formatPrismaError(err);
+  const key = `${scope}:${formatted.code}`;
+  if (!loggedWorkerErrors.has(key)) {
+    loggedWorkerErrors.add(key);
+    const hint = formatted.hint ? ` — ${formatted.hint}` : "";
+    console.error(`[worker] ${scope}: ${formatted.message}${hint}`);
+  }
+  return formatted.shortMessage;
+}
 
 const LOCK_LIFETIME_MS: Record<string, number> = {
   "campaign-send": 35 * 60 * 1000,
@@ -70,7 +83,7 @@ async function processJob(jobId: string, type: string, payload: unknown): Promis
       },
     });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = logWorkerJobError(type, err);
     const job = await prisma.job.findUnique({ where: { id: jobId } });
     if (job && job.attempts + 1 >= job.maxAttempts) {
       await prisma.job.update({
@@ -148,9 +161,9 @@ async function poll(): Promise<void> {
     if (updated.count === 0) continue;
 
     running.set(job.type, typeRunning + 1);
-    processJob(job.id, job.type, job.payload).catch((e) =>
-      console.error(`[queue] unhandled error in job ${job.id}:`, e),
-    );
+    processJob(job.id, job.type, job.payload).catch((e) => {
+      logWorkerJobError(`job ${job.id} (${job.type})`, e);
+    });
   }
 }
 
@@ -161,9 +174,9 @@ export async function createWorkerAgenda(): Promise<QueueWorker> {
     start() {
       stopping = false;
       pollTimer = setInterval(() => {
-        poll().catch((e) => console.error("[queue] poll error:", e));
+        poll().catch((e) => logWorkerJobError("queue poll", e));
       }, processEvery);
-      poll().catch((e) => console.error("[queue] initial poll error:", e));
+      poll().catch((e) => logWorkerJobError("queue poll", e));
     },
 
     async stop() {
@@ -200,6 +213,9 @@ export async function createWorkerAgenda(): Promise<QueueWorker> {
         handlers[jobName] = async (ctx) => {
           try {
             return await originalHandler(ctx);
+          } catch (err) {
+            const short = logWorkerJobError(jobName, err);
+            return { skipped: true, error: formatPrismaError(err).code, message: short };
           } finally {
             await prisma.job.create({
               data: {

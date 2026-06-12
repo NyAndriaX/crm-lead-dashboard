@@ -1,13 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import {
-  Alert, Button, Card, Form, Input, List, Select, Space, Switch, Typography, Upload, message,
-} from "antd";
+import { useCallback, useEffect, useState } from "react";
+import { Alert, Button, Card, Form, Input, List, Select, Space, Switch, Typography, Upload } from "antd";
 import { ApiOutlined, CheckCircleOutlined, DeleteOutlined, FileMarkdownOutlined, ThunderboltOutlined, UploadOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
-import { extractApiError, showErrorPopup, showSuccessPopup, showWarningPopup } from "@/lib/feedback";
 import { labelWithHelp } from "@/components/ui/FieldHelp";
+import { notifyApiError, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 type KnowledgeDoc = {
   id: string;
@@ -16,8 +14,6 @@ type KnowledgeDoc = {
   createdAt: string;
 };
 const { Title, Text, Paragraph } = Typography;
-
-type Notice = { kind: "success" | "warning" | "error" | "info"; text: string };
 
 type ConfigState = {
   enabled: boolean;
@@ -49,29 +45,11 @@ export function OpenAiSection() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [notice, setNotice] = useState<Notice | null>(null);
   const [config, setConfig] = useState<ConfigState | null>(null);
   const [usage, setUsage] = useState<UsageState | null>(null);
   const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDoc[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<{ id: string; name: string }[]>([]);
   const [form] = Form.useForm();
-
-  function show(kind: Notice["kind"], text: string) {
-    setNotice({ kind, text });
-  }
-
-  function noticeStyle(kind: Notice["kind"]): CSSProperties {
-    switch (kind) {
-      case "success":
-        return { background: "#f6ffed", border: "1px solid #b7eb8f", color: "#389e0d" };
-      case "warning":
-        return { background: "#fffbeb", border: "1px solid #ffe58f", color: "#ad6800" };
-      case "error":
-        return { background: "#fff1f0", border: "1px solid #ffa39e", color: "#cf1322" };
-      default:
-        return { background: "#e6f7ff", border: "1px solid #91d5ff", color: "#1677ff" };
-    }
-  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,8 +78,8 @@ export function OpenAiSection() {
       } else {
         setUsage(null);
       }
-    } catch {
-      show("error", "Impossible de charger la configuration OpenAI.");
+    } catch (e) {
+      notifyApiError(e, "Impossible de charger la configuration OpenAI.");
     } finally {
       setLoading(false);
     }
@@ -117,7 +95,6 @@ export function OpenAiSection() {
   async function save() {
     const values = await form.validateFields();
     setSaving(true);
-    setNotice(null);
     try {
       const { data } = await api.put<{ data: ConfigState }>("/me/openai-config", {
         enabled: values.enabled,
@@ -130,10 +107,9 @@ export function OpenAiSection() {
       setConfig(data.data);
       setKnowledgeDocs(data.data.knowledgeDocs ?? []);
       form.setFieldValue("apiKey", "");
-      show("success", "Configuration OpenAI enregistrée.");
+      notifySuccess("Configuration OpenAI enregistrée.");
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message;
-      show("error", msg ?? "Échec de l'enregistrement.");
+      notifyApiError(e, "Échec de l'enregistrement.");
     } finally {
       setSaving(false);
     }
@@ -141,14 +117,13 @@ export function OpenAiSection() {
 
   async function clearKey() {
     setSaving(true);
-    setNotice(null);
     try {
       const { data } = await api.put<{ data: ConfigState }>("/me/openai-config", { clearApiKey: true });
       setConfig(data.data);
       form.setFieldsValue({ enabled: false, apiKey: "" });
-      show("success", "Clé OpenAI supprimée.");
-    } catch {
-      show("error", "Échec de la suppression.");
+      notifySuccess("Clé OpenAI supprimée.");
+    } catch (e) {
+      notifyApiError(e, "Échec de la suppression.");
     } finally {
       setSaving(false);
     }
@@ -156,21 +131,16 @@ export function OpenAiSection() {
 
   async function testConnection() {
     setTesting(true);
-    setNotice(null);
     try {
       await save();
       const { data } = await api.post<{ data: { ok: boolean; message: string } }>("/me/openai-config/test");
       if (data.data.ok) {
-        show("success", data.data.message);
-        showSuccessPopup("Test OpenAI réussi", data.data.message);
+        notifySuccess("Test OpenAI réussi", data.data.message);
       } else {
-        show("warning", data.data.message);
-        showWarningPopup("Test OpenAI", data.data.message);
+        notifyWarning("Test OpenAI", data.data.message);
       }
     } catch (e) {
-      const msg = extractApiError(e, "Test impossible.");
-      show("error", msg);
-      showErrorPopup("Test OpenAI échoué", msg);
+      notifyApiError(e, "Test impossible.", "Test OpenAI échoué");
     } finally {
       setTesting(false);
     }
@@ -178,17 +148,17 @@ export function OpenAiSection() {
 
   async function handleMdUpload(file: File): Promise<boolean> {
     if (!file.name.toLowerCase().endsWith(".md") && file.type !== "text/markdown" && file.type !== "text/plain") {
-      message.warning("Seuls les fichiers Markdown (.md) ou texte sont acceptés.");
+      notifyWarning("Seuls les fichiers Markdown (.md) ou texte sont acceptés.");
       return false;
     }
     if (knowledgeDocs.length >= 10) {
-      message.warning("Maximum 10 documents.");
+      notifyWarning("Maximum 10 documents.");
       return false;
     }
     try {
       const content = await file.text();
       if (content.length > 8000) {
-        message.warning("Document trop volumineux (max 8 000 caractères).");
+        notifyWarning("Document trop volumineux (max 8 000 caractères).");
         return false;
       }
       setKnowledgeDocs((prev) => [
@@ -200,10 +170,8 @@ export function OpenAiSection() {
           createdAt: new Date().toISOString(),
         },
       ]);
-      message.success(`« ${file.name} » ajouté — enregistrez pour persister.`);
-    } catch {
-      message.error("Lecture du fichier impossible.");
-    }
+      notifySuccess(`« ${file.name} » ajouté — enregistrez pour persister.`);
+    } catch (e) { notifyApiError(e, "Lecture du fichier impossible."); }
     return false;
   }
 
@@ -232,21 +200,6 @@ export function OpenAiSection() {
           </span>
         }
       />
-
-      {notice ? (
-        <div
-          role="status"
-          style={{
-            marginBottom: 16,
-            padding: "10px 12px",
-            borderRadius: 10,
-            fontWeight: 600,
-            ...noticeStyle(notice.kind),
-          }}
-        >
-          {notice.text}
-        </div>
-      ) : null}
 
       {config?.configured && usage ? (
         <Alert

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useId, useState, type CSSProperties } from "react";
+import { useCallback, useId, useState } from "react";
 import {
   Alert,
   Button,
@@ -15,6 +15,7 @@ import { ThunderboltOutlined } from "@ant-design/icons";
 import type { FormInstance } from "antd/es/form";
 import { AxiosError } from "axios";
 import { api } from "@/lib/client";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -52,43 +53,12 @@ function parseVariables(raw: unknown): string[] {
     .slice(0, 50);
 }
 
-function noticeStyle(kind: Notice["kind"]): CSSProperties {
-  switch (kind) {
-    case "success":
-      return { background: "#f6ffed", border: "1px solid #b7eb8f", color: "#389e0d" };
-    case "warning":
-      return { background: "#fffbeb", border: "1px solid #ffe58f", color: "#ad6800" };
-    case "error":
-      return { background: "#fff1f0", border: "1px solid #ffa39e", color: "#cf1322" };
-    default:
-      return { background: "#e6f7ff", border: "1px solid #91d5ff", color: "#1677ff" };
-  }
-}
-
-function NoticeBanner({ notice }: { notice: Notice | null }) {
-  if (!notice) return null;
-  return (
-    <div
-      role="status"
-      style={{
-        padding: "10px 12px",
-        borderRadius: 10,
-        fontWeight: 600,
-        ...noticeStyle(notice.kind),
-      }}
-    >
-      {notice.text}
-    </div>
-  );
-}
-
 export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mode: Mode }) {
   const collapseKey = useId();
   const [genLoading, setGenLoading] = useState(false);
   const [varLoading, setVarLoading] = useState(false);
   const [variants, setVariants] = useState<Variant[]>([]);
   const [picked, setPicked] = useState<number>(0);
-  const [notice, setNotice] = useState<Notice | null>(null);
   const [brief, setBrief] = useState("");
   const [tone, setTone] = useState("");
   const [ctx, setCtx] = useState({
@@ -103,7 +73,10 @@ export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mo
   const htmlField = mode === "template" ? "bodyHtml" : "htmlContent";
 
   function show(kind: Notice["kind"], text: string) {
-    setNotice({ kind, text });
+    if (kind === "success") notifySuccess(text);
+    else if (kind === "warning") notifyWarning(text);
+    else if (kind === "error") notifyError(text);
+    else notifyInfo(text);
   }
 
   const generateFull = useCallback(async () => {
@@ -122,7 +95,6 @@ export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mo
     }
 
     setGenLoading(true);
-    setNotice(null);
     try {
       const { data } = await api.post<{ data: TemplateGenerateResult | BlockGenerateResult }>(
         "/emailing/ai-generate",
@@ -161,7 +133,7 @@ export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mo
       if (code === "ai_disabled") {
         show("error", msg ?? "Configurez votre clé OpenAI dans Configuration → Intégration IA.");
       } else {
-        show("error", msg ?? "Échec de la génération IA.");
+        notifyApiError(e, msg ?? "Échec de la génération IA.");
       }
     } finally {
       setGenLoading(false);
@@ -197,7 +169,6 @@ export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mo
     const hasCtx = Object.values(leadContext).some(Boolean);
 
     setVarLoading(true);
-    setNotice(null);
     setVariants([]);
     try {
       const { data } = await api.post<{ data: { variants: Variant[] } }>("/emailing/ai-variants", {
@@ -216,8 +187,7 @@ export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mo
       setPicked(0);
       show("success", `${list.length} variante(s) générée(s).`);
     } catch (e) {
-      const ax = e as AxiosError<{ message?: string; error?: string }>;
-      show("error", ax.response?.data?.message ?? "Échec de la génération des variantes.");
+      notifyApiError(e, "Échec de la génération des variantes.");
     } finally {
       setVarLoading(false);
     }
@@ -252,8 +222,6 @@ export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mo
           ),
           children: (
             <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-              <NoticeBanner notice={notice} />
-
               <Alert
                 type="info"
                 showIcon

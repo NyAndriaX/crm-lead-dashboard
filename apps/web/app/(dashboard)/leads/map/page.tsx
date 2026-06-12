@@ -10,12 +10,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import {
-  Card, Space, Typography, Select, Slider, Spin, Empty, Tag, List, Button, message,
-} from "antd";
+import { Card, Space, Typography, Select, Slider, Spin, Empty, Tag, List, Button } from "antd";
 import { EnvironmentOutlined, ReloadOutlined } from "@ant-design/icons";
 import "leaflet/dist/leaflet.css";
 import { api } from "@/lib/client";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 import {
   geocodeCity, distanceKm, FRANCE_CENTER, type LatLng,
 } from "@/lib/geo/frenchCities";
@@ -56,9 +55,7 @@ export default function LeadsMapPage() {
         params: { pageSize: 200 },
       });
       setLeads(data.data);
-    } catch {
-      message.error("Impossible de charger les leads.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger les leads."); } finally {
       setLoading(false);
     }
   }, []);

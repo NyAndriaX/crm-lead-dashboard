@@ -3,10 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  Table, Tag, Typography, Button, Space, Input, InputNumber, Select, Dropdown, message,
-  Modal, Form, Row, Col, Popconfirm, Tooltip,
-} from "antd";
+import { Table, Tag, Typography, Button, Space, Input, InputNumber, Select, Dropdown, Modal, Form, Row, Col, Popconfirm, Tooltip } from "antd";
 import {
   DownloadOutlined, SaveOutlined, ReloadOutlined, PlusOutlined,
   DeleteOutlined, UserSwitchOutlined, TagsOutlined, ThunderboltOutlined,
@@ -15,9 +12,19 @@ import {
 import type { ColumnsType, TablePaginationConfig } from "antd/es/table";
 import type { SorterResult } from "antd/es/table/interface";
 import { api } from "@/lib/client";
+import { fetchTags } from "@/lib/tagsClient";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
 import { useBreakpoint, useIsMobile } from "@/lib/responsive";
 import { BulkEnrichModal } from "@/components/leads/BulkEnrichModal";
+import {
+  applyApiFieldErrors,
+  isFormValidationError,
+  notifyApiError,
+  notifyError,
+  notifyInfo,
+  notifySuccess,
+  notifyWarning,
+} from "@/lib/feedback";
 
 const { Title, Text } = Typography;
 
@@ -80,14 +87,20 @@ export default function LeadsPage() {
     try {
       const { data } = await api.get<ListResponse>("/leads", { params: queryParams });
       setRows(data.data); setTotal(data.pagination.total);
-    } catch { message.error("Impossible de charger les leads."); }
+    } catch (e) { notifyApiError(e, "Impossible de charger les leads."); }
     finally { setLoading(false); }
   }, [queryParams]);
+
+  const reloadTags = useCallback(async () => {
+    try {
+      setTagsRef(await fetchTags());
+    } catch { /* non bloquant */ }
+  }, []);
 
   useEffect(() => { void fetchLeads(); }, [fetchLeads]);
   useEffect(() => { api.get<{ data: LeadView[] }>("/lead-views").then((r) => setViews(r.data.data)).catch(() => {}); }, []);
   useEffect(() => { api.get<{ data: UserLite[] }>("/users").then((r) => setUsers(r.data.data)).catch(() => {}); }, []);
-  useEffect(() => { api.get<{ data: TagDTO[] }>("/tags").then((r) => setTagsRef(r.data.data ?? [])).catch(() => {}); }, []);
+  useEffect(() => { void reloadTags(); }, [reloadTags]);
   useEffect(() => {
     api.get<{ data: { id: string; name: string; status: string }[] }>("/campaigns")
       .then((r) => setCampaignsRef((r.data.data ?? []).filter((c) => ["SCHEDULED", "SENDING", "PAUSED"].includes(c.status))))
@@ -108,17 +121,15 @@ export default function LeadsPage() {
         { action, ids: selectedIds, ...payload },
       );
       const r = data.data;
-      message.success(
+      notifySuccess(
         `${r.succeeded}/${r.requested} lead${r.requested > 1 ? "s" : ""} traité${r.requested > 1 ? "s" : ""}${r.failed ? ` (${r.failed} échec${r.failed > 1 ? "s" : ""})` : ""}`,
       );
       setBulkOpen(null);
       bulkForm.resetFields();
       setSelectedIds([]);
       void fetchLeads();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    } finally {
+      if (action === "tags-add" || action === "tags-remove") void reloadTags();
+    } catch (e) { notifyApiError(e, "Erreur"); } finally {
       setBulkLoading(false);
     }
   }
@@ -138,14 +149,11 @@ export default function LeadsPage() {
           name: values.segmentName,
           filters: { mode: "manual", leadIds: selectedIds },
         });
-        message.success(`Segment « ${values.segmentName} » créé avec ${selectedIds.length} lead(s)`);
+        notifySuccess(`Segment « ${values.segmentName} » créé avec ${selectedIds.length} lead(s)`);
         setBulkOpen(null);
         bulkForm.resetFields();
         setSelectedIds([]);
-      } catch (e) {
-        const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Création impossible";
-        message.error(msg);
-      } finally {
+      } catch (e) { notifyApiError(e, "Création impossible"); } finally {
         setBulkLoading(false);
       }
       return;
@@ -216,8 +224,8 @@ export default function LeadsPage() {
     try {
       await api.post("/lead-views", { name, filters, columns: columns.map((c) => String(c.key)), sort });
       const r = await api.get<{ data: LeadView[] }>("/lead-views"); setViews(r.data.data);
-      message.success("Vue enregistrée");
-    } catch { message.error("Échec de l'enregistrement de la vue."); }
+      notifySuccess("Vue enregistrée");
+    } catch (e) { notifyApiError(e, "Échec de l'enregistrement de la vue."); }
   }
   function applyView(viewId: string) {
     const v = views.find((x) => x.id === viewId);
@@ -238,13 +246,16 @@ export default function LeadsPage() {
         website: values.website || null,
         tags: values.tags ?? [],
       });
-      message.success("Lead créé avec succès");
+      notifySuccess("Lead créé avec succès");
       form.resetFields();
       setCreateOpen(false);
       void fetchLeads();
+      void reloadTags();
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message;
-      if (msg) message.error(msg);
+      if (isFormValidationError(e)) throw e;
+      applyApiFieldErrors(e, form);
+      notifyApiError(e, "Impossible de créer le lead.");
+      throw e;
     } finally {
       setCreateLoading(false);
     }
@@ -313,7 +324,7 @@ export default function LeadsPage() {
         />
         <Input placeholder="Source" allowClear onChange={(e) => setFilter("source", e.target.value || undefined)} />
         <InputNumber placeholder="Score min" min={0} max={100} onChange={(v) => setFilter("scoreMin", v ?? undefined)} />
-        <Button icon={<ReloadOutlined />} onClick={() => fetchLeads()}>Rafraîchir</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { void fetchLeads(); void reloadTags(); }}>Rafraîchir</Button>
       </div>
 
       {/* Toolbar bulk actions (apparaît quand sélection non vide) */}

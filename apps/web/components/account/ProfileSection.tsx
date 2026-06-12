@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Button, Card, Form, Input, Space, Typography, message } from "antd";
+import { Button, Card, Form, Input, Space, Typography } from "antd";
 import { EditOutlined, UserOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Title, Text } = Typography;
 
@@ -24,9 +25,7 @@ export function ProfileSection() {
       const { data } = await api.get<{ user: ProfileState }>("/auth/me");
       setProfile({ name: data.user.name, email: data.user.email });
       form.setFieldsValue({ name: data.user.name });
-    } catch {
-      message.error("Impossible de charger le profil.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger le profil."); } finally {
       setLoading(false);
     }
   }, [form]);
@@ -40,14 +39,11 @@ export function ProfileSection() {
       const { data } = await api.patch<{ data: { name: string } }>("/me/profile", {
         name: values.name.trim(),
       });
-      message.success("Profil mis à jour.");
+      notifySuccess("Profil mis à jour.");
       setProfile((p) => (p ? { ...p, name: data.data.name } : p));
       window.location.reload();
     } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { message?: string } } })?.response?.data?.message
-        ?? "Échec de l'enregistrement.";
-      message.error(msg);
+      notifyApiError(e, "Échec de l'enregistrement.");
     } finally {
       setSaving(false);
     }

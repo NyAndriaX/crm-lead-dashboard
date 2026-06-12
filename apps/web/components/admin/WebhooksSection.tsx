@@ -8,16 +8,14 @@
  * secret HMAC-SHA256 généré automatiquement.
  */
 import { useCallback, useEffect, useState } from "react";
-import {
-  Alert, Button, Card, Checkbox, Form, Input, Modal, Popconfirm, Space, Table,
-  Tag, Tooltip, Typography, message,
-} from "antd";
+import { Alert, Button, Card, Checkbox, Form, Input, Modal, Popconfirm, Space, Table, Tag, Tooltip, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
   ApiOutlined, CheckOutlined, CloseOutlined, DeleteOutlined, EditOutlined,
   PlusOutlined, ReloadOutlined, SendOutlined, ThunderboltOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Text, Paragraph } = Typography;
 
@@ -52,9 +50,7 @@ export function WebhooksSection() {
     try {
       const { data } = await api.get<{ data: Webhook[] }>("/webhooks");
       setRows(data.data);
-    } catch {
-      message.error("Impossible de charger les webhooks.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger les webhooks."); } finally {
       setLoading(false);
     }
   }, []);
@@ -79,18 +75,15 @@ export function WebhooksSection() {
     try {
       if (editing) {
         await api.put(`/webhooks/${editing.id}`, values);
-        message.success("Webhook mis à jour");
+        notifySuccess("Webhook mis à jour");
       } else {
         await api.post("/webhooks", values);
-        message.success("Webhook créé — un secret HMAC a été généré côté serveur");
+        notifySuccess("Webhook créé — un secret HMAC a été généré côté serveur");
       }
       setCreateOpen(false);
       form.resetFields();
       void fetchAll();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, "Erreur"); } finally {
       setSaving(false);
     }
   }
@@ -98,25 +91,20 @@ export function WebhooksSection() {
   async function deleteOne(id: string) {
     try {
       await api.delete(`/webhooks/${id}`);
-      message.success("Webhook supprimé");
+      notifySuccess("Webhook supprimé");
       void fetchAll();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    }
+    } catch (e) { notifyApiError(e, "Erreur"); }
   }
 
   async function testOne(id: string) {
     try {
       const { data } = await api.post<{ data: { ok: boolean; status?: number; error?: string } }>(`/webhooks/${id}/test`);
       if (data.data.ok) {
-        message.success(`Test OK (HTTP ${data.data.status ?? "200"})`);
+        notifySuccess(`Test OK (HTTP ${data.data.status ?? "200"})`);
       } else {
-        message.error(`Test KO : ${data.data.error ?? `HTTP ${data.data.status ?? "?"}`}`);
+        notifyError(`Test KO : ${data.data.error ?? `HTTP ${data.data.status ?? "?"}`}`);
       }
-    } catch {
-      message.error("Échec du test.");
-    }
+    } catch (e) { notifyApiError(e, "Échec du test."); }
   }
 
   const columns: ColumnsType<Webhook> = [

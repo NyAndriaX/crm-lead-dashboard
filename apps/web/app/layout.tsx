@@ -1,8 +1,5 @@
 import type { Metadata } from "next";
-import { AntdRegistry } from "@ant-design/nextjs-registry";
-import { ConfigProvider } from "antd";
-import frFR from "antd/locale/fr_FR";
-import { crmTheme } from "@/lib/theme";
+import { AntdAppProvider } from "@/components/AntdAppProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -18,11 +15,7 @@ export default function RootLayout({
   return (
     <html lang="fr">
       <body>
-        <AntdRegistry>
-          <ConfigProvider theme={crmTheme} locale={frFR}>
-            {children}
-          </ConfigProvider>
-        </AntdRegistry>
+        <AntdAppProvider>{children}</AntdAppProvider>
       </body>
     </html>
   );

@@ -4,12 +4,11 @@
  * Section Permissions / Rôles — matrice RBAC éditable (persistée en base).
  */
 import { useCallback, useEffect, useState } from "react";
-import {
-  Alert, Button, Card, message, Space, Switch, Table, Tag, Typography,
-} from "antd";
+import { Alert, Button, Card, Space, Switch, Table, Tag, Typography } from "antd";
 import { ReloadOutlined, SaveOutlined, LockOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -94,9 +93,7 @@ export function PermissionsSection() {
       setMatrix(m);
       setChecked(matrixToRows(m));
       setDirty(false);
-    } catch {
-      message.error("Impossible de charger la matrice des permissions.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger la matrice des permissions."); } finally {
       setLoading(false);
     }
   }, []);
@@ -123,11 +120,8 @@ export function PermissionsSection() {
       setMatrix(data.data.matrix);
       setChecked(matrixToRows(data.data.matrix));
       setDirty(false);
-      message.success("Matrice des permissions enregistrée.");
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message;
-      message.error(msg ?? "Échec de l'enregistrement.");
-    } finally {
+      notifySuccess("Matrice des permissions enregistrée.");
+    } catch (e) { notifyApiError(e, "Échec de l'enregistrement."); } finally {
       setSaving(false);
     }
   }

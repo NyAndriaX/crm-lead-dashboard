@@ -10,10 +10,7 @@
  * - Bandeau de métriques : total leads, taux conversion par étape, durée moy. (PL-05).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Avatar, Badge, Button, Card, Empty, Input, message, Select, Space, Spin,
-  Statistic, Tag, Tooltip, Typography, Modal, Form, ColorPicker, Alert,
-} from "antd";
+import { Avatar, Badge, Button, Card, Empty, Input, Select, Space, Spin, Statistic, Tag, Tooltip, Typography, Modal, Form, ColorPicker, Alert } from "antd";
 import {
   FilterOutlined, ProjectOutlined, ReloadOutlined, SearchOutlined, TrophyOutlined,
   UserOutlined, RiseOutlined, ClockCircleOutlined, PlusOutlined, DeleteOutlined,
@@ -23,6 +20,7 @@ import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-p
 import { api } from "@/lib/client";
 import { labelWithHelp } from "@/components/ui/FieldHelp";
 import { LeadPipelineDrawer } from "@/components/leads/LeadPipelineDrawer";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Text, Title, Paragraph } = Typography;
 
@@ -140,9 +138,7 @@ export default function PipelinePage() {
     try {
       const { data } = await api.get<{ data: Lead[] }>(`/leads?${params.toString()}`);
       setLeads(data.data);
-    } catch {
-      message.error("Impossible de charger les leads.");
-    }
+    } catch (e) { notifyApiError(e, "Impossible de charger les leads."); }
   }, [filterAssignee, filterSource, filterTag, filterScoreMin, search]);
 
   const fetchAll = useCallback(async () => {
@@ -159,9 +155,7 @@ export default function PipelinePage() {
       setMetrics(metricsRes.data.data);
       setUsers(usersRes.data.data);
       await fetchLeads();
-    } catch {
-      message.error("Erreur de chargement de la vue pipeline.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Erreur de chargement de la vue pipeline."); } finally {
       setLoading(false);
     }
   }, [fetchLeads, pipelineOwnerId]);
@@ -245,8 +239,7 @@ export default function PipelinePage() {
       await api.put("/pipeline-stages/reorder", { orderedIds: next.map((s) => s.id) });
     } catch (e) {
       setStages(previousStages);
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(`Réorganisation impossible : ${msg}`);
+      notifyApiError(e, "Réorganisation impossible");
     }
   }
 
@@ -274,7 +267,7 @@ export default function PipelinePage() {
         setLeads((prev) =>
           prev.map((l) => (l.id === draggableId ? { ...l, status: data.data.status } : l)),
         );
-        message.success(`Statut mis à jour : ${data.data.status}`, 2);
+        notifySuccess(`Statut mis à jour : ${data.data.status}`);
       }
       try {
         const ownerQs = pipelineOwnerId ? `?ownerUserId=${encodeURIComponent(pipelineOwnerId)}` : "";
@@ -287,8 +280,7 @@ export default function PipelinePage() {
           l.id === draggableId ? { ...l, pipelineStageId: previousPipelineStageId } : l,
         ),
       );
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(`Déplacement impossible : ${msg}`);
+      notifyApiError(e, "Déplacement impossible");
     }
   }
 
@@ -321,14 +313,11 @@ export default function PipelinePage() {
           ? values.color.toHexString()
           : values.color ?? DEFAULT_COLORS[0];
       await api.post("/pipeline-stages", { name: values.name, color });
-      message.success("Colonne ajoutée");
+      notifySuccess("Colonne ajoutée");
       createForm.resetFields();
       setCreateOpen(false);
       await fetchAll();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, "Erreur"); } finally {
       setStageSaving(false);
     }
   }
@@ -341,14 +330,11 @@ export default function PipelinePage() {
       const qs = reassignTo ? `?reassignTo=${encodeURIComponent(reassignTo)}` : "";
       await api.delete(`/pipeline-stages/${removed.id}${qs}`);
       setStages((prev) => prev.filter((s) => s.id !== removed.id));
-      message.success(`Colonne « ${removed.name} » supprimée`);
+      notifySuccess(`Colonne « ${removed.name} » supprimée`);
       setDeleteTarget(null);
       setReassignTo(undefined);
       await fetchAll();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, "Erreur"); } finally {
       setStageSaving(false);
     }
   }

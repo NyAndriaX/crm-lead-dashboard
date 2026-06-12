@@ -10,11 +10,7 @@
  *  5. Traitement en cours + résultat
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Steps, Upload, Button, Typography, Table, Select, Space, Card, Alert, Progress,
-  Row, Col, Tag, Badge, Divider, Tooltip, message, Collapse, Statistic, List,
-  Switch, Input,
-} from "antd";
+import { Steps, Upload, Button, Typography, Table, Select, Space, Card, Alert, Progress, Row, Col, Tag, Badge, Divider, Tooltip, Collapse, Statistic, List, Switch, Input } from "antd";
 import {
   InboxOutlined, ArrowLeftOutlined, ArrowRightOutlined, CheckCircleOutlined,
   CloseCircleOutlined, ReloadOutlined, DeleteOutlined, HistoryOutlined,
@@ -22,10 +18,12 @@ import {
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
+import { fetchTags } from "@/lib/tagsClient";
 import { IMPORTABLE_FIELD_LABELS, type ImportableField } from "@/lib/schemas/import";
 import { useIsMobile } from "@/lib/responsive";
 import { ImportTemplateGallery } from "@/components/import/ImportTemplateGallery";
 import { labelWithHelp } from "@/components/ui/FieldHelp";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Title, Text, Paragraph } = Typography;
 const { Dragger } = Upload;
@@ -82,9 +80,13 @@ export default function ImportPage() {
 
   useEffect(() => { void fetchHistory(); }, [fetchHistory]);
 
-  useEffect(() => {
-    api.get<{ data: { name: string }[] }>("/tags").then((r) => setTagsRef(r.data.data ?? [])).catch(() => {});
+  const reloadTags = useCallback(async () => {
+    try {
+      setTagsRef(await fetchTags());
+    } catch { /* non bloquant */ }
   }, []);
+
+  useEffect(() => { void reloadTags(); }, [reloadTags]);
 
   // Polling du statut quand l'import tourne
   useEffect(() => {
@@ -100,12 +102,13 @@ export default function ImportPage() {
           pollRef.current = setTimeout(() => { void poll(); }, 2000);
         } else {
           void fetchHistory();
+          if (data.data.status === "done") void reloadTags();
         }
       } catch { /* silencieux */ }
     };
     pollRef.current = setTimeout(() => { void poll(); }, 2000);
     return () => { if (pollRef.current) clearTimeout(pollRef.current); };
-  }, [currentJob, fetchHistory]);
+  }, [currentJob, fetchHistory, reloadTags]);
 
   async function handleUpload(file: File): Promise<boolean> {
     setUploading(true);
@@ -129,10 +132,7 @@ export default function ImportPage() {
       }
       setMapping(autoMap);
       setStep(1);
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur lors de l'upload";
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, "Erreur lors de l'upload"); } finally {
       setUploading(false);
     }
     return false;
@@ -141,7 +141,7 @@ export default function ImportPage() {
   async function handleStart() {
     if (!uploadResult) return;
     if (Object.keys(mapping).length === 0) {
-      message.warning("Mappez au moins une colonne avant de continuer.");
+      notifyWarning("Mappez au moins une colonne avant de continuer.");
       return;
     }
     setStarting(true);
@@ -155,10 +155,7 @@ export default function ImportPage() {
       setCurrentJob(data.data);
       setStep(4);
       void fetchHistory();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Impossible de démarrer l'import";
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de démarrer l'import"); } finally {
       setStarting(false);
     }
   }
@@ -212,14 +209,12 @@ export default function ImportPage() {
       }
       const detected = Object.keys(reversed).length;
       if (detected === 0) {
-        message.info("Aucune colonne automatiquement reconnue. Mappage manuel.");
+        notifyInfo("Aucune colonne automatiquement reconnue. Mappage manuel.");
         return;
       }
       setMapping((m) => ({ ...m, ...reversed }));
-      message.success(`${detected} colonne${detected > 1 ? "s" : ""} détectée${detected > 1 ? "s" : ""} automatiquement`);
-    } catch {
-      message.error("Auto-détection indisponible.");
-    }
+      notifySuccess(`${detected} colonne${detected > 1 ? "s" : ""} détectée${detected > 1 ? "s" : ""} automatiquement`);
+    } catch (e) { notifyApiError(e, "Auto-détection indisponible."); }
   }
 
   function renderMapping() {
@@ -473,10 +468,7 @@ export default function ImportPage() {
     try {
       await api.delete(`/import/${id}`);
       void fetchHistory();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    }
+    } catch (e) { notifyApiError(e, "Erreur"); }
   }
 
   return (

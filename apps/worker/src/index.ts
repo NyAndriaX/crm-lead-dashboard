@@ -4,7 +4,7 @@
  * File de tâches : polling MySQL via Prisma (table `Job`).
  * Fuseau horaire : `AGENDA_TIMEZONE` (env) ou document `workerConfig` (id `default`), appliqué via `process.env.TZ`.
  */
-import { prisma } from "@crm/db";
+import { formatPrismaError, prisma } from "@crm/db";
 import { createWorkerAgenda, registerWorkerJobHandlers } from "@crm/queue";
 import { handlers } from "./handlers";
 import { recoverStaleScrapingJobs } from "./scraping/recover";
@@ -57,7 +57,9 @@ async function main() {
 }
 
 main().catch(async (e) => {
-  console.error("[worker] fatal:", e);
+  const f = formatPrismaError(e);
+  const hint = f.hint ? ` — ${f.hint}` : "";
+  console.error(`[worker] arrêt fatal: ${f.message}${hint}`);
   await prisma.$disconnect().catch(() => {});
   process.exit(1);
 });

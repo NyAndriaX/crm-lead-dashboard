@@ -9,14 +9,12 @@
  *  - 2FA active : bouton "Désactiver" → demande mot de passe + code, on désactive.
  */
 import { useEffect, useState } from "react";
-import {
-  Alert, Button, Card, Form, Input, message, Modal, Result, Space, Steps, Typography,
-  QRCode,
-} from "antd";
+import { Alert, Button, Card, Form, Input, Modal, Result, Space, Steps, Typography, QRCode } from "antd";
 import {
   CheckCircleOutlined, LockOutlined, SafetyOutlined, WarningOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -44,9 +42,7 @@ export function SecuritySection() {
       const { data } = await api.get<MeResponse>("/auth/me");
       setTwoFactorOn(Boolean(data.user.twoFactorOn));
       setEmail(data.user.email);
-    } catch {
-      message.error("Impossible de charger votre profil.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger votre profil."); } finally {
       setLoading(false);
     }
   }
@@ -73,10 +69,7 @@ export function SecuritySection() {
       setSecret(data.data.secret);
       setOtpauthUrl(data.data.otpauthUrl);
       setStep(1);
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, "Erreur"); } finally {
       setBusy(false);
     }
   }
@@ -88,10 +81,7 @@ export function SecuritySection() {
       await api.post("/auth/2fa/verify", { code });
       setStep(2);
       setTwoFactorOn(true);
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, "Erreur"); } finally {
       setBusy(false);
     }
   }
@@ -101,14 +91,11 @@ export function SecuritySection() {
     setBusy(true);
     try {
       await api.post("/auth/2fa/disable", values);
-      message.success("2FA désactivée");
+      notifySuccess("2FA désactivée");
       setTwoFactorOn(false);
       setDisableOpen(false);
       disableForm.resetFields();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, "Erreur"); } finally {
       setBusy(false);
     }
   }

@@ -8,10 +8,7 @@
  * providers à exécuter.
  */
 import { useState } from "react";
-import {
-  Card, Button, Space, Tag, Typography, Descriptions, List, Select, message,
-  Empty, Tooltip, Divider,
-} from "antd";
+import { Card, Button, Space, Tag, Typography, Descriptions, List, Select, Empty, Tooltip, Divider } from "antd";
 import {
   ThunderboltOutlined, CheckCircleTwoTone, LinkOutlined,
   GlobalOutlined, LinkedinOutlined, TwitterOutlined, FacebookOutlined,
@@ -19,6 +16,7 @@ import {
   EnvironmentOutlined, StarOutlined, SearchOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Text, Link: AntLink, Paragraph } = Typography;
 
@@ -111,12 +109,9 @@ export function LeadEnrichmentCard({
     setLoading(true);
     try {
       await api.post(`/leads/${leadId}/enrich`, { providers });
-      message.success("Approche terminée");
+      notifySuccess("Approche terminée");
       onEnriched();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Échec de l'enrichissement";
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, "Échec de l'enrichissement"); } finally {
       setLoading(false);
     }
   }

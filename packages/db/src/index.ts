@@ -1,4 +1,5 @@
 export { prisma } from "./client";
+export { formatPrismaError, type FormattedPrismaError } from "./formatPrismaError";
 export * from "@prisma/client";
 export {
   type DataScope,

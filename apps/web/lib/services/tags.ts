@@ -12,7 +12,6 @@ export async function listVisibleTags(scope: DataScope): Promise<TagItem[]> {
       AND: [buildLeadVisibilityWhere(scope), { deletedAt: null }],
     },
     select: { tags: true },
-    take: 50_000,
   });
 
   const names = new Set<string>();

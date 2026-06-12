@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Card, Form, Input, Button, Typography, Alert, Tag, Space, Divider, message } from "antd";
+import { Card, Form, Input, Button, Typography, Alert, Tag, Space, Divider } from "antd";
 import {
   UserOutlined, LockOutlined, SafetyOutlined, ThunderboltFilled,
   LineChartOutlined, TeamOutlined, MailOutlined, CopyOutlined,
@@ -13,6 +13,7 @@ import { api } from "@/lib/client";
 import { useIsMobile } from "@/lib/responsive";
 import { SiteBrandLogo } from "@/components/branding/SiteBrandLogo";
 import { useSiteBranding } from "@/lib/useSiteBranding";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -58,11 +59,12 @@ function LoginPageInner() {
       const ax = e as AxiosError<{ error?: string; message?: string }>;
       const res = ax.response;
       if (res == null) {
-        setError(
+        const errText =
           ax.message === "Network Error"
             ? "Impossible de joindre le serveur (réseau). Vérifiez l'URL de l'application et que le service est démarré."
-            : "Aucune réponse du serveur. Réessayez ou contactez l'administrateur.",
-        );
+            : "Aucune réponse du serveur. Réessayez ou contactez l'administrateur.";
+        setError(errText);
+        notifyError(errText, "Connexion impossible");
       } else {
         const code = res.data?.error;
         const msg = res.data?.message;
@@ -70,12 +72,13 @@ function LoginPageInner() {
           setNeedTotp(true);
           setError(msg ?? "Saisissez votre code 2FA.");
         } else {
-          setError(
+          const errText =
             msg ??
-              (res.status === 503
-                ? "Service temporairement indisponible. Réessayez dans quelques instants."
-                : "Connexion impossible. Vérifiez vos identifiants."),
-          );
+            (res.status === 503
+              ? "Service temporairement indisponible. Réessayez dans quelques instants."
+              : "Connexion impossible. Vérifiez vos identifiants.");
+          setError(errText);
+          notifyApiError(e, errText);
         }
       }
     } finally {
@@ -92,10 +95,8 @@ function LoginPageInner() {
   async function copyToClipboard(value: string) {
     try {
       await navigator.clipboard.writeText(value);
-      message.success("Copié dans le presse-papiers");
-    } catch {
-      message.error("Impossible de copier");
-    }
+      notifySuccess("Copié dans le presse-papiers");
+    } catch (e) { notifyApiError(e, "Impossible de copier"); }
   }
 
   // ── Layout ─────────────────────────────────────────────────────────────────

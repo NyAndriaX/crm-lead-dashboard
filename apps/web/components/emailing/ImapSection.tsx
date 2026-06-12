@@ -8,17 +8,14 @@
  * - Affichage de la date du dernier sync (mise à jour par le job worker imap-sync).
  */
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import {
-  Card, Table, Button, Space, Tag, Typography, Form, Input, InputNumber, Switch,
-  Modal, message, Popconfirm, Empty, Tooltip,
-} from "antd";
+import { Card, Table, Button, Space, Tag, Typography, Form, Input, InputNumber, Switch, Modal, Popconfirm, Empty, Tooltip } from "antd";
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, ApiOutlined,
   InboxOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
-import { extractApiError, showErrorPopup, showSuccessPopup } from "@/lib/feedback";
+import { extractApiError, notifyApiError, notifyError, notifySuccess } from "@/lib/feedback";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -72,9 +69,7 @@ export function ImapSection() {
     try {
       const r = await api.get<{ data: ImapConfigRow[] }>("/imap-configs");
       setRows(r.data.data);
-    } catch {
-      message.error("Impossible de charger les comptes IMAP.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger les comptes IMAP."); } finally {
       setLoading(false);
     }
   }, []);
@@ -116,17 +111,14 @@ export function ImapSection() {
         if (values.login) patch.login = values.login;
         if (values.password) patch.password = values.password;
         await api.put(`/imap-configs/${editing.id}`, patch);
-        message.success("Compte IMAP mis à jour");
+        notifySuccess("Compte IMAP mis à jour");
       } else {
         await api.post("/imap-configs", values);
-        message.success("Compte IMAP créé");
+        notifySuccess("Compte IMAP créé");
       }
       setEditorOpen(false);
       await load();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message;
-      if (msg) message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, "Une erreur est survenue"); } finally {
       setSaving(false);
     }
   }
@@ -139,11 +131,11 @@ export function ImapSection() {
       const response = await api.post<{ data: { ok?: boolean; message?: string } }>("/imap-configs/test", v);
       const msg = response.data?.data?.message || "Connexion IMAP réussie";
       setTestNotice({ kind: "success", text: msg });
-      showSuccessPopup("Test IMAP réussi", msg);
+      notifySuccess("Test IMAP réussi", msg);
     } catch (e) {
       const msg = extractApiError(e, "Échec du test IMAP");
       setTestNotice({ kind: "error", text: msg });
-      showErrorPopup("Test IMAP échoué", msg);
+      notifyApiError(e, "Échec du test IMAP", "Test IMAP échoué");
     } finally {
       setTesting(false);
     }
@@ -153,12 +145,9 @@ export function ImapSection() {
     try {
       setSyncing(true);
       await api.post("/imap-configs/sync");
-      message.success("Demande de sync IMAP envoyée. Le worker doit l'exécuter sous quelques secondes.");
+      notifySuccess("Demande de sync IMAP envoyée. Le worker doit l'exécuter sous quelques secondes.");
     } catch (e) {
-      const respMessage = (e as { response?: { data?: { message?: string } } }).response?.data?.message?.trim();
-      const directMessage = e instanceof Error ? e.message : String(e);
-      const msg = respMessage || directMessage || "Impossible de démarrer la synchronisation IMAP.";
-      message.error(msg);
+      notifyApiError(e, "Impossible de démarrer la synchronisation IMAP.");
     } finally {
       setSyncing(false);
     }
@@ -167,20 +156,16 @@ export function ImapSection() {
   async function destroy(row: ImapConfigRow) {
     try {
       await api.delete(`/imap-configs/${row.id}`);
-      message.success("Compte IMAP supprimé");
+      notifySuccess("Compte IMAP supprimé");
       await load();
-    } catch {
-      message.error("Échec de la suppression.");
-    }
+    } catch (e) { notifyApiError(e, "Échec de la suppression."); }
   }
 
   async function toggleActive(row: ImapConfigRow) {
     try {
       await api.put(`/imap-configs/${row.id}`, { isActive: !row.isActive });
       await load();
-    } catch {
-      message.error("Échec de la mise à jour.");
-    }
+    } catch (e) { notifyApiError(e, "Échec de la mise à jour."); }
   }
 
   const columns: ColumnsType<ImapConfigRow> = [

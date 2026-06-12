@@ -8,10 +8,7 @@
  * - Drawer "Membres" : sélection multi des users à inclure dans l'équipe
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Button, Card, Drawer, Form, Input, List, Modal, Popconfirm, Select, Space,
-  Statistic, Table, Tag, Typography, message,
-} from "antd";
+import { Button, Card, Drawer, Form, Input, List, Modal, Popconfirm, Select, Space, Statistic, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
   DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined, TeamOutlined,
@@ -19,6 +16,7 @@ import {
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
 import { PAGE_CARD_STYLE } from "@/lib/pageUi";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Text, Title } = Typography;
 
@@ -68,9 +66,7 @@ export function TeamsSection() {
       ]);
       setTeams(t.data.data);
       setUsers(u.data.data);
-    } catch {
-      message.error("Impossible de charger les équipes.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger les équipes."); } finally {
       setLoading(false);
     }
   }, []);
@@ -82,14 +78,11 @@ export function TeamsSection() {
     setSaving(true);
     try {
       await api.post("/teams", values);
-      message.success("Équipe créée");
+      notifySuccess("Équipe créée");
       createForm.resetFields();
       setCreateOpen(false);
       void fetchAll();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, "Erreur"); } finally {
       setSaving(false);
     }
   }
@@ -100,13 +93,10 @@ export function TeamsSection() {
     setSaving(true);
     try {
       await api.put(`/teams/${renameTarget.id}`, values);
-      message.success("Équipe renommée");
+      notifySuccess("Équipe renommée");
       setRenameTarget(null);
       void fetchAll();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, "Erreur"); } finally {
       setSaving(false);
     }
   }
@@ -114,12 +104,9 @@ export function TeamsSection() {
   async function deleteTeam(team: TeamRow) {
     try {
       await api.delete(`/teams/${team.id}`);
-      message.success(`Équipe « ${team.name} » supprimée`);
+      notifySuccess(`Équipe « ${team.name} » supprimée`);
       void fetchAll();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    }
+    } catch (e) { notifyApiError(e, "Erreur"); }
   }
 
   function openMembers(team: TeamRow) {
@@ -132,13 +119,10 @@ export function TeamsSection() {
     setSaving(true);
     try {
       await api.put(`/teams/${membersTarget.id}/members`, { userIds: selectedMemberIds });
-      message.success("Membres mis à jour");
+      notifySuccess("Membres mis à jour");
       setMembersTarget(null);
       void fetchAll();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, "Erreur"); } finally {
       setSaving(false);
     }
   }

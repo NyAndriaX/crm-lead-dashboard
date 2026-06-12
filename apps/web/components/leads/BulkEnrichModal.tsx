@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { Modal, Progress, Select, Space, Typography, Button, Alert, Statistic, Row, Col } from "antd";
 import { ThunderboltOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
+import { notifyApiError } from "@/lib/feedback";
 
 const { Text, Paragraph } = Typography;
 
@@ -74,6 +75,7 @@ export function BulkEnrichModal({
 
     let okAcc = 0;
     let koAcc = 0;
+    let chunkError: unknown = null;
     for (let i = 0; i < chunks.length; i++) {
       const isFinal = i === chunks.length - 1;
       try {
@@ -88,8 +90,9 @@ export function BulkEnrichModal({
         );
         okAcc += data.data.succeeded;
         koAcc += data.data.failed;
-      } catch {
+      } catch (e) {
         koAcc += chunks[i]!.length;
+        chunkError = e;
       }
       setProcessed((p) => p + chunks[i]!.length);
       setSucceeded(okAcc);
@@ -97,6 +100,7 @@ export function BulkEnrichModal({
     }
     setRunning(false);
     setFinished(true);
+    if (chunkError) notifyApiError(chunkError, "Échec d'enrichissement sur un ou plusieurs lots");
     onDone();
   }
 

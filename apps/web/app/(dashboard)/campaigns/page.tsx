@@ -2,32 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  Alert,
-  Button,
-  Card,
-  Col,
-  DatePicker,
-  Descriptions,
-  Drawer,
-  Form,
-  Input,
-  InputNumber,
-  List,
-  Modal,
-  Popconfirm,
-  Row,
-  Select,
-  Space,
-  Steps,
-  Switch,
-  Table,
-  Tag,
-  Tooltip,
-  Typography,
-  Upload,
-  message,
-} from "antd";
+import { Alert, Button, Card, Col, DatePicker, Descriptions, Drawer, Form, Input, InputNumber, List, Modal, Popconfirm, Row, Select, Space, Steps, Switch, Table, Tag, Tooltip, Typography, Upload } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
   MailOutlined,
@@ -48,6 +23,7 @@ import { api } from "@/lib/client";
 import { smtpSelectOptions, type SmtpOptionLike } from "@/lib/emailAccounts";
 import { useIsMobile } from "@/lib/responsive";
 import { labelWithHelp } from "@/components/ui/FieldHelp";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -131,9 +107,7 @@ export default function CampaignsPage() {
       setTemplates(tpl.data.data.map((t) => ({ id: t.id, name: t.name, subject: t.subject })));
       setSmtps(sm.data.data);
       setSegments(seg.data.data);
-    } catch {
-      message.error("Chargement impossible");
-    } finally {
+    } catch (e) { notifyApiError(e, "Chargement impossible"); } finally {
       setLoading(false);
     }
   }, []);
@@ -162,9 +136,7 @@ export default function CampaignsPage() {
     try {
       const { data } = await api.get<{ data: typeof stats }>(`/campaigns/${row.id}/stats`);
       setStats(data.data);
-    } catch {
-      message.error("Stats indisponibles");
-    }
+    } catch (e) { notifyApiError(e, "Stats indisponibles"); }
   };
 
   const saveCampaign = async () => {
@@ -212,10 +184,10 @@ export default function CampaignsPage() {
         await api.put(`/campaigns/${editingCampaign.id}`, payload);
         const successMessage = "Campagne mise à jour";
         setCampModalMessage({ type: "success", message: successMessage });
-        message.success(successMessage);
+        notifySuccess(successMessage);
       } else {
         await api.post("/campaigns", payload);
-        message.success("Campagne créée");
+        notifySuccess("Campagne créée");
         setCampModal(false);
         setEditingCampaign(null);
         campForm.resetFields();
@@ -225,7 +197,7 @@ export default function CampaignsPage() {
       void load();
     } catch (e: unknown) {
       if ((e as { errorFields?: unknown }).errorFields) return;
-      message.error(editingCampaign ? "Mise à jour impossible" : "Création impossible");
+      notifyApiError(e, editingCampaign ? "Mise à jour impossible" : "Création impossible");
     }
   };
 
@@ -256,9 +228,7 @@ export default function CampaignsPage() {
         total: number;
       }>("/segments/preview", { filters, page: 1, pageSize: 15 });
       setSegPreview({ data: data.data, total: data.total });
-    } catch {
-      message.error("Aperçu impossible");
-    } finally {
+    } catch (e) { notifyApiError(e, "Aperçu impossible"); } finally {
       setSegPreviewLoading(false);
     }
   };
@@ -270,58 +240,54 @@ export default function CampaignsPage() {
       const payload = { name: v.name, filters };
       if (editingSegment) {
         await api.put(`/segments/${editingSegment.id}`, payload);
-        message.success("Segment mis à jour");
+        notifySuccess("Segment mis à jour");
       } else {
         await api.post("/segments", payload);
-        message.success("Segment créé");
+        notifySuccess("Segment créé");
       }
       if (editingSegment) {
         const successMessage = "Segment mis à jour";
         setSegModalMessage({ type: "success", message: successMessage });
-        message.success(successMessage);
+        notifySuccess(successMessage);
       } else {
         setSegModal(false);
         setEditingSegment(null);
         segForm.resetFields();
         setSegPreview(null);
-        message.success("Segment créé");
+        notifySuccess("Segment créé");
       }
       void load();
     } catch (e: unknown) {
       if ((e as { errorFields?: unknown }).errorFields) return;
-      message.error(editingSegment ? "Mise à jour impossible" : "Segment impossible");
+      notifyApiError(e, editingSegment ? "Mise à jour impossible" : "Segment impossible");
     }
   };
 
   const schedule = async (id: string) => {
     try {
       await api.post(`/campaigns/${id}/schedule`, {});
-      message.success("Campagne planifiée — le worker enverra les messages.");
+      notifySuccess("Campagne planifiée — le worker enverra les messages.");
       void load();
-    } catch {
-      message.error("Planification refusée");
-    }
+    } catch (e) { notifyApiError(e, "Planification refusée"); }
   };
 
   const destroyCampaign = async (id: string) => {
     try {
       await api.delete(`/campaigns/${id}`);
-      message.success("Campagne supprimée");
+      notifySuccess("Campagne supprimée");
       void load();
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Suppression impossible";
-      message.error(msg);
+      notifyApiError(e, "Suppression impossible");
     }
   };
 
   const deleteSegment = async (id: string) => {
     try {
       await api.delete(`/segments/${id}`);
-      message.success("Segment supprimé");
+      notifySuccess("Segment supprimé");
       void load();
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Suppression impossible";
-      message.error(msg);
+      notifyApiError(e, "Suppression impossible");
     }
   };
 
@@ -373,9 +339,7 @@ export default function CampaignsPage() {
             createdAt: d.createdAt ?? new Date().toISOString(),
           })),
       );
-    } catch {
-      message.error("Impossible de charger la campagne");
-    }
+    } catch (e) { notifyApiError(e, "Impossible de charger la campagne"); }
   };
 
   const openEditSegment = async (row: SegmentRow) => {
@@ -436,21 +400,17 @@ export default function CampaignsPage() {
   const pause = async (id: string) => {
     try {
       await api.post(`/campaigns/${id}/pause`, {});
-      message.success("Campagne en pause");
+      notifySuccess("Campagne en pause");
       void load();
-    } catch {
-      message.error("Pause impossible");
-    }
+    } catch (e) { notifyApiError(e, "Pause impossible"); }
   };
 
   const resume = async (id: string) => {
     try {
       await api.post(`/campaigns/${id}/resume`, {});
-      message.success("Reprise demandée");
+      notifySuccess("Reprise demandée");
       void load();
-    } catch {
-      message.error("Reprise impossible");
-    }
+    } catch (e) { notifyApiError(e, "Reprise impossible"); }
   };
 
   const filteredCampaigns = useMemo(
@@ -984,12 +944,12 @@ export default function CampaignsPage() {
               showUploadList={false}
               beforeUpload={async (file) => {
                 if (campKnowledgeDocs.length >= 10) {
-                  message.warning("Maximum 10 documents par campagne.");
+                  notifyWarning("Maximum 10 documents par campagne.");
                   return false;
                 }
                 const content = await file.text();
                 if (content.length > 8000) {
-                  message.warning("Document trop volumineux (max 8 000 caractères).");
+                  notifyWarning("Document trop volumineux (max 8 000 caractères).");
                   return false;
                 }
                 setCampKnowledgeDocs((prev) => [

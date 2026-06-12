@@ -5,11 +5,7 @@
  */
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import {
-  Alert, Badge, Button, Card, Col, DatePicker, Drawer, Form, Input, InputNumber,
-  Modal, Popconfirm, Progress, Result, Row, Select, Space, Spin, Statistic,
-  Switch, Table, Tag, Timeline, Tooltip, Typography, message,
-} from "antd";
+import { Alert, Badge, Button, Card, Col, DatePicker, Drawer, Form, Input, InputNumber, Modal, Popconfirm, Progress, Result, Row, Select, Space, Spin, Statistic, Switch, Table, Tag, Timeline, Tooltip, Typography } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import {
   CheckCircleOutlined, CheckOutlined, CloseCircleOutlined, CloseOutlined,
@@ -20,6 +16,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
 import { labelWithHelp } from "@/components/ui/FieldHelp";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -126,9 +123,7 @@ function ScrapingPageInner() {
     try {
       const { data } = await api.get<{ data: Mission[] }>("/scraping/missions");
       setMissions(data.data);
-    } catch {
-      message.error("Impossible de charger les missions.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger les missions."); } finally {
       setLoading(false);
     }
   }, []);
@@ -138,7 +133,6 @@ function ScrapingPageInner() {
   useEffect(() => {
     api.get<{ data: { name: string }[] }>("/tags").then((r) => setTagsRef(r.data.data ?? [])).catch(() => {});
   }, []);
-
 
   // Auto-refresh tant qu'une mission tourne.
   useEffect(() => {
@@ -224,16 +218,14 @@ function ScrapingPageInner() {
     try {
       if (editing) {
         await api.put(`/scraping/missions/${editing.id}`, body);
-        message.success("Mission mise à jour");
+        notifySuccess("Mission mise à jour");
       } else {
         await api.post("/scraping/missions", body);
-        message.success("Mission créée");
+        notifySuccess("Mission créée");
       }
       setFormOpen(false);
       void fetchMissions();
-    } catch (e) {
-      message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur");
-    } finally {
+    } catch (e) { notifyApiError(e, "Erreur"); } finally {
       setSaving(false);
     }
   }
@@ -241,25 +233,20 @@ function ScrapingPageInner() {
   async function runMission(m: Mission) {
     try {
       const { data } = await api.post<{ data: { message?: string } }>(`/scraping/missions/${m.id}/run`);
-      message.success(
-        data.data.message ??
-          "Scraping lancé en arrière-plan — notification à la fin.",
-        8,
+      notifySuccess(
+        "Scraping lancé",
+        data.data.message ?? "Exécution en arrière-plan — notification à la fin.",
       );
       void fetchMissions();
-    } catch (e) {
-      message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur");
-    }
+    } catch (e) { notifyApiError(e, "Erreur"); }
   }
 
   async function removeMission(m: Mission) {
     try {
       await api.delete(`/scraping/missions/${m.id}`);
-      message.success("Mission supprimée");
+      notifySuccess("Mission supprimée");
       void fetchMissions();
-    } catch {
-      message.error("Suppression impossible");
-    }
+    } catch (e) { notifyApiError(e, "Suppression impossible"); }
   }
 
   const loadBuffer = useCallback(async (missionId: string) => {
@@ -268,9 +255,7 @@ function ScrapingPageInner() {
       const { data } = await api.get<{ data: BufferItem[] }>(`/scraping/missions/${missionId}/results`);
       setBuffer(data.data);
       setSelectedBuf([]);
-    } catch {
-      message.error("Impossible de charger les résultats.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger les résultats."); } finally {
       setBufferLoading(false);
     }
   }, []);
@@ -294,7 +279,7 @@ function ScrapingPageInner() {
           );
           void fetchMissions();
         })
-        .catch(() => message.error("Impossible d'enregistrer les tags d'injection"));
+        .catch(() => notifyError("Impossible d'enregistrer les tags d'injection"));
     }, 500);
   }, [fetchMissions]);
 
@@ -307,12 +292,10 @@ function ScrapingPageInner() {
     if (!resultsTarget || selectedBuf.length === 0) return;
     try {
       await api.patch(`/scraping/missions/${resultsTarget.id}/results`, { ids: selectedBuf, status });
-      message.success(`${selectedBuf.length} ligne(s) ${status === "accepted" ? "acceptée(s)" : "rejetée(s)"}`);
+      notifySuccess(`${selectedBuf.length} ligne(s) ${status === "accepted" ? "acceptée(s)" : "rejetée(s)"}`);
       void loadBuffer(resultsTarget.id);
       void fetchMissions();
-    } catch {
-      message.error("Action impossible");
-    }
+    } catch (e) { notifyApiError(e, "Action impossible"); }
   }
 
   async function injectAccepted() {
@@ -327,9 +310,7 @@ function ScrapingPageInner() {
       setInjectResult(data.data);
       void loadBuffer(resultsTarget.id);
       void fetchMissions();
-    } catch (e) {
-      message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Injection impossible");
-    } finally {
+    } catch (e) { notifyApiError(e, "Injection impossible"); } finally {
       setInjecting(false);
     }
   }

@@ -83,26 +83,43 @@ export class ApiError extends Error {
   }
 }
 
-export const json = <T>(data: T, init?: ResponseInit) => NextResponse.json(data, init);
-export const created = <T>(data: T) => NextResponse.json(data, { status: 201 });
-export const notFound = () => NextResponse.json({ message: "Not found" }, { status: 404 });
-export const noContent = () => new NextResponse(null, { status: 204 });
+/** Politique globale : aucune réponse API ne doit être mise en cache navigateur / proxy. */
+export const NO_STORE_HEADERS = {
+  "Cache-Control": "private, no-store, no-cache, must-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+} as const;
 
-/**
- * Helper P-01 : réponse JSON avec en-têtes de cache HTTP courts pour les
- * endpoints read-heavy quasi-statiques (tags, étapes pipeline, templates).
- * Le navigateur sert la réponse cache pendant `maxAge` puis revalide en
- * arrière-plan pendant `swr`.
- */
-export const jsonCached = <T>(
-  data: T,
-  opts: { maxAge?: number; swr?: number } = {},
-) =>
-  NextResponse.json(data, {
-    headers: {
-      "Cache-Control": `private, max-age=${opts.maxAge ?? 30}, stale-while-revalidate=${opts.swr ?? 120}`,
-    },
+function withNoStore(init?: ResponseInit): ResponseInit {
+  const headers = new Headers(init?.headers);
+  for (const [key, value] of Object.entries(NO_STORE_HEADERS)) {
+    headers.set(key, value);
+  }
+  return { ...init, headers };
+}
+
+/** Applique les en-têtes anti-cache à toute Response (y compris exports, fichiers). */
+export function applyNoStore(res: Response): Response {
+  const headers = new Headers(res.headers);
+  for (const [key, value] of Object.entries(NO_STORE_HEADERS)) {
+    headers.set(key, value);
+  }
+  return new Response(res.body, {
+    status: res.status,
+    statusText: res.statusText,
+    headers,
   });
+}
+
+export const json = <T>(data: T, init?: ResponseInit) => NextResponse.json(data, withNoStore(init));
+export const created = <T>(data: T, init?: ResponseInit) =>
+  NextResponse.json(data, withNoStore({ ...init, status: 201 }));
+export const notFound = () => NextResponse.json({ message: "Not found" }, withNoStore({ status: 404 }));
+export const noContent = () =>
+  new NextResponse(null, withNoStore({ status: 204 }));
+
+/** @deprecated Alias de `json` — le cache HTTP API est désactivé partout. */
+export const jsonCached = json;
 
 /** Enveloppe un handler : capture ApiError / ZodError et renvoie une réponse propre. */
 export function handler<Ctx = unknown>(
@@ -110,22 +127,26 @@ export function handler<Ctx = unknown>(
 ) {
   return async (req: Request, ctx: Ctx): Promise<Response> => {
     try {
-      return await fn(req, ctx);
+      return applyNoStore(await fn(req, ctx));
     } catch (e) {
       if (e instanceof ApiError) {
-        return NextResponse.json(
-          { error: e.code, message: e.message, details: e.details ?? undefined },
-          { status: e.status },
+        return applyNoStore(
+          NextResponse.json(
+            { error: e.code, message: e.message, details: e.details ?? undefined },
+            withNoStore({ status: e.status }),
+          ),
         );
       }
       if (e instanceof ZodError) {
-        return NextResponse.json(
-          { error: "validation_error", message: "Données invalides", details: e.flatten() },
-          { status: 422 },
+        return applyNoStore(
+          NextResponse.json(
+            { error: "validation_error", message: "Données invalides", details: e.flatten() },
+            withNoStore({ status: 422 }),
+          ),
         );
       }
       const infra = tryMapInfrastructureError(e);
-      if (infra) return infra;
+      if (infra) return applyNoStore(infra);
 
       console.error("[api] unhandled error:", e);
       const isDev = process.env.NODE_ENV === "development";
@@ -136,13 +157,15 @@ export function handler<Ctx = unknown>(
       const message = exposeMessage
         ? err!.message
         : "Une erreur inattendue s'est produite. Si le problème persiste, contactez l'administrateur.";
-      return NextResponse.json(
-        {
-          error: "internal_error",
-          message,
-          ...((isDev || verbose) && err?.stack ? { details: { stack: err.stack } } : {}),
-        },
-        { status: 500 },
+      return applyNoStore(
+        NextResponse.json(
+          {
+            error: "internal_error",
+            message,
+            ...((isDev || verbose) && err?.stack ? { details: { stack: err.stack } } : {}),
+          },
+          withNoStore({ status: 500 }),
+        ),
       );
     }
   };

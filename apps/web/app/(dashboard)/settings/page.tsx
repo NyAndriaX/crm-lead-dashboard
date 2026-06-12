@@ -23,12 +23,7 @@ import { RgpdSection } from "@/components/admin/RgpdSection";
 import { KnowledgeBasesSection } from "@/components/admin/KnowledgeBasesSection";
 import { BrandingSection } from "@/components/admin/BrandingSection";
 import { SettingsTabsLayout, type SettingsTabItem } from "@/components/admin/SettingsTabsLayout";
-import { extractApiError, showErrorPopup, showSuccessPopup } from "@/lib/feedback";
-import {
-  Card, Typography, Table, Button, Tag, Space, Form, InputNumber, Row, Col,
-  Statistic, Badge, Modal, Input, Select, message, Spin, Alert, Popconfirm, List,
-  Progress, Divider, Avatar, Tooltip, Checkbox, Collapse, Switch,
-} from "antd";
+import { Card, Typography, Table, Button, Tag, Space, Form, InputNumber, Row, Col, Statistic, Badge, Modal, Input, Select, Spin, Alert, Popconfirm, List, Progress, Divider, Avatar, Tooltip, Checkbox, Collapse, Switch } from "antd";
 import {
   UserOutlined, TrophyOutlined, UploadOutlined, PlusOutlined, EditOutlined,
   StopOutlined, CheckOutlined, ReloadOutlined, SafetyOutlined, FireOutlined,
@@ -43,6 +38,7 @@ import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
 import type { ScoringWeightsInput } from "@/lib/schemas/import";
 import { useIsMobile } from "@/lib/responsive";
 import { ADMIN_HERO_GRADIENT } from "@/lib/pageUi";
+import { extractApiError, notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -173,10 +169,8 @@ function DnsSenderAuthGuide(props: {
   async function copyTxt(text: string) {
     try {
       await navigator.clipboard.writeText(text);
-      message.success("Copié dans le presse-papiers");
-    } catch {
-      message.error("Copie impossible — sélectionnez le texte manuellement.");
-    }
+      notifySuccess("Copié dans le presse-papiers");
+    } catch (e) { notifyApiError(e, "Copie impossible — sélectionnez le texte manuellement."); }
   }
 
   const suggestedDomain = (() => {
@@ -355,7 +349,7 @@ function DnsSenderAuthGuide(props: {
               type="link"
               onClick={() => {
                 props.onDomainChange(suggestedDomain);
-                message.info("Domaine appliqué — vérifiez le sélecteur DKIM auprès de votre fournisseur.");
+                notifyInfo("Domaine appliqué — vérifiez le sélecteur DKIM auprès de votre fournisseur.");
               }}
             >
               Remplir le champ « Domaine »
@@ -404,9 +398,9 @@ function WorkerAgendaTimezoneCard() {
         agendaTimezone: tz,
       });
       setTz(res.data.data.agendaTimezone);
-      message.success(res.data.info ?? "Fuseau enregistré.");
+      notifySuccess(res.data.info ?? "Fuseau enregistré.");
     } catch {
-      message.error("Modification réservée aux administrateurs (permission Paramètres).");
+      notifyError("Modification réservée aux administrateurs (permission Paramètres).");
     } finally {
       setSaving(false);
     }
@@ -590,7 +584,7 @@ function UsersTab() {
       ]);
       setUsers(u.data.data);
       setTeams(t.data.data ?? []);
-    } catch { message.error("Impossible de charger les utilisateurs."); }
+    } catch (e) { notifyApiError(e, "Impossible de charger les utilisateurs."); }
     finally { setLoading(false); }
   }, []);
 
@@ -601,14 +595,11 @@ function UsersTab() {
     setSaving(true);
     try {
       await api.post("/users", values);
-      message.success("Utilisateur créé avec succès");
+      notifySuccess("Utilisateur créé avec succès");
       createForm.resetFields();
       setCreateOpen(false);
       void fetchUsers();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    } finally { setSaving(false); }
+    } catch (e) { notifyApiError(e, "Erreur"); } finally { setSaving(false); }
   }
 
   async function saveEdit() {
@@ -617,29 +608,23 @@ function UsersTab() {
     setSaving(true);
     try {
       await api.put(`/users/${editUser.id}`, values);
-      message.success("Utilisateur mis à jour");
+      notifySuccess("Utilisateur mis à jour");
       setEditUser(null);
       void fetchUsers();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    } finally { setSaving(false); }
+    } catch (e) { notifyApiError(e, "Erreur"); } finally { setSaving(false); }
   }
 
   async function toggleActive(user: UserRow) {
     try {
       if (user.isActive) {
         await api.delete(`/users/${user.id}`);
-        message.success("Compte désactivé");
+        notifySuccess("Compte désactivé");
       } else {
         await api.put(`/users/${user.id}`, { isActive: true });
-        message.success("Compte réactivé");
+        notifySuccess("Compte réactivé");
       }
       void fetchUsers();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    }
+    } catch (e) { notifyApiError(e, "Erreur"); }
   }
 
   async function inviteUser() {
@@ -650,9 +635,9 @@ function UsersTab() {
         email: { sent: boolean; error: string | null; acceptUrl?: string };
       }>("/users/invite", values);
       if (data.email.sent) {
-        message.success(`Invitation envoyée à ${values.email}`);
+        notifySuccess(`Invitation envoyée à ${values.email}`);
       } else if (data.email.acceptUrl) {
-        message.warning(data.email.error ?? "Email non envoyé — utilisez le lien direct ci-dessous.");
+        notifyWarning(data.email.error ?? "Email non envoyé — utilisez le lien direct ci-dessous.");
         Modal.info({
           title: "Lien d'invitation (mode dev)",
           width: 600,
@@ -665,15 +650,12 @@ function UsersTab() {
           ),
         });
       } else {
-        message.error(data.email.error ?? "Email d'invitation non envoyé.");
+        notifyError(data.email.error ?? "Email d'invitation non envoyé.");
       }
       inviteForm.resetFields();
       setInviteOpen(false);
       void fetchUsers();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    } finally { setSaving(false); }
+    } catch (e) { notifyApiError(e, "Erreur"); } finally { setSaving(false); }
   }
 
   async function deleteUserPermanently(user: UserRow) {
@@ -682,38 +664,29 @@ function UsersTab() {
         data: { unassignedLeads: number };
       }>(`/users/${user.id}?hard=true`);
       const n = data.data.unassignedLeads;
-      message.success(
+      notifySuccess(
         n > 0
           ? `${user.name} supprimé définitivement — ${n} lead(s) remis dans le pool.`
           : `${user.name} supprimé définitivement.`,
       );
       void fetchUsers();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    }
+    } catch (e) { notifyApiError(e, "Erreur"); }
   }
 
   async function reset2fa(user: UserRow) {
     try {
       await api.post(`/users/${user.id}/reset-2fa`);
-      message.success(`2FA réinitialisée pour ${user.name}`);
+      notifySuccess(`2FA réinitialisée pour ${user.name}`);
       void fetchUsers();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    }
+    } catch (e) { notifyApiError(e, "Erreur"); }
   }
 
   async function forceLogout(user: UserRow) {
     try {
       await api.post(`/users/${user.id}/force-logout`);
-      message.success(`Sessions de ${user.name} invalidées`);
+      notifySuccess(`Sessions de ${user.name} invalidées`);
       void fetchUsers();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    }
+    } catch (e) { notifyApiError(e, "Erreur"); }
   }
 
   const columns: ColumnsType<UserRow> = [
@@ -1052,10 +1025,7 @@ function EmailingTab() {
     try {
       const { data } = await api.get<{ data: SmtpConfigRow[] }>('/smtp-configs');
       setConfigs(data.data);
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Impossible de charger les configs SMTP.';
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, 'Impossible de charger les configs SMTP.'); } finally {
       setLoading(false);
     }
   }, []);
@@ -1065,10 +1035,7 @@ function EmailingTab() {
     try {
       const { data } = await api.get<{ data: TemplateRow[] }>('/templates');
       setTemplates(data.data);
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Impossible de charger les templates email.';
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, 'Impossible de charger les templates email.'); } finally {
       setTemplateLoading(false);
     }
   }, []);
@@ -1078,10 +1045,7 @@ function EmailingTab() {
     try {
       const { data } = await api.get<{ data: TemplateBlockRow[] }>('/template-blocks');
       setTemplateBlocks(data.data);
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Impossible de charger les blocs de template.';
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, 'Impossible de charger les blocs de template.'); } finally {
       setTemplateBlockLoading(false);
     }
   }, []);
@@ -1124,7 +1088,7 @@ function EmailingTab() {
   async function saveConfig() {
     const values = await form.validateFields();
     if (!editingConfig && (!values.login || !values.password)) {
-      message.error('Login et mot de passe sont requis pour créer un compte SMTP.');
+      notifyError('Login et mot de passe sont requis pour créer un compte SMTP.');
       return;
     }
     if (editingConfig) {
@@ -1136,17 +1100,14 @@ function EmailingTab() {
     try {
       if (editingConfig) {
         await api.put(`/smtp-configs/${editingConfig.id}`, values);
-        message.success('Configuration SMTP mise à jour');
+        notifySuccess('Configuration SMTP mise à jour');
       } else {
         await api.post('/smtp-configs', values);
-        message.success('Configuration SMTP créée');
+        notifySuccess('Configuration SMTP créée');
       }
       setModalOpen(false);
       void fetchConfigs();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de l’enregistrement';
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, "Erreur lors de l'enregistrement"); } finally {
       setSaving(false);
     }
   }
@@ -1154,12 +1115,9 @@ function EmailingTab() {
   async function deleteConfig(config: SmtpConfigRow) {
     try {
       await api.delete(`/smtp-configs/${config.id}`);
-      message.success('Configuration SMTP supprimée');
+      notifySuccess('Configuration SMTP supprimée');
       void fetchConfigs();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de la suppression';
-      message.error(msg);
-    }
+    } catch (e) { notifyApiError(e, 'Erreur lors de la suppression'); }
   }
 
   async function testConnection() {
@@ -1175,11 +1133,11 @@ function EmailingTab() {
       });
       const successMessage = response.data?.data?.message ?? 'Connexion SMTP réussie';
       setSmtpTestResult({ type: 'success', message: successMessage });
-      showSuccessPopup('Test SMTP réussi', successMessage);
+      notifySuccess('Test SMTP réussi', successMessage);
     } catch (e) {
       const msg = extractApiError(e, 'Erreur de connexion SMTP');
       setSmtpTestResult({ type: 'error', message: msg });
-      showErrorPopup('Test SMTP échoué', msg);
+      notifyApiError(e, 'Erreur de connexion SMTP', 'Test SMTP échoué');
     } finally {
       setTesting(false);
     }
@@ -1209,23 +1167,17 @@ function EmailingTab() {
   async function duplicateTemplateRow(row: TemplateRow) {
     try {
       const { data } = await api.post<{ data: TemplateRow }>(`/templates/${row.id}/duplicate`);
-      message.success(`Modèle dupliqué : ${data.data.name}`);
+      notifySuccess(`Modèle dupliqué : ${data.data.name}`);
       void fetchTemplates();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Impossible de dupliquer le template';
-      message.error(msg);
-    }
+    } catch (e) { notifyApiError(e, 'Impossible de dupliquer le template'); }
   }
 
   async function duplicateTemplateBlockRow(row: TemplateBlockRow) {
     try {
       const { data } = await api.post<{ data: TemplateBlockRow }>(`/template-blocks/${row.id}/duplicate`);
-      message.success(`Bloc dupliqué : ${data.data.name}`);
+      notifySuccess(`Bloc dupliqué : ${data.data.name}`);
       void fetchTemplateBlocks();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Impossible de dupliquer le bloc';
-      message.error(msg);
-    }
+    } catch (e) { notifyApiError(e, 'Impossible de dupliquer le bloc'); }
   }
 
   async function saveTemplate() {
@@ -1247,17 +1199,14 @@ function EmailingTab() {
     try {
       if (editingTemplate) {
         await api.put(`/templates/${editingTemplate.id}`, payload);
-        message.success('Template mis à jour');
+        notifySuccess('Template mis à jour');
       } else {
         await api.post('/templates', payload);
-        message.success('Template créé');
+        notifySuccess('Template créé');
       }
       setTemplateModalOpen(false);
       void fetchTemplates();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de l’enregistrement du template';
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, "Erreur lors de l'enregistrement du template"); } finally {
       setTemplateSaving(false);
     }
   }
@@ -1300,17 +1249,14 @@ function EmailingTab() {
     try {
       if (editingTemplateBlock) {
         await api.put(`/template-blocks/${editingTemplateBlock.id}`, payload);
-        message.success('Bloc de template mis à jour');
+        notifySuccess('Bloc de template mis à jour');
       } else {
         await api.post('/template-blocks', payload);
-        message.success('Bloc de template créé');
+        notifySuccess('Bloc de template créé');
       }
       setTemplateBlockModalOpen(false);
       void fetchTemplateBlocks();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de l’enregistrement du bloc de template';
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, "Erreur lors de l'enregistrement du bloc de template"); } finally {
       setTemplateBlockSaving(false);
     }
   }
@@ -1318,28 +1264,22 @@ function EmailingTab() {
   async function deleteTemplate(template: TemplateRow) {
     try {
       await api.delete(`/templates/${template.id}`);
-      message.success('Template supprimé');
+      notifySuccess('Template supprimé');
       void fetchTemplates();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de la suppression du template';
-      message.error(msg);
-    }
+    } catch (e) { notifyApiError(e, 'Erreur lors de la suppression du template'); }
   }
 
   async function deleteTemplateBlock(templateBlock: TemplateBlockRow) {
     try {
       await api.delete(`/template-blocks/${templateBlock.id}`);
-      message.success('Bloc de template supprimé');
+      notifySuccess('Bloc de template supprimé');
       void fetchTemplateBlocks();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de la suppression du bloc de template';
-      message.error(msg);
-    }
+    } catch (e) { notifyApiError(e, 'Erreur lors de la suppression du bloc de template'); }
   }
 
   async function checkDnsRecords() {
     if (!dnsDomain.trim()) {
-      message.error('Veuillez saisir un domaine pour la vérification DNS.');
+      notifyError('Veuillez saisir un domaine pour la vérification DNS.');
       return;
     }
     setDnsChecking(true);
@@ -1349,10 +1289,7 @@ function EmailingTab() {
         dkimSelector: dnsSelector.trim() || undefined,
       });
       setDnsResult(data.data);
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de la vérification DNS';
-      message.error(msg);
-    } finally {
+    } catch (e) { notifyApiError(e, 'Erreur lors de la vérification DNS'); } finally {
       setDnsChecking(false);
     }
   }
@@ -2179,12 +2116,9 @@ function ScoringTab() {
     try {
       await api.put("/admin/scoring-weights", values);
       setSaved(true);
-      message.success("Poids de scoring mis à jour ✓");
+      notifySuccess("Poids de scoring mis à jour ✓");
       setTimeout(() => setSaved(false), 3000);
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    } finally { setSaving(false); }
+    } catch (e) { notifyApiError(e, "Erreur"); } finally { setSaving(false); }
   }
 
   if (loading) return <div style={{ padding: 40, textAlign: "center" }}><Spin size="large" /></div>;

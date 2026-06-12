@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Button, Card, Form, Image, Input, InputNumber, Space, Spin, Typography, Upload, message } from "antd";
+import { Button, Card, Form, Image, Input, InputNumber, Space, Spin, Typography, Upload } from "antd";
 import { BgColorsOutlined, UploadOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
-import { extractApiError, showErrorPopup, showSuccessPopup } from "@/lib/feedback";
+import { extractApiError, notifyApiError, notifyError, notifySuccess } from "@/lib/feedback";
 import {
   DEFAULT_ICON_SIZE_LOGIN,
   DEFAULT_ICON_SIZE_SIDEBAR,
@@ -73,9 +73,7 @@ export function BrandingSection() {
         setIconPreview(icon);
         setIconUrlInput(icon ?? "");
       }
-    } catch {
-      message.error("Impossible de charger l'identité visuelle.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger l'identité visuelle."); } finally {
       setLoading(false);
     }
   }, [form]);
@@ -94,12 +92,12 @@ export function BrandingSection() {
         siteIconSizeSidebar: values.siteIconSizeSidebar ?? DEFAULT_ICON_SIZE_SIDEBAR,
         siteIconSizeLogin: values.siteIconSizeLogin ?? DEFAULT_ICON_SIZE_LOGIN,
       });
-      showSuccessPopup(
+      notifySuccess(
         "Identité enregistrée",
         "Le nom et l'icône du site ont été mis à jour. Rechargez la page si le menu latéral n'a pas changé.",
       );
     } catch (e) {
-      showErrorPopup("Enregistrement impossible", extractApiError(e, "Erreur inconnue"));
+      notifyApiError(e, "Erreur inconnue", "Enregistrement impossible");
     } finally {
       setSaving(false);
     }
@@ -175,9 +173,9 @@ export function BrandingSection() {
                   const dataUrl = await imageFileToDataUrl(file);
                   setIconPreview(dataUrl);
                   setIconUrlInput("");
-                  message.success("Image chargée — cliquez sur Enregistrer pour appliquer.");
+                  notifySuccess("Image chargée — cliquez sur Enregistrer pour appliquer.");
                 } catch {
-                  showErrorPopup("Upload impossible", "Le fichier sélectionné n'est pas une image valide.");
+                  notifyError("Le fichier sélectionné n'est pas une image valide.", "Upload impossible");
                 }
               })();
               return false;

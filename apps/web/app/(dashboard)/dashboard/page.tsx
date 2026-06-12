@@ -14,6 +14,7 @@ import {
 import { Pie, Column } from "@ant-design/charts";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
+import { notifyApiError } from "@/lib/feedback";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
 import { useIsMobile } from "@/lib/responsive";
 import { OpenAiUsageCard, type OpenAiUsageData } from "@/components/dashboard/OpenAiUsageCard";
@@ -127,7 +128,10 @@ export default function DashboardPage() {
     setLoading(true);
     api.get<{ data: DashStats }>("/dashboard/stats", { params: { openAiYear, openAiMonth } })
       .then((r) => setStats(r.data.data))
-      .catch(() => setError(true))
+      .catch((e) => {
+        setError(true);
+        notifyApiError(e, "Impossible de charger le tableau de bord.");
+      })
       .finally(() => setLoading(false));
   }, [openAiYear, openAiMonth]);
 

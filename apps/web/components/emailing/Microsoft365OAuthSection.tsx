@@ -17,8 +17,8 @@ import {
   ExclamationCircleOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
-import { extractApiError, showSuccessPopup } from "@/lib/feedback";
 import { validateAzureClientSecret } from "@/lib/oauth/microsoftSchemas";
+import { extractApiError, notifyApiError, notifySuccess } from "@/lib/feedback";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -224,6 +224,7 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
       setStep("consent");
     } catch (e) {
       setError(extractApiError(e, "Erreur lors de la génération du code Microsoft"));
+      notifyApiError(e, "Erreur lors de la génération du code Microsoft");
     } finally {
       setLoading(false);
     }
@@ -257,6 +258,7 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
       setStep("save");
     } catch (e) {
       setError(extractApiError(e, "Consentement en attente ou expiré."));
+      notifyApiError(e, "Consentement en attente ou expiré.");
     } finally {
       setPolling(false);
     }
@@ -291,7 +293,7 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
       });
       sessionStorage.removeItem(WIZARD_STORAGE_KEY);
       setSaved(true);
-      showSuccessPopup(
+      notifySuccess(
         "Connexion OAuth active",
         setupMode === "outlook"
           ? "Réception IMAP et envoi SMTP Outlook sont configurés via Microsoft 365."
@@ -300,6 +302,7 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
       onRefresh();
     } catch (e) {
       setError(extractApiError(e, "Erreur de sauvegarde"));
+      notifyApiError(e, "Erreur de sauvegarde");
     } finally {
       setLoading(false);
     }
@@ -311,8 +314,8 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
       await api.post("/oauth/microsoft/revoke", { target: revokeModal.target, configId: revokeModal.configId });
       setRevokeModal(null);
       onRefresh();
-    } catch {
-      /* ignore */
+    } catch (e) {
+      notifyApiError(e, "Impossible de révoquer la connexion OAuth");
     }
   }
 

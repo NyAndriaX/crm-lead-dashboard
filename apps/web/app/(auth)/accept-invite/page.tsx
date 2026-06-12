@@ -10,7 +10,9 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, Form, Input, Button, Alert, Typography } from "antd";
 import { LockOutlined } from "@ant-design/icons";
-import axios, { type AxiosError } from "axios";
+import { type AxiosError } from "axios";
+import { api } from "@/lib/client";
+import { notifyApiError } from "@/lib/feedback";
 
 const { Title, Paragraph } = Typography;
 
@@ -34,7 +36,7 @@ function AcceptInviteForm() {
     setLoading(true);
     setError(null);
     try {
-      await axios.post("/api/users/accept-invite", { token, password: values.password });
+      await api.post("/users/accept-invite", { token, password: values.password });
       setDone(true);
       setTimeout(() => {
         router.replace("/dashboard");
@@ -42,7 +44,9 @@ function AcceptInviteForm() {
       }, 800);
     } catch (e) {
       const resp = (e as AxiosError<{ message?: string; error?: string }>).response;
-      setError(resp?.data?.message ?? "Impossible d'accepter l'invitation. Le lien est peut-être expiré.");
+      const msg = resp?.data?.message ?? "Impossible d'accepter l'invitation. Le lien est peut-être expiré.";
+      setError(msg);
+      notifyApiError(e, msg);
     } finally {
       setLoading(false);
     }

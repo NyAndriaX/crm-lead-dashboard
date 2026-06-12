@@ -5,15 +5,13 @@
  * P-02 (capacité) et T-02 (organisation / multi-tenant).
  */
 import { useCallback, useEffect, useState } from "react";
-import {
-  Card, Space, Typography, Progress, Statistic, Row, Col, Tag, Alert,
-  Button, Descriptions, Spin, message,
-} from "antd";
+import { Card, Space, Typography, Progress, Statistic, Row, Col, Tag, Alert, Button, Descriptions, Spin } from "antd";
 import {
   HeartOutlined, DatabaseOutlined, CloudServerOutlined, ReloadOutlined,
   ApartmentOutlined, ThunderboltOutlined,
 } from "@ant-design/icons";
-import { api } from "@/lib/client";
+import { api, apiFetch } from "@/lib/client";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -58,16 +56,14 @@ export function SystemSection() {
     setLoading(true);
     try {
       const [h, c, i] = await Promise.all([
-        fetch("/api/health").then((r) => r.json()),
+        apiFetch("/api/health").then((r) => r.json()),
         api.get<{ data: Capacity }>("/system/capacity"),
         api.get<{ data: SystemInfo }>("/system/info"),
       ]);
       setHealth(h);
       setCapacity(c.data.data);
       setInfo(i.data.data);
-    } catch {
-      message.error("Impossible de charger l'état système.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger l'état système."); } finally {
       setLoading(false);
     }
   }, []);

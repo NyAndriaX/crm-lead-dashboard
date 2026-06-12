@@ -1,10 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  Card, Table, Button, Space, Typography, Tag, Switch, Modal, Form, Input, InputNumber, Select,
-  Popconfirm, message, Empty, Divider, Drawer, Steps, Tooltip, Badge,
-} from "antd";
+import { Card, Table, Button, Space, Typography, Tag, Switch, Modal, Form, Input, InputNumber, Select, Popconfirm, Empty, Divider, Drawer, Steps, Tooltip, Badge } from "antd";
 import {
   PlusOutlined, ReloadOutlined, RetweetOutlined, DeleteOutlined, PauseOutlined,
   PlayCircleOutlined, EditOutlined, TeamOutlined, RobotOutlined, CalendarOutlined, MailOutlined,
@@ -14,6 +11,7 @@ import { api } from "@/lib/client";
 import { smtpSelectOptions, type SmtpOptionLike } from "@/lib/emailAccounts";
 import { SequencesDashboardPanel } from "@/components/sequences/SequencesDashboardPanel";
 import { labelWithHelp } from "@/components/ui/FieldHelp";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Title, Text } = Typography;
 
@@ -90,9 +88,7 @@ export default function SequencesPage() {
     try {
       const r = await api.get<{ data: SequenceRow[] }>("/sequences");
       setRows(r.data.data);
-    } catch {
-      message.error("Impossible de charger les séquences.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger les séquences."); } finally {
       setLoading(false);
     }
   }, []);
@@ -157,36 +153,29 @@ export default function SequencesPage() {
       };
       if (editing) {
         await api.put(`/sequences/${editing.id}`, body);
-        message.success("Séquence mise à jour");
+        notifySuccess("Séquence mise à jour");
       } else {
         await api.post("/sequences", body);
-        message.success("Séquence créée");
+        notifySuccess("Séquence créée");
       }
       setEditorOpen(false);
       await load();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message;
-      if (msg) message.error(msg);
-    }
+    } catch (e) { notifyApiError(e, "Une erreur est survenue"); }
   }
 
   async function togglePause(seq: SequenceRow) {
     try {
       await api.patch(`/sequences/${seq.id}`, { isPaused: !seq.isPaused });
       await load();
-    } catch {
-      message.error("Échec de la mise à jour.");
-    }
+    } catch (e) { notifyApiError(e, "Échec de la mise à jour."); }
   }
 
   async function destroy(seq: SequenceRow) {
     try {
       await api.delete(`/sequences/${seq.id}`);
-      message.success("Séquence supprimée");
+      notifySuccess("Séquence supprimée");
       await load();
-    } catch {
-      message.error("Échec de la suppression.");
-    }
+    } catch (e) { notifyApiError(e, "Échec de la suppression."); }
   }
 
   async function openLeads(seq: SequenceRow) {
@@ -194,9 +183,7 @@ export default function SequencesPage() {
     try {
       const r = await api.get<{ data: SequenceLeadRow[] }>(`/sequences/${seq.id}/leads`);
       setLeads(r.data.data);
-    } catch {
-      message.error("Impossible de charger les leads de la séquence.");
-    }
+    } catch (e) { notifyApiError(e, "Impossible de charger les leads de la séquence."); }
   }
 
   async function openEnroll() {
@@ -206,15 +193,13 @@ export default function SequencesPage() {
     try {
       const r = await api.get<{ data: LeadOption[] }>("/leads?pageSize=500");
       setAllLeads(r.data.data);
-    } catch {
-      message.error("Impossible de charger les leads.");
-    }
+    } catch (e) { notifyApiError(e, "Impossible de charger les leads."); }
   }
 
   async function submitEnroll() {
     if (!leadsOpen) return;
     if (enrollIds.length === 0) {
-      message.warning("Sélectionnez au moins un lead.");
+      notifyWarning("Sélectionnez au moins un lead.");
       return;
     }
     setEnrolling(true);
@@ -223,14 +208,12 @@ export default function SequencesPage() {
         `/sequences/${leadsOpen.id}/leads`,
         { leadIds: enrollIds },
       );
-      message.success(`Inscrits : ${r.data.data.enrolled}, déjà présents : ${r.data.data.skipped}`);
+      notifySuccess(`Inscrits : ${r.data.data.enrolled}, déjà présents : ${r.data.data.skipped}`);
       setEnrollOpen(false);
       const refreshed = await api.get<{ data: SequenceLeadRow[] }>(`/sequences/${leadsOpen.id}/leads`);
       setLeads(refreshed.data.data);
       await load();
-    } catch {
-      message.error("Échec de l'inscription.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Échec de l'inscription."); } finally {
       setEnrolling(false);
     }
   }
@@ -239,12 +222,10 @@ export default function SequencesPage() {
     if (!leadsOpen) return;
     try {
       await api.delete(`/sequences/${leadsOpen.id}/leads`, { data: { leadId } });
-      message.success("Lead retiré");
+      notifySuccess("Lead retiré");
       const refreshed = await api.get<{ data: SequenceLeadRow[] }>(`/sequences/${leadsOpen.id}/leads`);
       setLeads(refreshed.data.data);
-    } catch {
-      message.error("Échec du retrait.");
-    }
+    } catch (e) { notifyApiError(e, "Échec du retrait."); }
   }
 
   const columns = [

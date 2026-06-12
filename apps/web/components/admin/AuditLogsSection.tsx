@@ -7,14 +7,12 @@
  * Affichage paginé (50/page par défaut) avec détail diff au clic.
  */
 import { useCallback, useEffect, useState } from "react";
-import {
-  Card, Table, Tag, Typography, Space, Button, DatePicker, Select, Input, Drawer,
-  message, Empty,
-} from "antd";
+import { Card, Table, Tag, Typography, Space, Button, DatePicker, Select, Input, Drawer, Empty } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { ReloadOutlined, FilterOutlined, SearchOutlined, EyeOutlined } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import { api } from "@/lib/client";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Text, Title } = Typography;
 const { RangePicker } = DatePicker;
@@ -92,9 +90,7 @@ export function AuditLogsSection() {
       );
       setRows(data.data);
       setTotal(data.total);
-    } catch {
-      message.error("Impossible de charger le journal d'activité.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger le journal d'activité."); } finally {
       setLoading(false);
     }
   }, [page, pageSize, filterUserId, filterAction, search, range]);

@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  Button, Card, Form, Input, Modal, Popconfirm, Space, Table, Typography, Upload, message,
-} from "antd";
+import { Button, Card, Form, Input, Modal, Popconfirm, Space, Table, Typography, Upload } from "antd";
 import { BookOutlined, DeleteOutlined, EditOutlined, PlusOutlined, UploadOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Title, Paragraph, Text } = Typography;
 const { TextArea } = Input;
@@ -31,9 +30,7 @@ export function KnowledgeBasesSection() {
     try {
       const { data } = await api.get<{ data: KnowledgeBase[] }>("/knowledge-bases");
       setRows(data.data);
-    } catch {
-      message.error("Impossible de charger les bases de connaissances.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger les bases de connaissances."); } finally {
       setLoading(false);
     }
   }, []);
@@ -58,16 +55,14 @@ export function KnowledgeBasesSection() {
     try {
       if (editing) {
         await api.put(`/knowledge-bases/${editing.id}`, values);
-        message.success("Base mise à jour");
+        notifySuccess("Base mise à jour");
       } else {
         await api.post("/knowledge-bases", values);
-        message.success("Base créée");
+        notifySuccess("Base créée");
       }
       setOpen(false);
       void load();
-    } catch {
-      message.error("Enregistrement impossible");
-    } finally {
+    } catch (e) { notifyApiError(e, "Enregistrement impossible"); } finally {
       setSaving(false);
     }
   }
@@ -75,11 +70,9 @@ export function KnowledgeBasesSection() {
   async function remove(id: string) {
     try {
       await api.delete(`/knowledge-bases/${id}`);
-      message.success("Base supprimée");
+      notifySuccess("Base supprimée");
       void load();
-    } catch {
-      message.error("Suppression impossible");
-    }
+    } catch (e) { notifyApiError(e, "Suppression impossible"); }
   }
 
   return (

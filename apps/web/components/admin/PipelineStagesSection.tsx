@@ -9,10 +9,7 @@
  * - Suppression sécurisée : si l'étape contient des leads, demande où les réassigner.
  */
 import { useCallback, useEffect, useState } from "react";
-import {
-  Button, Card, ColorPicker, Form, Input, Modal, Popconfirm, Select, Space, Table,
-  Tag, Typography, message, Alert,
-} from "antd";
+import { Button, Card, ColorPicker, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography, Alert } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import {
   DragOutlined, EditOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined,
@@ -20,6 +17,7 @@ import {
 } from "@ant-design/icons";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { api } from "@/lib/client";
+import { notifyApiError, notifyError, notifyInfo, notifySuccess, notifyWarning } from "@/lib/feedback";
 
 const { Text, Paragraph } = Typography;
 
@@ -50,9 +48,7 @@ export function PipelineStagesSection() {
     try {
       const { data } = await api.get<{ data: StageRow[] }>("/pipeline-stages");
       setStages(data.data);
-    } catch {
-      message.error("Impossible de charger les étapes.");
-    } finally {
+    } catch (e) { notifyApiError(e, "Impossible de charger les étapes."); } finally {
       setLoading(false);
     }
   }, []);
@@ -67,14 +63,11 @@ export function PipelineStagesSection() {
         name: values.name,
         color: typeof values.color === "object" && values.color?.toHexString ? values.color.toHexString() : values.color ?? null,
       });
-      message.success("Étape créée");
+      notifySuccess("Étape créée");
       createForm.resetFields();
       setCreateOpen(false);
       void fetchStages();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    } finally { setSaving(false); }
+    } catch (e) { notifyApiError(e, "Erreur"); } finally { setSaving(false); }
   }
 
   async function saveEdit() {
@@ -86,13 +79,10 @@ export function PipelineStagesSection() {
         name: values.name,
         color: typeof values.color === "object" && values.color?.toHexString ? values.color.toHexString() : values.color ?? null,
       });
-      message.success("Étape mise à jour");
+      notifySuccess("Étape mise à jour");
       setEditTarget(null);
       void fetchStages();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    } finally { setSaving(false); }
+    } catch (e) { notifyApiError(e, "Erreur"); } finally { setSaving(false); }
   }
 
   async function confirmDelete() {
@@ -103,14 +93,11 @@ export function PipelineStagesSection() {
       const removed = deleteTarget;
       await api.delete(`/pipeline-stages/${removed.id}${qs}`);
       setStages((prev) => prev.filter((s) => s.id !== removed.id));
-      message.success(`Étape « ${removed.name} » supprimée`);
+      notifySuccess(`Étape « ${removed.name} » supprimée`);
       setDeleteTarget(null);
       setReassignTo(undefined);
       void fetchStages();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Erreur";
-      message.error(msg);
-    } finally { setSaving(false); }
+    } catch (e) { notifyApiError(e, "Erreur"); } finally { setSaving(false); }
   }
 
   async function onDragEnd(result: DropResult) {
@@ -124,8 +111,8 @@ export function PipelineStagesSection() {
     setStages(next.map((s, idx) => ({ ...s, order: idx })));
     try {
       await api.put("/pipeline-stages/reorder", { orderedIds: next.map((s) => s.id) });
-    } catch {
-      message.error("Impossible de réordonner — rechargement.");
+    } catch (e) {
+      notifyApiError(e, "Impossible de réordonner — rechargement.");
       void fetchStages();
     }
   }
