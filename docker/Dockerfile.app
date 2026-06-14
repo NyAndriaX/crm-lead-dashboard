@@ -33,8 +33,10 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV RUN_MODE=all
+ENV UPLOAD_DIR=/app/uploads
 
-RUN apt-get update -y && apt-get install -y openssl wget && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -y && apt-get install -y openssl wget && rm -rf /var/lib/apt/lists/* \
+ && mkdir -p /app/uploads
 
 COPY --from=build /app/apps/web/.next/standalone ./
 COPY --from=build /app/apps/web/.next/static ./apps/web/.next/static

@@ -8,6 +8,7 @@ import { formatPrismaError, prisma } from "@crm/db";
 import { createWorkerAgenda, registerWorkerJobHandlers } from "@crm/queue";
 import { handlers } from "./handlers";
 import { recoverStaleScrapingJobs } from "./scraping/recover";
+import { recoverStaleImportJobs } from "./import/recover";
 
 async function resolveAgendaTimezone(): Promise<string> {
   const fromEnv = process.env.AGENDA_TIMEZONE?.trim();
@@ -39,6 +40,11 @@ async function main() {
   const recovered = await recoverStaleScrapingJobs();
   if (recovered > 0) {
     console.log(`[worker] scraping recovery: ${recovered} mission(s)`);
+  }
+
+  const recoveredImports = await recoverStaleImportJobs();
+  if (recoveredImports > 0) {
+    console.log(`[worker] import recovery: ${recoveredImports} job(s)`);
   }
 
   const stop = async (signal: string) => {

@@ -92,14 +92,30 @@ location / {
 
 Mettre `APP_BASE_URL=https://votre-domaine.fr` dans `.env`.
 
-### Variables utiles
+### Comportement intégré à l'image Docker (rien à configurer dans Dokploy)
+
+| Réglage | Valeur par défaut | Où c'est défini |
+|---|---|---|
+| `RUN_MODE` | `all` (web + worker) | `Dockerfile` + `scripts/docker-entrypoint.sh` |
+| `UPLOAD_DIR` | `/app/uploads` | `Dockerfile` + code (`getUploadDir()` en prod) |
+| `INLINE_IMPORT_MAX_ROWS` | `500` | code (`startImportJob`) |
+
+> **Ne pas** ajouter `RUN_MODE` ni `UPLOAD_DIR` dans les variables Dokploy — c'est déjà inclus dans l'image.
+
+### Variables utiles (optionnelles)
 
 | Variable | Défaut | Rôle |
 |---|---|---|
-| `RUN_MODE` | `all` | `all` = web + worker · `web` / `worker` = un seul process (cas avancé) |
 | `PORT` | `3000` | Port HTTP Next.js |
 | `SKIP_DB_PUSH` | — | `true` pour sauter `prisma db push` |
 | `SKIP_INIT_PROD` | — | `true` pour sauter `init-prod` |
+
+### Volume uploads (imports CSV) — **recommandé en prod**
+
+Les fichiers importés sont stockés dans `/app/uploads` (créé automatiquement au démarrage).
+Sans volume persistant, un redéploiement Docker **efface les fichiers** en attente de traitement.
+
+Dans Dokploy : ajouter un volume monté sur **`/app/uploads`** (seule action requise côté imports).
 
 ### Logs
 

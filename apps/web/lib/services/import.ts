@@ -9,7 +9,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 import * as XLSX from "xlsx";
-import { prisma } from "@crm/db";
+import { prisma, processImportJob, getUploadDir } from "@crm/db";
 import { ApiError } from "../api";
 import { enqueue } from "../jobs";
 import type { StartImportInput } from "../schemas/import";
@@ -17,7 +17,7 @@ import type { StartImportInput } from "../schemas/import";
 export const ACCEPTED_EXTS = ["csv", "xlsx", "xls"] as const;
 
 function uploadDir(): string {
-  return process.env.UPLOAD_DIR ?? path.join(process.cwd(), "uploads");
+  return getUploadDir();
 }
 
 /** Sauvegarde le fichier sur disque et retourne son chemin absolu. */
@@ -94,12 +94,20 @@ export async function startImportJob(jobId: string, userId: string, input: Start
     data: { mapping: input.mapping as object, status: "running" },
   });
 
-  await enqueue("import-process", {
+  const processOpts = {
     importJobId: jobId,
     skipDuplicates: input.skipDuplicates,
     defaultSource: input.defaultSource,
     defaultTags: input.defaultTags,
-  });
+  };
+
+  const inlineMax = Number(process.env.INLINE_IMPORT_MAX_ROWS ?? 500);
+  if (job.totalRows <= inlineMax) {
+    await processImportJob(processOpts);
+    return prisma.importJob.findUniqueOrThrow({ where: { id: jobId } });
+  }
+
+  await enqueue("import-process", processOpts, { priority: 10 });
 
   return prisma.importJob.findUniqueOrThrow({ where: { id: jobId } });
 }

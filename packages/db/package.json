@@ -24,7 +24,8 @@
     "@types/web-push": "^3.6.4",
     "bcryptjs": "^2.4.3",
     "nodemailer": "^8.0.7",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/nodemailer": "^8.0.0",

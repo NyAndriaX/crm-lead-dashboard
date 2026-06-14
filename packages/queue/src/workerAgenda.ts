@@ -61,6 +61,17 @@ function parseIntervalMs(interval: string): number {
   return val;
 }
 
+async function markImportJobFailed(importJobId: string, reason: string): Promise<void> {
+  try {
+    await prisma.importJob.updateMany({
+      where: { id: importJobId, status: "running" },
+      data: { status: "failed", errorReport: reason },
+    });
+  } catch (e) {
+    logWorkerJobError("import-process cleanup", e);
+  }
+}
+
 async function processJob(jobId: string, type: string, payload: unknown): Promise<void> {
   const handler = handlers[type];
   if (!handler) {
@@ -96,6 +107,12 @@ async function processJob(jobId: string, type: string, payload: unknown): Promis
           lockedBy: null,
         },
       });
+      if (type === "import-process") {
+        const importJobId = (payload as { importJobId?: string })?.importJobId;
+        if (importJobId) {
+          await markImportJobFailed(importJobId, msg);
+        }
+      }
     } else {
       const backoffMs = Math.min(30_000 * Math.pow(2, (job?.attempts ?? 0)), 600_000);
       await prisma.job.update({

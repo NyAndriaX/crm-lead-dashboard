@@ -2,7 +2,7 @@
  * Chiffrement AES-256-GCM (même format que apps/web/lib/crypto.ts).
  * Utilisé par @crm/db pour déchiffrer les secrets utilisateur côté worker.
  */
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHmac, randomBytes } from "node:crypto";
 
 const ALGO = "aes-256-gcm";
 const IV_LEN = 12;
@@ -41,3 +41,16 @@ export const encryptOrNull = (v: string | null | undefined): Buffer | null =>
 
 export const decryptOrNull = (v: Buffer | Uint8Array | null | undefined): string | null =>
   v == null ? null : decrypt(Buffer.from(v));
+
+function getHmacSecret(): string {
+  const s = process.env.EMAIL_HASH_SECRET;
+  if (!s) throw new Error("EMAIL_HASH_SECRET manquant");
+  return s;
+}
+
+/** HMAC-SHA256 déterministe de l'email normalisé (hex). */
+export function emailHash(email: string): string {
+  return createHmac("sha256", getHmacSecret())
+    .update(email.trim().toLowerCase())
+    .digest("hex");
+}

@@ -79,7 +79,16 @@ export {
   removePushSubscription,
   sendWebPushToUser,
 } from "./webPush";
-export { encrypt, decrypt, encryptOrNull, decryptOrNull } from "./piiCrypto";
+export { encrypt, decrypt, encryptOrNull, decryptOrNull, emailHash } from "./piiCrypto";
+export {
+  getUploadDir,
+  PRODUCTION_UPLOAD_DIR,
+} from "./uploadPaths";
+export {
+  processImportJob,
+  resolveImportFilePath,
+  type ImportProcessOptions,
+} from "./importProcess";
 export {
   sendTransactionalEmail,
   TransactionalEmailError,

@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
-import { prisma, assertLeadAccess, type DataScope } from "@crm/db";
+import { prisma, assertLeadAccess, getUploadDir, type DataScope } from "@crm/db";
 import { ApiError } from "@/lib/api";
 
 const MAX_BYTES = 15 * 1024 * 1024;
@@ -18,8 +18,7 @@ const ALLOWED_MIME = new Set([
 ]);
 
 function leadsUploadDir(): string {
-  const base = process.env.UPLOAD_DIR ?? path.join(process.cwd(), "uploads");
-  return path.join(base, "leads");
+  return path.join(getUploadDir(), "leads");
 }
 
 export type LeadDocumentDTO = {
