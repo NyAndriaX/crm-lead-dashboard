@@ -1,7 +1,7 @@
 /**
  * POST /api/oauth/microsoft/device-code
  * Lance le device code flow Microsoft OAuth pour IMAP ou SMTP.
- * Body : { tenantId, clientId, clientSecret }
+ * Body : { tenantId, clientId, clientSecret? }
  */
 import { handler, json, parseBody, requirePermission } from "@/lib/api";
 import { msOAuthCredsSchema, parseMsOAuthCreds } from "@/lib/oauth/microsoftSchemas";

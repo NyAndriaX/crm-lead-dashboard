@@ -1,7 +1,7 @@
 /**
  * POST /api/oauth/microsoft/poll
  * Sonde le token endpoint jusqu'à consentement (max 120 s).
- * Body : { tenantId, clientId, clientSecret, deviceCode, interval? }
+ * Body : { tenantId, clientId, clientSecret?, deviceCode, interval? }
  * Retourne : { accessToken, refreshToken }
  */
 import { z } from "zod";

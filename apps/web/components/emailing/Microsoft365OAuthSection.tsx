@@ -112,11 +112,11 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
       };
       if (saved.azureCreds) {
         setAzureCreds(saved.azureCreds);
-        clientSecretRef.current = saved.azureCreds.clientSecret;
+        clientSecretRef.current = saved.azureCreds.clientSecret ?? "";
         form.setFieldsValue({
           tenantId: saved.azureCreds.tenantId,
           clientId: saved.azureCreds.clientId,
-          clientSecret: saved.azureCreds.clientSecret,
+          clientSecret: saved.azureCreds.clientSecret ?? "",
           mailbox: saved.azureCreds.mailbox,
         });
       }
@@ -181,7 +181,7 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
       const creds: AzureCreds = {
         tenantId: String(values.tenantId).trim(),
         clientId: String(values.clientId).trim(),
-        clientSecret: String(values.clientSecret).trim(),
+        clientSecret: String(values.clientSecret ?? "").trim(),
         mailbox: String(values.mailbox).trim(),
       };
       clientSecretRef.current = creds.clientSecret;
@@ -538,9 +538,9 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
               <Col xs={24} sm={8}>
                 <Form.Item
                   name="clientSecret"
-                  label={<Text strong>Client Secret</Text>}
-                  tooltip="Requis si l'app Azure est « Web ». Optionnel si « Flux client public » est activé (Authentication → Paramètres avancés)."
-                  extra="Copiez la Valeur du secret (pas l'ID du secret ni le Client ID)."
+                  label={<Text strong>Client Secret (optionnel)</Text>}
+                  tooltip="Laissez vide si Azure autorise les flux client public. Renseignez-le seulement pour une app confidentielle / Web."
+                  extra="Optionnel avec « Allow public client flows ». Si vous utilisez un secret, copiez sa Valeur, pas l'ID du secret ni le Client ID."
                 >
                   <Input.Password placeholder="Valeur du secret (optionnel si flux client public)" autoComplete="off" />
                 </Form.Item>
@@ -705,8 +705,8 @@ export function Microsoft365OAuthSection({ imapConfigs, smtpConfigs, onRefresh }
             <Form form={form} layout="vertical">
               <Form.Item
                 name="clientSecret"
-                label={<Text strong>Client Secret Azure (si app confidentielle)</Text>}
-                extra="La Valeur ressemble à une chaîne avec des caractères ~ (pas un UUID xxxxxxxx-xxxx-…)."
+                label={<Text strong>Client Secret Azure (optionnel)</Text>}
+                extra="Laissez vide si « Allow public client flows » est activé. Pour une app Web/confidentielle, collez la Valeur du secret, pas un UUID."
               >
                 <Input.Password placeholder="Laisser vide si flux client public activé" autoComplete="off" />
               </Form.Item>
