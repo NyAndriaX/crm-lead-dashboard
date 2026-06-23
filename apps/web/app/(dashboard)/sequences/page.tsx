@@ -376,9 +376,9 @@ export default function SequencesPage() {
               />
             </Form.Item>
             <Form.Item
-              label="Compte d'envoi (SMTP / Microsoft 365)"
+              label="Compte d'envoi SMTP"
               name="smtpConfigId"
-              tooltip="Choisissez un compte SMTP classique ou Microsoft 365 OAuth. Sans sélection, le premier compte actif du propriétaire est utilisé."
+              tooltip="Choisissez un compte SMTP actif. Sans sélection, le premier compte actif du propriétaire est utilisé."
             >
               <Select
                 allowClear

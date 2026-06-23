@@ -10,7 +10,6 @@ import { EmailHtmlDualEditor } from "@/components/emailing/EmailHtmlDualEditor";
 import { EmailHtmlLivePreview } from "@/components/emailing/EmailHtmlLivePreview";
 import { EmailTemplateAiVariants } from "@/components/emailing/EmailTemplateAiVariants";
 import { ImapSection } from "@/components/emailing/ImapSection";
-import { Microsoft365OAuthSection } from "@/components/emailing/Microsoft365OAuthSection";
 import { OpenAiSection } from "@/components/account/OpenAiSection";
 import { TeamsSection } from "@/components/admin/TeamsSection";
 import { PermissionsSection } from "@/components/admin/PermissionsSection";
@@ -2197,36 +2196,6 @@ function ScoringTab() {
   );
 }
 
-// ── Microsoft 365 OAuth tab ───────────────────────────────────────────────────
-
-function Microsoft365OAuthTab() {
-  const [imapConfigs, setImapConfigs] = useState<{ id: string; label: string; hasOauth: boolean }[]>([]);
-  const [smtpConfigs, setSmtpConfigs] = useState<{ id: string; label: string; hasOauth: boolean }[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [imap, smtp] = await Promise.all([
-        api.get<{ data: { id: string; label: string; oauthProvider?: string | null }[] }>("/imap-configs"),
-        api.get<{ data: { id: string; label: string; oauthProvider?: string | null }[] }>("/smtp-configs"),
-      ]);
-      setImapConfigs(imap.data.data.map((c) => ({ id: c.id, label: c.label, hasOauth: !!c.oauthProvider })));
-      setSmtpConfigs(smtp.data.data.map((c) => ({ id: c.id, label: c.label, hasOauth: !!c.oauthProvider })));
-    } catch {
-      /* silencieux */
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
-
-  if (loading) return <div style={{ textAlign: "center", padding: 40 }}><Spin /></div>;
-
-  return <Microsoft365OAuthSection imapConfigs={imapConfigs} smtpConfigs={smtpConfigs} onRefresh={load} />;
-}
-
 // ── Page principale ───────────────────────────────────────────────────────────
 
 const SETTINGS_TABS: SettingsTabItem[] = [
@@ -2301,14 +2270,6 @@ const SETTINGS_TABS: SettingsTabItem[] = [
     description: "Boîtes mail pour la détection des réponses.",
     icon: <InboxOutlined />,
     children: <ImapSection />,
-  },
-  {
-    key: "microsoft365",
-    label: "Microsoft 365 OAuth",
-    group: "Commercial",
-    description: "Connexion OAuth sans mot de passe pour SMTP et IMAP Microsoft 365.",
-    icon: <CloudOutlined />,
-    children: <Microsoft365OAuthTab />,
   },
   {
     key: "imports",

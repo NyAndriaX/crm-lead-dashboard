@@ -1,18 +1,16 @@
 /**
  * POST /api/oauth/microsoft/device-code
- * Lance le device code flow Microsoft OAuth pour IMAP ou SMTP.
- * Body : { tenantId, clientId, clientSecret? }
+ * Microsoft 365 OAuth setup is disabled pending validation.
  */
-import { handler, json, parseBody, requirePermission } from "@/lib/api";
-import { msOAuthCredsSchema, parseMsOAuthCreds } from "@/lib/oauth/microsoftSchemas";
-import { startDeviceCodeFlow } from "@crm/db";
+import { ApiError, handler, requirePermission } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
-export const POST = handler(async (req) => {
+export const POST = handler(async () => {
   await requirePermission("settings:manage");
-  const input = await parseBody(req, msOAuthCredsSchema);
-  const creds = parseMsOAuthCreds(input);
-  const device = await startDeviceCodeFlow(creds);
-  return json({ data: device });
+  throw new ApiError(
+    410,
+    "Microsoft 365 OAuth configuration is temporarily disabled pending validation.",
+    "microsoft_oauth_disabled",
+  );
 });

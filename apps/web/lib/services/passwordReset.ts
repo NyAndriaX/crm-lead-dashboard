@@ -47,7 +47,7 @@ export async function requestPasswordReset(email: string): Promise<void> {
     if (e instanceof TransactionalEmailError && e.reason === "no_active_smtp") {
       throw new ApiError(
         503,
-        "Aucun compte SMTP actif (classique ou Microsoft 365). Configurez l'envoi dans Paramètres → Emailing ou Microsoft 365 OAuth.",
+        "Aucun compte SMTP actif. Configurez l'envoi dans Paramètres → Emailing.",
         "smtp_unavailable",
       );
     }
@@ -55,7 +55,7 @@ export async function requestPasswordReset(email: string): Promise<void> {
     console.error("[password-reset] envoi email échoué:", detail);
     throw new ApiError(
       503,
-      "Impossible d'envoyer l'email de réinitialisation. Vérifiez la configuration SMTP / Microsoft 365.",
+      "Impossible d'envoyer l'email de réinitialisation. Vérifiez la configuration SMTP.",
       "email_send_failed",
     );
   }
