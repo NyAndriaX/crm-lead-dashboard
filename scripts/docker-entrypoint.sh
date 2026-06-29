@@ -69,6 +69,10 @@ init_prod() {
 
 # Attribue ownerUserId / createdById aux données existantes (isolation multi-utilisateur).
 migrate_data_owners() {
+  if [ "${SKIP_MIGRATE_DATA_OWNERS}" = "true" ] || [ "${SKIP_MIGRATE_DATA_OWNERS}" = "1" ]; then
+    echo "▶ migrate-data-owners ignoré (SKIP_MIGRATE_DATA_OWNERS=true)"
+    return 0
+  fi
   echo "▶ migrate-data-owners..."
   set +e
   node packages/db/scripts/migrate-data-owners.mjs --apply
@@ -106,6 +110,9 @@ start_web_foreground() {
 
 case "$RUN_MODE" in
   db-init)
+    SKIP_DB_PUSH=0
+    SKIP_INIT_PROD=0
+    SKIP_MIGRATE_DATA_OWNERS=0
     yarn workspace @crm/db generate
     db_push
     yarn workspace @crm/db init-prod
