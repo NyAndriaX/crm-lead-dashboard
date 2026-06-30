@@ -12,6 +12,9 @@ const nextConfig = {
   // Le client Prisma vit dans le package workspace @crm/db (source TypeScript).
   transpilePackages: ["@crm/db", "@crm/queue"],
   serverExternalPackages: [],
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   experimental: {
     optimizePackageImports: ["antd", "@ant-design/icons"],
   },

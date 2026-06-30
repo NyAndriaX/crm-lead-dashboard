@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # CRM — Next.js + worker dans le même conteneur (RUN_MODE=all par défaut).
 # Contexte build = racine du dépôt :
 #   docker build -f apps/worker/Dockerfile -t crm-app .
@@ -8,38 +9,37 @@
 # Les scripts DB sont désactivés par défaut au démarrage. Utiliser RUN_MODE=db-init pour les lancer.
 FROM node:20-bookworm-slim AS base
 WORKDIR /app
+ENV DEBIAN_FRONTEND=noninteractive
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_OPTIONS=--dns-result-order=ipv4first
+ENV YARN_CACHE_FOLDER=/tmp/.yarn-cache
 
 FROM base AS deps
-ENV NODE_OPTIONS=--dns-result-order=ipv4first
-RUN apt-get update -y && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+ --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+ apt-get update -y && apt-get install -y --no-install-recommends ca-certificates openssl
 COPY package.json yarn.lock .yarnrc ./
 COPY apps/web/package.json apps/web/
 COPY apps/worker/package.json apps/worker/
 COPY packages/db/package.json packages/db/
 COPY packages/queue/package.json packages/queue/
-RUN yarn config set network-timeout 600000 \
- && yarn install --frozen-lockfile --network-timeout 600000 \
- || (echo "▶ yarn install retry 1/2..." && sleep 20 && yarn install --frozen-lockfile --network-timeout 600000) \
- || (echo "▶ yarn install retry 2/2..." && sleep 40 && yarn install --frozen-lockfile --network-timeout 600000)
+RUN --mount=type=cache,id=crm-yarn,target=/tmp/.yarn-cache,sharing=locked \
+ yarn config set network-timeout 600000 \
+ && yarn install --frozen-lockfile --prefer-offline --network-timeout 600000 \
+ || (echo "▶ yarn install retry 1/2..." && sleep 20 && yarn install --frozen-lockfile --prefer-offline --network-timeout 600000) \
+ || (echo "▶ yarn install retry 2/2..." && sleep 40 && yarn install --frozen-lockfile --prefer-offline --network-timeout 600000)
 
 FROM deps AS build
-RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 COPY . .
 RUN yarn workspace @crm/db generate \
  && yarn workspace @crm/web build
 
-FROM base AS prod-deps
-ENV NODE_OPTIONS=--dns-result-order=ipv4first
-RUN apt-get update -y && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
-COPY package.json yarn.lock .yarnrc ./
-COPY apps/web/package.json apps/web/
-COPY apps/worker/package.json apps/worker/
-COPY packages/db/package.json packages/db/
-COPY packages/queue/package.json packages/queue/
-RUN yarn config set network-timeout 600000 \
- && yarn install --frozen-lockfile --production=true --ignore-scripts --network-timeout 600000 \
- || (echo "▶ yarn production install retry 1/2..." && sleep 20 && yarn install --frozen-lockfile --production=true --ignore-scripts --network-timeout 600000) \
- || (echo "▶ yarn production install retry 2/2..." && sleep 40 && yarn install --frozen-lockfile --production=true --ignore-scripts --network-timeout 600000)
+FROM deps AS prod-deps
+RUN --mount=type=cache,id=crm-yarn,target=/tmp/.yarn-cache,sharing=locked \
+ rm -rf node_modules \
+ && yarn install --frozen-lockfile --production=true --ignore-scripts --prefer-offline --network-timeout 600000 \
+ || (echo "▶ yarn production install retry 1/2..." && sleep 20 && yarn install --frozen-lockfile --production=true --ignore-scripts --prefer-offline --network-timeout 600000) \
+ || (echo "▶ yarn production install retry 2/2..." && sleep 40 && yarn install --frozen-lockfile --production=true --ignore-scripts --prefer-offline --network-timeout 600000)
 
 FROM base AS runtime
 ENV NODE_ENV=production
@@ -52,7 +52,9 @@ ENV SKIP_INIT_PROD=true
 ENV SKIP_MIGRATE_DATA_OWNERS=true
 ENV CLEANUP_RECURRING_JOBS=true
 
-RUN apt-get update -y && apt-get install -y openssl wget && rm -rf /var/lib/apt/lists/* \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+ --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+ apt-get update -y && apt-get install -y --no-install-recommends ca-certificates openssl \
  && mkdir -p /app/uploads
 
 COPY --from=build /app/apps/web/.next/standalone ./
@@ -74,6 +76,6 @@ RUN chmod +x ./scripts/docker-entrypoint.sh
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=5 --start-period=25s \
-  CMD wget -qO- http://localhost:3000/api/health || exit 1
+  CMD node -e "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 ENTRYPOINT ["./scripts/docker-entrypoint.sh"]
