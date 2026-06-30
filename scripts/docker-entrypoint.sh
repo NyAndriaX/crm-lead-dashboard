@@ -83,6 +83,21 @@ migrate_data_owners() {
   fi
 }
 
+cleanup_recurring_jobs() {
+  if [ "${CLEANUP_RECURRING_JOBS:-true}" = "false" ] || [ "${CLEANUP_RECURRING_JOBS:-true}" = "0" ]; then
+    echo "▶ cleanup-recurring-jobs ignoré (CLEANUP_RECURRING_JOBS=false)"
+    return 0
+  fi
+  echo "▶ cleanup-recurring-jobs..."
+  set +e
+  node packages/db/scripts/cleanup-recurring-jobs.mjs
+  rc=$?
+  set -e
+  if [ "$rc" -ne 0 ]; then
+    echo "⚠ cleanup-recurring-jobs a échoué (code $rc) — poursuite du démarrage."
+  fi
+}
+
 # Démarre le worker en arrière-plan et vérifie qu'il reste vivant.
 start_worker_background() {
   echo "▶ worker (arrière-plan, tsx)..."
@@ -125,12 +140,14 @@ case "$RUN_MODE" in
     start_web_foreground
     ;;
   worker)
+    cleanup_recurring_jobs
     start_worker_foreground
     ;;
   all)
     db_push
     init_prod
     migrate_data_owners
+    cleanup_recurring_jobs
     start_worker_background
     echo "▶ next standalone :${PORT:-3000}..."
     node apps/web/server.js &

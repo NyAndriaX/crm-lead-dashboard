@@ -48,6 +48,7 @@ ENV UPLOAD_DIR=/app/uploads
 ENV SKIP_DB_PUSH=true
 ENV SKIP_INIT_PROD=true
 ENV SKIP_MIGRATE_DATA_OWNERS=true
+ENV CLEANUP_RECURRING_JOBS=true
 
 RUN apt-get update -y && apt-get install -y openssl wget && rm -rf /var/lib/apt/lists/* \
  && mkdir -p /app/uploads
@@ -62,7 +63,7 @@ COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/yarn.lock ./yarn.lock
 COPY --from=build /app/apps/worker ./apps/worker
 COPY --from=build /app/packages ./packages
-# Schéma Prisma + scripts DB (db push, init-prod, migrate-data-owners au démarrage)
+# Schéma Prisma + scripts DB/runtime (db-init, cleanup-recurring-jobs)
 COPY --from=build /app/packages/db/prisma ./packages/db/prisma
 COPY --from=build /app/packages/db/scripts ./packages/db/scripts
 COPY scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh

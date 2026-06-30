@@ -49,6 +49,15 @@ let handlers: Record<string, WorkerJobHandler> = {};
 let workerId = `worker-${process.pid}-${Date.now()}`;
 let stopping = false;
 
+function isRecurringPayload(payload: unknown): payload is { recurring: true; intervalMs?: number } {
+  return Boolean(
+    payload &&
+      typeof payload === "object" &&
+      "recurring" in payload &&
+      (payload as { recurring?: unknown }).recurring === true,
+  );
+}
+
 function parseIntervalMs(interval: string): number {
   const match = interval.match(/^(\d+)\s*(ms|milliseconds?|s|seconds?|m|minutes?|h|hours?)$/i);
   if (!match) return 60_000;
@@ -134,6 +143,68 @@ async function processJob(jobId: string, type: string, payload: unknown): Promis
   }
 }
 
+async function deletePendingRecurringJobs(jobName: string): Promise<number> {
+  const pending = await prisma.job.findMany({
+    where: { type: jobName, status: "PENDING" },
+    select: { id: true, payload: true },
+  });
+  const duplicateIds = pending
+    .filter((job) => isRecurringPayload(job.payload))
+    .map((job) => job.id);
+
+  if (duplicateIds.length === 0) return 0;
+
+  const result = await prisma.job.deleteMany({
+    where: { id: { in: duplicateIds }, status: "PENDING" },
+  });
+  return result.count;
+}
+
+async function ensureRecurringJob(jobName: string, intervalMs: number, runAt: Date): Promise<void> {
+  const active = await prisma.job.findMany({
+    where: { type: jobName, status: { in: ["PENDING", "RUNNING"] } },
+    orderBy: [{ runAt: "asc" }, { createdAt: "asc" }],
+    select: { id: true, status: true, payload: true },
+  });
+
+  const recurring = active.filter((job) => isRecurringPayload(job.payload));
+  const runningRecurring = recurring.filter((job) => job.status === "RUNNING");
+  const pendingRecurring = recurring.filter((job) => job.status === "PENDING");
+
+  if (runningRecurring.length > 0) {
+    if (pendingRecurring.length > 0) {
+      const deleted = await deletePendingRecurringJobs(jobName);
+      if (deleted > 0) {
+        console.log(`[worker] recurring ${jobName}: ${deleted} doublon(s) supprimé(s)`);
+      }
+    }
+    return;
+  }
+
+  if (pendingRecurring.length > 0) {
+    const [keep, ...duplicates] = pendingRecurring;
+    if (duplicates.length > 0) {
+      const result = await prisma.job.deleteMany({
+        where: { id: { in: duplicates.map((job) => job.id) }, status: "PENDING" },
+      });
+      if (result.count > 0) {
+        console.log(`[worker] recurring ${jobName}: ${result.count} doublon(s) supprimé(s)`);
+      }
+    }
+
+    if (keep) return;
+  }
+
+  await prisma.job.create({
+    data: {
+      type: jobName,
+      payload: { recurring: true, intervalMs },
+      status: "PENDING",
+      runAt,
+    },
+  });
+}
+
 async function poll(): Promise<void> {
   if (stopping) return;
 
@@ -211,19 +282,7 @@ export async function createWorkerAgenda(): Promise<QueueWorker> {
 
     async every(interval: string, jobName: string) {
       const intervalMs = parseIntervalMs(interval);
-      const existing = await prisma.job.findFirst({
-        where: { type: jobName, status: { in: ["PENDING", "RUNNING"] } },
-      });
-      if (!existing) {
-        await prisma.job.create({
-          data: {
-            type: jobName,
-            payload: { recurring: true, intervalMs },
-            status: "PENDING",
-            runAt: new Date(),
-          },
-        });
-      }
+      await ensureRecurringJob(jobName, intervalMs, new Date());
 
       const originalHandler = handlers[jobName];
       if (originalHandler) {
@@ -234,14 +293,8 @@ export async function createWorkerAgenda(): Promise<QueueWorker> {
             const short = logWorkerJobError(jobName, err);
             return { skipped: true, error: formatPrismaError(err).code, message: short };
           } finally {
-            await prisma.job.create({
-              data: {
-                type: jobName,
-                payload: { recurring: true, intervalMs },
-                status: "PENDING",
-                runAt: new Date(Date.now() + intervalMs),
-              },
-            });
+            await deletePendingRecurringJobs(jobName);
+            await ensureRecurringJob(jobName, intervalMs, new Date(Date.now() + intervalMs));
           }
         };
       }
