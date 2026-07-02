@@ -38,6 +38,7 @@
     "db:migrate-owners": "dotenv -e .env -- node packages/db/scripts/migrate-data-owners.mjs",
     "db:backfill-owners": "dotenv -e .env -- node packages/db/scripts/backfill-owners.mjs",
     "db:cleanup-recurring-jobs": "dotenv -e .env -- yarn workspace @crm/db cleanup-recurring-jobs",
+    "db:reset-prod": "dotenv -e .env -- yarn workspace @crm/db reset-prod",
     "db:studio": "dotenv -e .env -- yarn workspace @crm/db studio",
     "test:azure-email": "NODE_OPTIONS=--dns-result-order=ipv4first dotenv -e .env -- node scripts/test-azure-email.mjs"
   },

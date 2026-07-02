@@ -3,7 +3,8 @@
 #   docker build -t crm-app .
 # Voir aussi apps/web/Dockerfile et apps/worker/Dockerfile (identiques).
 #
-# Au démarrage, les scripts DB sont désactivés par défaut. Utiliser RUN_MODE=db-init pour les lancer.
+# Au démarrage, les scripts DB sont désactivés par défaut.
+# RUN_MODE=db-init pour initialiser · RUN_MODE=db-reset pour vider toute la base (CONFIRM_DB_RESET=true).
 FROM node:20-bookworm-slim AS base
 WORKDIR /app
 ENV DEBIAN_FRONTEND=noninteractive

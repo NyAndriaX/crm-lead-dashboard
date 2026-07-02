@@ -15,6 +15,7 @@
     "init-prod": "node prisma/init-prod.mjs",
     "studio": "prisma studio",
     "cleanup-recurring-jobs": "node scripts/cleanup-recurring-jobs.mjs",
+    "reset-prod": "node scripts/reset-prod.mjs",
     "build": "prisma generate",
     "lint": "echo \"(no lint for @crm/db)\"",
     "typecheck": "tsc --noEmit",

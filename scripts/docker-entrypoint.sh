@@ -3,7 +3,8 @@
 #   all     — web + worker (défaut, un seul conteneur)
 #   web     — Next.js standalone uniquement (+ db push / init-prod)
 #   worker  — worker Agenda uniquement
-#   db-init — prisma generate + db push + init-prod + migrate-data-owners (one-shot)
+#   db-init  — prisma generate + db push + init-prod + migrate-data-owners (one-shot)
+#   db-reset — vide TOUTE la base + recrée l'admin (CONFIRM_DB_RESET=true obligatoire)
 set -e
 
 SCHEMA="packages/db/prisma/schema.prisma"
@@ -132,6 +133,14 @@ case "$RUN_MODE" in
     db_push
     yarn workspace @crm/db init-prod
     migrate_data_owners
+    ;;
+  db-reset)
+    if [ "${CONFIRM_DB_RESET}" != "true" ] && [ "${CONFIRM_DB_RESET}" != "1" ]; then
+      echo "✖ db-reset refusé : définissez CONFIRM_DB_RESET=true (supprime toutes les données)." >&2
+      exit 1
+    fi
+    echo "▶ reset-prod (vidage complet de la base)..."
+    node packages/db/scripts/reset-prod.mjs
     ;;
   web)
     db_push
