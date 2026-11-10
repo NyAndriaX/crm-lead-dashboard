@@ -1,9 +1,13 @@
+/**
+ * @crm/queue — file de tâches asynchrones sur MySQL (table `queue_jobs`).
+ *
+ *  - API web & worker : `enqueue()` (INSERT), `scheduleRecurring()` (upsert).
+ *  - Worker uniquement : `startQueueWorker()` (réclamation SKIP LOCKED, verrous, retries).
+ */
 export type { WorkerJobContext, WorkerJobHandler } from "./types";
-export { agendaCollectionName } from "./collection";
-export { setWorkerAgenda, getWorkerAgenda } from "./workerAgendaRef";
-export { enqueueOneOff, type EnqueueOneOffOptions } from "./enqueueOneOff";
-export { getEnqueueAgenda, enqueueFromWeb } from "./enqueueSingleton";
-export { createWorkerAgenda, registerWorkerJobHandlers } from "./workerAgenda";
+export { enqueue, scheduleRecurring, parseInterval, type EnqueueOptions } from "./enqueue";
+export { startQueueWorker, type QueueWorker, type QueueWorkerOptions } from "./worker";
+export { findOrphanedJobs, releaseOrphanedJobs } from "./orphans";
 
 /** Valide un identifiant IANA de fuseau horaire (ex. Europe/Paris). */
 export function isValidIanaTimeZone(tz: string): boolean {

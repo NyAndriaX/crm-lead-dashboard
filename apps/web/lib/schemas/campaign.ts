@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { objectId } from "./common";
+import { entityId } from "./common";
 import { leadFilters } from "./lead";
 
 export const segmentFiltersSchema = leadFilters.omit({ includeDeleted: true }).partial();
@@ -39,9 +39,9 @@ const campaignConfigSchema = z
 
 export const createCampaignSchema = z.object({
   name: z.string().trim().min(1).max(150),
-  templateId: objectId,
-  segmentId: objectId,
-  smtpConfigId: objectId,
+  templateId: entityId,
+  segmentId: entityId,
+  smtpConfigId: entityId,
   subject: z.string().trim().min(1).max(300),
   scheduledAt: z.coerce.date().optional().nullable(),
   dailyLimit: z.number().int().min(1).max(50_000).optional().nullable(),

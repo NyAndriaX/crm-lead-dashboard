@@ -5,6 +5,7 @@
  * "news"|"social")[] }. Par défaut tous les providers.
  *
  * Synchrone (les providers stub/gratuits sont rapides : DNS MX + RSS).
+ * Le score du lead est recalculé à la fin (E-07) : `data.score = { before, after }`.
  */
 import { z } from "zod";
 import { handler, json, parseBody, requirePermission, ApiError } from "@/lib/api";
@@ -36,14 +37,14 @@ export const POST = handler<Ctx>(async (req, { params }) => {
   }
 
   try {
-    const result = await enrichLeadById(id, providers);
+    const result = await enrichLeadById(id, providers, { userId: session.sub });
     await audit({
       userId: session.sub,
       action: "lead.enrich",
       entityType: "Lead",
       entityId: id,
       ip: clientIp(req),
-      diff: { providers: result.ran, emailWritten: result.emailWritten },
+      diff: { providers: result.ran, emailWritten: result.emailWritten, score: result.score },
     });
     return json({ data: result });
   } catch (e) {

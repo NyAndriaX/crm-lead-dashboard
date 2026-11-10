@@ -11,7 +11,7 @@
  *  - "sales-performance" : 1 ligne par commercial
  *
  * La "planification d'envoi automatique par email" (point 2 d'AN-05) reste
- * à câbler ultérieurement via un job Agenda + un modèle ReportSchedule.
+ * à câbler ultérieurement via un job récurrent (@crm/queue) + un modèle ReportSchedule.
  */
 import { z } from "zod";
 import * as XLSX from "xlsx";

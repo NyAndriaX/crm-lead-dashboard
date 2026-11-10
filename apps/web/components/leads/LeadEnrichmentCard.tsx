@@ -5,7 +5,8 @@
  *
  * Affiche les données collectées par l'engine d'enrichissement, regroupées
  * par source, avec leur date. Bouton "Enrichir maintenant" + sélecteur des
- * providers à exécuter.
+ * providers à exécuter. LinkedIn (E-04) : liens publiés sur le site de l'entreprise
+ * « vérifiés », URL déduites du nom « suggestion non vérifiée ».
  */
 import { useState } from "react";
 import {
@@ -45,14 +46,37 @@ function fmtDate(iso?: string | null): string {
 type EnrichmentData = {
   email?: { found: string | null; candidates?: string[]; confidence: number; source: string; mxValid: boolean; at: string };
   emailVerify?: { verdict: string; confidenceScore: number; mxFound: boolean; disposable: boolean; roleAccount: boolean; at: string };
-  company?: { source: string; legalName?: string | null; siret?: string | null; nafCode?: string | null; employees?: number | null; revenue?: string | null; foundedYear?: number | null; note?: string; at: string };
-  linkedin?: { profileUrlGuess: string | null; companyUrlGuess: string | null; note: string; at: string };
+  company?: {
+    source: string; legalName?: string | null; siren?: string | null; siret?: string | null; nafCode?: string | null; nafLabel?: string | null;
+    employees?: number | null; employeesRange?: string | null; revenue?: string | null; foundedYear?: number | null; address?: string | null;
+    active?: boolean | null; note?: string; at: string;
+  };
+  linkedin?: {
+    company?: LinkedinLink | null; profileGuess?: LinkedinLink | null; verifiedProfiles?: number;
+    profileUrlGuess: string | null; companyUrlGuess: string | null; note: string; at: string;
+  };
+  siteContacts?: { socials?: Record<string, string | undefined> };
   news?: { items: { title: string; url: string; source: string; date: string | null }[]; source: string; at: string };
   social?: { twitter: string | null; facebook: string | null; instagram: string | null; note: string; at: string };
   aiBrief?: { summary: string; angle: string; score: number; source: "ai" | "fallback"; at: string };
   lastEnrichedAt?: string;
   providersRun?: Provider[];
 };
+
+type LinkedinLink = { url: string; status: "verified" | "unverified"; source: "site" | "pattern" };
+
+const COMPANY_SOURCE: Record<string, string> = { pappers: "Pappers", "recherche-entreprises": "Recherche d'entreprises (État)", stub: "aucune source" };
+
+function LinkedinRow({ label, url, verified }: { label: string; url: string; verified: boolean }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+      <AntLink href={url} target="_blank" rel="noreferrer"><LinkOutlined /> {label}</AntLink>
+      {verified
+        ? <Tooltip title="Lien publié sur le site de l'entreprise"><Tag color="green" style={{ marginInlineEnd: 0 }}>vérifié (trouvé sur le site)</Tag></Tooltip>
+        : <Tooltip title="URL déduite du nom, non contrôlée"><Tag color="orange" style={{ marginInlineEnd: 0 }}>suggestion non vérifiée</Tag></Tooltip>}
+    </div>
+  );
+}
 
 const VERDICT_COLOR: Record<string, string> = {
   valid: "success",
@@ -64,13 +88,22 @@ const VERDICT_COLOR: Record<string, string> = {
 export function LeadEnrichmentCard({
   leadId,
   enrichment,
+  contacts,
   onEnriched,
 }: {
   leadId: string;
   enrichment: unknown;
+  /** Coordonnées privées déchiffrées par l'API (profils LinkedIn de personnes trouvés sur le site). */
+  contacts?: { linkedinProfiles?: string[] } | null;
   onEnriched: () => void;
 }) {
   const data = (enrichment ?? {}) as EnrichmentData;
+  // Profils de personnes publiés sur le site : contactsEnc, ou ancien format (socials.linkedin = /in/…).
+  const legacyProfile = data.siteContacts?.socials?.linkedin;
+  const verifiedProfiles = Array.from(new Set([
+    ...(contacts?.linkedinProfiles ?? []),
+    ...(legacyProfile && /linkedin\.com\/(in|pub)\//i.test(legacyProfile) ? [legacyProfile] : []),
+  ]));
   const [loading, setLoading] = useState(false);
   const [providers, setProviders] = useState<Provider[]>([
     "email", "emailVerify", "company", "linkedin", "news", "social",
@@ -81,8 +114,11 @@ export function LeadEnrichmentCard({
   async function runEnrich() {
     setLoading(true);
     try {
-      await api.post(`/leads/${leadId}/enrich`, { providers });
-      message.success("Enrichissement terminé");
+      const { data: res } = await api.post<{ data: { score?: { before: number; after: number | null } } }>(`/leads/${leadId}/enrich`, { providers });
+      const sc = res.data.score;
+      message.success(sc && sc.after != null && sc.after !== sc.before
+        ? `Enrichissement terminé — score ${sc.before} → ${sc.after}`
+        : "Enrichissement terminé — score recalculé");
       onEnriched();
     } catch (e) {
       const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Échec de l'enrichissement";
@@ -94,7 +130,7 @@ export function LeadEnrichmentCard({
 
   return (
     <Card
-      title={<Space><ThunderboltOutlined style={{ color: "#fa8c16" }} /> Enrichissement</Space>}
+      title={<Space><ThunderboltOutlined style={{ color: "#fbbf24" }} /> Enrichissement</Space>}
       size="small"
       style={{ marginTop: 16 }}
       extra={
@@ -140,7 +176,7 @@ export function LeadEnrichmentCard({
             {data.aiBrief && (
               <div
                 style={{
-                  background: "#f6ffed",
+                  background: "rgba(52,211,153,0.1)",
                   border: "1px solid #b7eb8f",
                   borderRadius: 6,
                   padding: 12,
@@ -192,7 +228,7 @@ export function LeadEnrichmentCard({
             {/* Vérification email */}
             {data.emailVerify && (
               <div>
-                <Text strong><CheckCircleTwoTone twoToneColor="#52c41a" /> Vérification </Text>
+                <Text strong><CheckCircleTwoTone twoToneColor="#34d399" /> Vérification </Text>
                 <Tag color={VERDICT_COLOR[data.emailVerify.verdict] ?? "default"}>
                   {data.emailVerify.verdict}
                 </Tag>
@@ -209,35 +245,44 @@ export function LeadEnrichmentCard({
             {data.company && (
               <div>
                 <Text strong><BankOutlined /> Entreprise </Text>
-                <Tag>{data.company.source}</Tag>
+                <Tag>{COMPANY_SOURCE[data.company.source] ?? data.company.source}</Tag>
+                {data.company.active === false && <Tag color="red">cessée</Tag>}
                 {data.company.source === "stub" ? (
                   <div><Text type="secondary" style={{ fontSize: 11 }}>{data.company.note}</Text></div>
                 ) : (
                   <Descriptions size="small" column={1} style={{ marginTop: 4 }}>
                     {data.company.legalName && <Descriptions.Item label="Raison sociale">{data.company.legalName}</Descriptions.Item>}
-                    {data.company.siret && <Descriptions.Item label="SIREN/SIRET">{data.company.siret}</Descriptions.Item>}
-                    {data.company.nafCode && <Descriptions.Item label="Code NAF">{data.company.nafCode}</Descriptions.Item>}
+                    {(data.company.siren ?? data.company.siret) && <Descriptions.Item label="SIREN">{data.company.siren ?? data.company.siret}</Descriptions.Item>}
+                    {data.company.nafCode && <Descriptions.Item label="Code NAF">{data.company.nafCode}{data.company.nafLabel ? ` — ${data.company.nafLabel}` : ""}</Descriptions.Item>}
+                    {data.company.employeesRange && <Descriptions.Item label="Effectif">{data.company.employeesRange}</Descriptions.Item>}
                     {data.company.foundedYear && <Descriptions.Item label="Création">{data.company.foundedYear}</Descriptions.Item>}
+                    {data.company.address && <Descriptions.Item label="Siège">{data.company.address}</Descriptions.Item>}
                   </Descriptions>
                 )}
               </div>
             )}
 
             {/* LinkedIn */}
-            {data.linkedin && (data.linkedin.profileUrlGuess || data.linkedin.companyUrlGuess) && (
-              <div>
-                <Text strong><LinkedinOutlined style={{ color: "#0a66c2" }} /> LinkedIn </Text>
-                <div style={{ marginTop: 4 }}>
-                  {data.linkedin.profileUrlGuess && (
-                    <div><AntLink href={data.linkedin.profileUrlGuess} target="_blank"><LinkOutlined /> Profil (estimé)</AntLink></div>
-                  )}
-                  {data.linkedin.companyUrlGuess && (
-                    <div><AntLink href={data.linkedin.companyUrlGuess} target="_blank"><LinkOutlined /> Entreprise (estimé)</AntLink></div>
-                  )}
-                  <Text type="secondary" style={{ fontSize: 10 }}>URLs heuristiques non vérifiées</Text>
+            {data.linkedin && (() => {
+              const li = data.linkedin;
+              // Fiches enrichies avant E-04 : seules les URL devinées existent.
+              const company = li.company ?? (li.companyUrlGuess ? { url: li.companyUrlGuess, status: "unverified" as const, source: "pattern" as const } : null);
+              const guess = verifiedProfiles.length ? null : li.profileGuess ?? (li.profileUrlGuess ? { url: li.profileUrlGuess, status: "unverified" as const, source: "pattern" as const } : null);
+              if (!company && !guess && !verifiedProfiles.length) return null;
+              return (
+                <div data-testid="enrichment-linkedin">
+                  <Text strong><LinkedinOutlined style={{ color: "#0a66c2" }} /> LinkedIn </Text>
+                  <div style={{ marginTop: 4, display: "grid", gap: 4 }}>
+                    {company && <LinkedinRow label="Page entreprise" url={company.url} verified={company.status === "verified"} />}
+                    {verifiedProfiles.map((url) => (
+                      <LinkedinRow key={url} label={`Profil ${decodeURIComponent(url.split("/").filter(Boolean).pop() ?? "")}`} url={url} verified />
+                    ))}
+                    {guess && <LinkedinRow label="Profil du contact" url={guess.url} verified={false} />}
+                    <Text type="secondary" style={{ fontSize: 10 }}>LinkedIn n&apos;est jamais interrogé : seuls les liens publiés sur le site de l&apos;entreprise sont vérifiés.</Text>
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Réseaux sociaux */}
             {data.social && (

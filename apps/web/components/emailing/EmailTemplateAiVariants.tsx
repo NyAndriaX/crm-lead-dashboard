@@ -98,7 +98,7 @@ export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mo
       const code = ax.response?.data?.error;
       const msg = ax.response?.data?.message;
       if (code === "ai_disabled") {
-        message.error(msg ?? "OPENAI_API_KEY non configurée sur le serveur.");
+        message.error(msg ?? "Aucun fournisseur d'IA configuré (Configuration › Intelligence artificielle).");
       } else {
         message.error(msg ?? "Échec de la génération IA.");
       }
@@ -139,11 +139,11 @@ export function EmailTemplateAiVariants({ form, mode }: { form: FormInstance; mo
               <Alert
                 type="info"
                 showIcon
-                message="Optionnel — clé OpenAI côté serveur"
+                message="Optionnel — fournisseur d'IA du CRM"
                 description={
                   <Paragraph style={{ marginBottom: 0 }} type="secondary">
-                    Configurez <Text code>OPENAI_API_KEY</Text> sur l’environnement du serveur Next.js. Sans clé, le
-                    bouton renvoie une erreur explicite. Les variables <Text code>{"{{prenom}}"}</Text> etc. doivent
+                    Utilise le fournisseur d&apos;IA choisi dans Configuration › Intelligence artificielle (Claude, OpenAI, DeepSeek…).
+                    Sans fournisseur configuré, le bouton renvoie une erreur explicite. Les variables <Text code>{"{{prenom}}"}</Text> etc. doivent
                     rester présentes dans le texte généré ; relisez toujours avant envoi.
                   </Paragraph>
                 }

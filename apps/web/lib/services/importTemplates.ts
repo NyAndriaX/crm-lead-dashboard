@@ -6,7 +6,7 @@
  * (Leads + Guide colonnes) ou un CSV `;`.
  *
  * Les `headers` correspondent exactement aux noms attendus par le worker
- * `processImport` (cf. apps/worker/src/handlers/index.ts → ColumnMapping)
+ * `processImport` (cf. packages/jobs/src/handlers/index.ts → ColumnMapping)
  * pour que le mapping auto fonctionne sans intervention.
  */
 import * as XLSX from "xlsx";

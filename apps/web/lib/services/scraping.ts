@@ -8,23 +8,26 @@
  * Le scraping effectif tourne côté worker (job `scraping-run`) avec des
  * adapters "sandbox-first" : données mock réalistes par défaut, vrais
  * scrapers Playwright derrière le flag env SCRAPING_LIVE (cf.
- * apps/worker/src/scraping/).
+ * packages/jobs/src/scraping/).
  */
 import {
   isIdentifiableLead,
+  isMaskedProxy,
+  maskProxyUrl,
   normalizeMissionConfig,
+  proxyHasCredentials,
   parseScraperPayload,
   passesEmailRequirement,
   scheduleLabel,
+  scrapedPrivateContacts,
   type MissionConfig,
   type MissionSchedulePlan,
   type ScrapedLead,
 } from "@crm/db";
-import { prisma, type Prisma } from "@crm/db";
+import { prisma, recomputeLeadScore, type Prisma } from "@crm/db";
 import { enqueue } from "@/lib/jobs";
-import { encryptOrNull, emailHash } from "@/lib/crypto";
-import { isScrapedLeadDuplicateInCrm } from "@/lib/scraping/dedup";
-import { buildLeadCreateFromScraped } from "@/lib/scraping/leadPayload";
+import { encrypt, encryptOrNull, emailHash } from "@/lib/crypto";
+import { buildLeadCreateFromScraped, isScrapedLeadDuplicateInCrm } from "@crm/jobs";
 import { enrichLeadById } from "@/lib/services/enrichment";
 import { generateLeadAiBrief } from "@/lib/services/aiBrief";
 
@@ -33,6 +36,12 @@ import { generateLeadAiBrief } from "@/lib/services/aiBrief";
  * fraîchement injecté. Best-effort : ne jette jamais (n'invalide pas
  * l'injection si l'enrichissement ou l'IA échoue).
  */
+
+/** Téléphones du site et coordonnées directes du décideur : JSON chiffré (données personnelles possibles). */
+function privateContactsEnc(raw: ScrapedLead): ReturnType<typeof encryptOrNull> {
+  const c = scrapedPrivateContacts(raw);
+  return c ? encryptOrNull(JSON.stringify(c)) : null;
+}
 const AUTO_ENRICH_CAP = Number(process.env.SCRAPING_AUTOENRICH_CAP ?? 50);
 
 async function autoEnrichAndBrief(leadId: string): Promise<void> {
@@ -74,6 +83,36 @@ export type MissionDTO = {
   bufferCounts: { pending: number; accepted: number; rejected: number };
 };
 
+/**
+ * S-06 — proxy de la mission : avec identifiants, l'URL est chiffrée (AES-256-GCM, base64)
+ * et seule une version masquée reste lisible ; le libellé masqué renvoyé par le formulaire
+ * conserve le proxy existant. Sans `rate` dans la saisie, les réglages précédents sont gardés.
+ */
+function secureMissionConfig(input: unknown, previous?: MissionConfig | null): MissionConfig {
+  const raw = (input ?? {}) as { rate?: Partial<MissionConfig["rate"]> };
+  if (!raw.rate && previous) return normalizeMissionConfig({ ...(input as object), rate: previous.rate });
+  const config = normalizeMissionConfig(input);
+  const submitted = typeof raw.rate?.proxyUrl === "string" ? raw.rate.proxyUrl.trim() : "";
+  let proxyUrl: string | null = null;
+  let proxyUrlEnc: string | null = null;
+  if (submitted && isMaskedProxy(submitted)) {
+    proxyUrl = previous?.rate.proxyUrlEnc ? previous.rate.proxyUrl ?? null : null;
+    proxyUrlEnc = previous?.rate.proxyUrlEnc ?? null;
+  } else if (submitted && proxyHasCredentials(submitted)) {
+    proxyUrl = maskProxyUrl(submitted);
+    proxyUrlEnc = encrypt(submitted).toString("base64");
+  } else if (submitted) {
+    proxyUrl = submitted;
+  }
+  return { ...config, rate: { ...config.rate, proxyUrl, proxyUrlEnc } };
+}
+
+/** Configuration renvoyée au navigateur : jamais le proxy chiffré. */
+function publicConfig(config: MissionConfig): MissionConfig {
+  const { proxyUrlEnc: _enc, ...rate } = config.rate;
+  return { ...config, rate };
+}
+
 function legacyScheduleField(plan?: MissionSchedulePlan): string | null {
   if (!plan || plan.mode === "manual") return null;
   if (plan.mode === "once") return "once";
@@ -84,7 +123,7 @@ async function enqueueScheduledRun(missionId: string, cfg: MissionConfig): Promi
   const plan = cfg.schedulePlan;
   if (!plan || plan.mode === "manual") return;
 
-  // Mode ponctuel : job Agenda direct à la date demandée.
+  // Mode ponctuel : job planifié à la date demandée.
   if (plan.mode === "once" && plan.runAt) {
     const runAt = new Date(plan.runAt);
     if (runAt.getTime() > Date.now()) {
@@ -97,7 +136,7 @@ async function enqueueScheduledRun(missionId: string, cfg: MissionConfig): Promi
     return;
   }
 
-  // Mode récurrent : job Agenda direct pour la PREMIÈRE exécution (runAt ou immédiat).
+  // Mode récurrent : job planifié pour la PREMIÈRE exécution (runAt ou immédiat).
   // Les exécutions suivantes sont gérées par le cron scraping-scheduler.
   if (plan.mode === "recurring") {
     const anchor = plan.runAt ? new Date(plan.runAt) : new Date();
@@ -124,14 +163,14 @@ async function bufferCounts(missionId: string) {
 }
 
 export async function listMissions(): Promise<MissionDTO[]> {
-  const missions = await prisma.scrapingMission.findMany({ orderBy: { createdAt: "desc" } });
+  const missions = await prisma.scrapingMission.findMany({ orderBy: { updatedAt: "desc" } });
   const out: MissionDTO[] = [];
   for (const m of missions) {
     const config = normalizeMissionConfig(m.config);
     out.push({
       id: m.id,
       name: m.name,
-      config,
+      config: publicConfig(config),
       schedule: legacyScheduleField(config.schedulePlan) ?? m.schedule,
       scheduleLabel: scheduleLabel(config.schedulePlan),
       status: m.status,
@@ -150,7 +189,7 @@ export async function getMission(id: string): Promise<MissionDTO | null> {
   return {
     id: m.id,
     name: m.name,
-    config,
+    config: publicConfig(config),
     schedule: legacyScheduleField(config.schedulePlan) ?? m.schedule,
     scheduleLabel: scheduleLabel(config.schedulePlan),
     status: m.status,
@@ -164,7 +203,7 @@ export async function createMission(input: {
   name: string;
   config: unknown;
 }): Promise<MissionDTO> {
-  const config = normalizeMissionConfig(input.config);
+  const config = secureMissionConfig(input.config);
   const m = await prisma.scrapingMission.create({
     data: {
       name: input.name,
@@ -184,14 +223,16 @@ export async function updateMission(
 ): Promise<void> {
   const data: Prisma.ScrapingMissionUpdateInput = {};
   if (input.name !== undefined) data.name = input.name;
+  let config: MissionConfig | null = null;
   if (input.config !== undefined) {
-    const config = normalizeMissionConfig(input.config);
+    const current = await prisma.scrapingMission.findUnique({ where: { id }, select: { config: true } });
+    config = secureMissionConfig(input.config, current ? normalizeMissionConfig(current.config) : null);
     data.config = config as object;
     data.schedule = legacyScheduleField(config.schedulePlan);
   }
   await prisma.scrapingMission.update({ where: { id }, data });
-  if (input.config) {
-    await enqueueScheduledRun(id, normalizeMissionConfig(input.config));
+  if (config) {
+    await enqueueScheduledRun(id, config);
   }
 }
 
@@ -358,6 +399,7 @@ export async function injectAcceptedLeads(missionId: string, actorId?: string): 
         emailEnc: encryptOrNull(email),
         emailHash: email ? emailHash(email) : null,
         phoneEnc: encryptOrNull(raw.phone ?? null),
+        contactsEnc: privateContactsEnc(raw),
       },
     });
     await prisma.leadHistory.create({
@@ -379,6 +421,8 @@ export async function injectAcceptedLeads(missionId: string, actorId?: string): 
     if (injected <= AUTO_ENRICH_CAP) {
       await autoEnrichAndBrief(lead.id);
     }
+    // Score initial : profil + adéquation estimée par Claude (sinon le lead resterait à 0).
+    await recomputeLeadScore(prisma, lead.id).catch(() => null);
   }
 
   return { injected, skippedDuplicate, skippedInvalid };

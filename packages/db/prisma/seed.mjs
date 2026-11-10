@@ -1,7 +1,7 @@
 /**
  * Seed CRM — données de démo réalistes pour le dashboard et les modules L2/L3.
  *
- * Lancer : yarn db:seed
+ * Lancer : pnpm db:seed
  *
  * Variables :
  *   SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD — compte admin (déf. admin@crm.local / ChangeMe!2026)
@@ -134,7 +134,7 @@ async function seedWorkerConfig() {
   const existing = await prisma.workerConfig.findUnique({ where: { id: "default" } });
   if (!existing) {
     await prisma.workerConfig.create({
-      data: { id: "default", agendaTimezone: process.env.SEED_AGENDA_TIMEZONE || "Europe/Paris" },
+      data: { id: "default", agendaTimezone: process.env.SEED_WORKER_TIMEZONE || "Europe/Paris" },
     });
   }
 }
@@ -194,6 +194,13 @@ async function resetDemoData() {
       await prisma.sequence.deleteMany({ where: { id: { in: seqIds } } });
     }
   }
+  // Campagnes de démo (par nom) et leurs événements
+  const demoCampaigns = await prisma.campaign.findMany({ where: { name: { in: CAMPAIGN_FIXTURES.map((c) => c.name) } }, select: { id: true } });
+  if (demoCampaigns.length > 0) {
+    const ids = demoCampaigns.map((c) => c.id);
+    await prisma.emailEvent.deleteMany({ where: { campaignId: { in: ids } } });
+    await prisma.campaign.deleteMany({ where: { id: { in: ids } } });
+  }
   // Comptes SMTP / IMAP de démo (par label)
   const demoSmtpLabels = SMTP_CONFIG_FIXTURES.map((c) => c.label);
   if (demoSmtpLabels.length > 0) {
@@ -236,9 +243,6 @@ async function seedLeads(users) {
       lastReplyAt,
       createdAt,
       updatedAt: lastActionAt,
-      // Force le champ à `null` (et non absent) pour que les requêtes
-      // `where: { deletedAt: null }` fonctionnent en MongoDB sans avoir
-      // à utiliser `{ isSet: false }` partout. Cf. lib/notDeleted.ts
       deletedAt: null,
     };
 
@@ -718,6 +722,55 @@ async function seedPipelineAssignment(leadRows) {
   }
 }
 
+// Campagnes de démonstration : une terminée, une en cours, une planifiée, un brouillon.
+// Les événements (SENT/OPEN/CLICK/REPLIED/BOUNCE/UNSUBSCRIBE) sont répartis sur 14 jours
+// pour alimenter les statistiques de campagne et la page Analytics.
+const CAMPAIGN_FIXTURES = [
+  { name: "Lancement offre CRM — PME Lyon", status: "DONE", template: 0, segment: 0, daysAgo: 13, sent: 42, opens: 27, clicks: 12, replies: 5, bounces: 2, unsubs: 1 },
+  { name: "Relance Salon Paris 2026", status: "SENDING", template: 1, segment: 2, daysAgo: 4, sent: 24, opens: 13, clicks: 5, replies: 2, bounces: 1, unsubs: 0 },
+  { name: "Invitation webinar — IA & prospection", status: "SCHEDULED", template: 2, segment: 1, daysAgo: -3, sent: 0, opens: 0, clicks: 0, replies: 0, bounces: 0, unsubs: 0 },
+  { name: "Offre partenaires — brouillon", status: "DRAFT", template: 0, segment: 3, daysAgo: 0, sent: 0, opens: 0, clicks: 0, replies: 0, bounces: 0, unsubs: 0 },
+];
+
+async function seedCampaigns(leadRows) {
+  const templates = await prisma.template.findMany({ orderBy: { createdAt: "asc" }, select: { id: true, subject: true } });
+  const segments = await prisma.segment.findMany({ orderBy: { createdAt: "asc" }, select: { id: true } });
+  const smtp = await prisma.smtpConfig.findFirst({ where: { isActive: true }, select: { id: true } });
+  const leads = leadRows.map((r) => r.lead);
+  for (const fx of CAMPAIGN_FIXTURES) {
+    const tpl = templates[fx.template % Math.max(templates.length, 1)];
+    const data = {
+      name: fx.name,
+      status: fx.status,
+      templateId: tpl?.id ?? null,
+      segmentId: segments[fx.segment % Math.max(segments.length, 1)]?.id ?? null,
+      smtpConfigId: smtp?.id ?? null,
+      subject: tpl?.subject ?? null,
+      scheduledAt: fx.status === "SCHEDULED" ? daysAgo(fx.daysAgo) : fx.status === "DRAFT" ? null : daysAgo(fx.daysAgo),
+      dailyLimit: 150,
+      config: { aiPersonalize: true, throttleMinDelayMs: 4000 },
+      stats: { target: fx.status === "SENDING" ? 38 : fx.sent },
+    };
+    const existing = await prisma.campaign.findFirst({ where: { name: fx.name }, select: { id: true } });
+    const campaign = existing
+      ? await prisma.campaign.update({ where: { id: existing.id }, data })
+      : await prisma.campaign.create({ data });
+    await prisma.emailEvent.deleteMany({ where: { campaignId: campaign.id } });
+
+    const start = daysAgo(Math.max(fx.daysAgo, 0)).getTime();
+    const events = [];
+    const at = (i, spreadH) => new Date(Math.min(Date.now() - 60_000, start + (i % 9) * spreadH * 3_600_000 + i * 600_000));
+    const target = (i) => leads[i % leads.length]?.id ?? null;
+    for (let i = 0; i < fx.sent; i++) events.push({ campaignId: campaign.id, leadId: target(i), eventType: "SENT", occurredAt: at(i, 2) });
+    for (let i = 0; i < fx.opens; i++) events.push({ campaignId: campaign.id, leadId: target(i), eventType: "OPEN", occurredAt: at(i, 9) });
+    for (let i = 0; i < fx.clicks; i++) events.push({ campaignId: campaign.id, leadId: target(i), eventType: "CLICK", url: "https://crm.local/demo", occurredAt: at(i, 12) });
+    for (let i = 0; i < fx.replies; i++) events.push({ campaignId: campaign.id, leadId: target(i), eventType: "REPLIED", occurredAt: at(i, 20) });
+    for (let i = 0; i < fx.bounces; i++) events.push({ campaignId: campaign.id, leadId: target(fx.sent - 1 - i), eventType: "BOUNCE", occurredAt: at(i, 1) });
+    for (let i = 0; i < fx.unsubs; i++) events.push({ campaignId: campaign.id, leadId: target(fx.sent - 3 - i), eventType: "UNSUBSCRIBE", occurredAt: at(i, 30) });
+    if (events.length > 0) await prisma.emailEvent.createMany({ data: events });
+  }
+}
+
 async function main() {
   const passwordHash = await hashPassword(demoPassword);
   const users = await seedUsers(passwordHash);
@@ -753,6 +806,7 @@ async function main() {
   await seedApiCredits();
   await seedSmtpConfigs();
   await seedImapConfigs();
+  await seedCampaigns(leadRows);
   await seedInboxMessages();
   await seedSequences();
   await seedSequenceLeads();
@@ -778,6 +832,7 @@ async function main() {
   console.log(`│  Notifs      : ${SYSTEM_NOTIFICATION_FIXTURES.length} système + ${leadRows.filter((r) => r.assignee).length} d'assignation`);
   console.log(`│  Blacklist   : ${BLACKLIST_FIXTURES.length} · API credits: ${API_CREDIT_FIXTURES.length}`);
   console.log(`│  SMTP / IMAP : ${SMTP_CONFIG_FIXTURES.length} SMTP + ${IMAP_CONFIG_FIXTURES.length} IMAP`);
+  console.log(`│  Campagnes   : ${CAMPAIGN_FIXTURES.length} (terminée, en cours, planifiée, brouillon)`);
   console.log(`│  Inbox       : ${INBOX_MESSAGE_FIXTURES.length} messages (threads inbound/outbound + auto-reply + orphan)`);
   console.log(`│  Séquences   : ${SEQUENCE_FIXTURES.length} (${SEQUENCE_LEAD_FIXTURES.length} leads inscrits)`);
   console.log("└──────────────────────────────────────────────────────────────");

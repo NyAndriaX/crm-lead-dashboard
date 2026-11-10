@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   Table, Tag, Typography, Button, Space, Input, InputNumber, Select, Dropdown, message,
@@ -10,16 +10,17 @@ import {
 import {
   DownloadOutlined, SaveOutlined, ReloadOutlined, PlusOutlined,
   DeleteOutlined, UserSwitchOutlined, TagsOutlined, ThunderboltOutlined,
-  RetweetOutlined, MoreOutlined, EditOutlined, EnvironmentOutlined,
+  RetweetOutlined, MoreOutlined, EditOutlined, EnvironmentOutlined, TeamOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType, TablePaginationConfig } from "antd/es/table";
 import type { SorterResult } from "antd/es/table/interface";
 import { api } from "@/lib/client";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
 import { useBreakpoint, useIsMobile } from "@/lib/responsive";
 import { BulkEnrichModal } from "@/components/leads/BulkEnrichModal";
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 interface LeadDTO {
   id: string; email: string | null; firstName: string | null; lastName: string | null;
@@ -43,7 +44,10 @@ interface CreateLeadForm {
 
 type BulkAction = "delete" | "assign" | "status" | "tags-add" | "tags-remove" | "enroll-sequence";
 
-export default function LeadsPage() {
+function LeadsPageInner() {
+  const searchParams = useSearchParams();
+  const urlQuery = searchParams.get("q") ?? "";
+  const [searchText, setSearchText] = useState(urlQuery);
   const router = useRouter();
   const [rows, setRows] = useState<LeadDTO[]>([]);
   const [loading, setLoading] = useState(false);
@@ -51,7 +55,22 @@ export default function LeadsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [sort, setSort] = useState<string | undefined>();
-  const [filters, setFilters] = useState<Filters>({});
+  // Filtres initiaux lus dans l'URL (liens depuis le tableau de bord : ?scoreMin=70&status=NOUVEAU…).
+  const [filters, setFilters] = useState<Filters>(() => {
+    const scoreMin = Number(searchParams.get("scoreMin"));
+    return {
+      ...(urlQuery ? { q: urlQuery } : {}),
+      ...(searchParams.get("status") ? { status: searchParams.get("status")! } : {}),
+      ...(searchParams.get("tag") ? { tag: searchParams.get("tag")! } : {}),
+      ...(Number.isFinite(scoreMin) && scoreMin > 0 ? { scoreMin } : {}),
+    };
+  });
+
+  // Recherche lancée depuis l'en-tête global (/leads?q=…), y compris quand on est déjà sur la page.
+  useEffect(() => {
+    setSearchText(urlQuery);
+    setFilters((f) => ({ ...f, q: urlQuery || undefined }));
+  }, [urlQuery]);
   const [views, setViews] = useState<LeadView[]>([]);
   const [tagsRef, setTagsRef] = useState<TagDTO[]>([]);
   const [sequences, setSequences] = useState<SequenceLite[]>([]);
@@ -242,9 +261,12 @@ export default function LeadsPage() {
 
   return (
     <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-      <div className="page-toolbar">
-        <Title level={isMobile ? 4 : 3} style={{ margin: 0 }}>Leads</Title>
-        <div className="page-toolbar-actions">
+      <PageHeader
+        icon={<TeamOutlined />}
+        title="Leads"
+        subtitle="Tous vos prospects : filtres, statuts, tags, assignation, scoring et export."
+        extra={
+          <>
           <Select
             allowClear placeholder="Vue sauvegardée" style={{ minWidth: isMobile ? undefined : 180, width: isMobile ? "100%" : 180 }}
             options={views.map((v) => ({ value: v.id, label: v.name }))} onChange={(v) => v && applyView(v)}
@@ -265,26 +287,35 @@ export default function LeadsPage() {
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
             Nouveau lead
           </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <div className="page-filters">
-        <Input.Search placeholder="Rechercher (nom, entreprise, notes)…" allowClear onSearch={(v) => setFilter("q", v.trim() || undefined)} />
+        <Input.Search
+          placeholder="Rechercher (nom, entreprise, notes)…"
+          allowClear
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          onSearch={(v) => setFilter("q", v.trim() || undefined)}
+        />
         <Select
           allowClear placeholder="Statut"
           options={Object.entries(STATUS_LABELS).map(([v, l]) => ({ value: v, label: l }))}
+          value={filters.status}
           onChange={(v) => setFilter("status", v)}
         />
         <Select
           allowClear placeholder="Tag"
           options={tagsRef.map((t) => ({ value: t.name, label: <Tag color={t.color ?? "default"} style={{ margin: 0 }}>{t.name}</Tag> }))}
+          value={filters.tag}
           onChange={(v) => setFilter("tag", v)}
           style={{ minWidth: 160 }}
           showSearch
           filterOption={(input, opt) => String(opt?.value ?? "").toLowerCase().includes(input.toLowerCase())}
         />
         <Input placeholder="Source" allowClear onChange={(e) => setFilter("source", e.target.value || undefined)} />
-        <InputNumber placeholder="Score min" min={0} max={100} onChange={(v) => setFilter("scoreMin", v ?? undefined)} />
+        <InputNumber placeholder="Score min" min={0} max={100} value={filters.scoreMin} onChange={(v) => setFilter("scoreMin", v ?? undefined)} />
         <Button icon={<ReloadOutlined />} onClick={() => fetchLeads()}>Rafraîchir</Button>
       </div>
 
@@ -292,8 +323,8 @@ export default function LeadsPage() {
       {hasSelection && (
         <div
           style={{
-            background: "#e6f4ff",
-            border: "1px solid #91caff",
+            background: "rgba(139,92,246,0.14)",
+            border: "1px solid rgba(139,92,246,0.45)",
             borderRadius: 8,
             padding: "10px 16px",
             display: "flex",
@@ -302,7 +333,7 @@ export default function LeadsPage() {
             flexWrap: "wrap",
           }}
         >
-          <Text strong style={{ color: "#1677ff" }}>
+          <Text strong style={{ color: "#8b5cf6" }}>
             {selectedIds.length} lead{selectedIds.length > 1 ? "s" : ""} sélectionné{selectedIds.length > 1 ? "s" : ""}
           </Text>
           <Space wrap>
@@ -551,5 +582,13 @@ export default function LeadsPage() {
         onDone={() => { void fetchLeads(); }}
       />
     </Space>
+  );
+}
+
+export default function LeadsPage() {
+  return (
+    <Suspense fallback={null}>
+      <LeadsPageInner />
+    </Suspense>
   );
 }

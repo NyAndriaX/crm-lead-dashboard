@@ -1,27 +1,30 @@
 "use client";
 
 /**
- * Page Import CSV/XLSX — CRM-021 → CRM-027.
+ * Page Import CSV/XLSX — CRM-021 → CRM-027, I-03 / I-07 / I-09.
  * Wizard en 4 étapes :
  *  1. Upload du fichier
- *  2. Mapping colonnes ↔ champs lead
+ *  2. Mapping colonnes ↔ champs lead + options (colonnes obligatoires, source et tags par défaut,
+ *     assignation à un commercial ou répartition à tour de rôle)
  *  3. Aperçu + confirmation
- *  4. Traitement en cours + résultat
+ *  4. Traitement en cours + résultat (rapport détaillé des lignes rejetées ou nettoyées)
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Steps, Upload, Button, Typography, Table, Select, Space, Card, Alert, Progress,
   Row, Col, Tag, Badge, Divider, Tooltip, message, Collapse, Statistic, List,
-  Switch, Input,
+  Switch, Input, Radio,
 } from "antd";
 import {
   InboxOutlined, ArrowLeftOutlined, ArrowRightOutlined, CheckCircleOutlined,
   CloseCircleOutlined, ReloadOutlined, DeleteOutlined, HistoryOutlined,
   ThunderboltOutlined,
+  CloudUploadOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
-import { IMPORTABLE_FIELD_LABELS, type ImportableField } from "@/lib/schemas/import";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { IMPORTABLE_FIELD_LABELS, defaultRequiredFields, type ImportableField } from "@/lib/schemas/import";
 import { useIsMobile } from "@/lib/responsive";
 import { ImportTemplateGallery } from "@/components/import/ImportTemplateGallery";
 
@@ -38,6 +41,8 @@ interface UploadResult {
   totalRows: number;
 }
 
+interface ImportIssue { row: number; action: "rejected" | "cleaned"; field: ImportableField | null; reason: string }
+
 interface ImportJob {
   id: string;
   fileName: string;
@@ -46,12 +51,23 @@ interface ImportJob {
   importedRows: number;
   duplicateRows: number;
   errorRows: number;
+  cleanedRows?: number;
   errorReport: string | null;
+  report?: {
+    requiredFields?: ImportableField[];
+    assignment?: { mode: AssignMode; counts?: Record<string, number> };
+    issues?: ImportIssue[];
+    truncated?: boolean;
+  } | null;
   createdAt: string;
   user?: { id: string; name: string };
 }
 
+interface UserLite { id: string; name: string; role: string; isActive: boolean }
+interface TagRef { id: string; name: string }
+
 type Mapping = Partial<Record<ImportableField, string>>;
+type AssignMode = "none" | "single" | "roundRobin";
 
 export default function ImportPage() {
   const [step, setStep] = useState(0);
@@ -60,6 +76,15 @@ export default function ImportPage() {
   const [mapping, setMapping] = useState<Mapping>({});
   const [skipDuplicates, setSkipDuplicates] = useState(true);
   const [defaultSource, setDefaultSource] = useState("");
+  const [defaultTags, setDefaultTags] = useState<string[]>([]);
+  // I-03 — colonnes obligatoires : règle par défaut (email, sinon entreprise) tant que l'utilisateur n'y touche pas.
+  const [requiredFields, setRequiredFields] = useState<ImportableField[]>([]);
+  const [requiredTouched, setRequiredTouched] = useState(false);
+  // I-09 — assignation des leads importés.
+  const [assignMode, setAssignMode] = useState<AssignMode>("none");
+  const [assignees, setAssignees] = useState<string[]>([]);
+  const [users, setUsers] = useState<UserLite[] | null>(null);
+  const [tagsRef, setTagsRef] = useState<TagRef[]>([]);
   const [starting, setStarting] = useState(false);
   const [currentJob, setCurrentJob] = useState<ImportJob | null>(null);
   const [history, setHistory] = useState<ImportJob[]>([]);
@@ -77,6 +102,19 @@ export default function ImportPage() {
   }, []);
 
   useEffect(() => { void fetchHistory(); }, [fetchHistory]);
+
+  useEffect(() => {
+    // Liste des commerciaux : réservée à la permission leads:assign (403 sinon → pas d'assignation proposée).
+    api.get<{ data: UserLite[] }>("/users")
+      .then((r) => setUsers(r.data.data.filter((u) => u.isActive && u.role !== "LECTEUR")))
+      .catch(() => setUsers([]));
+    api.get<{ data: TagRef[] }>("/tags").then((r) => setTagsRef(r.data.data)).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (requiredTouched) return;
+    setRequiredFields(defaultRequiredFields(Object.keys(mapping).filter((k) => mapping[k as ImportableField])) as ImportableField[]);
+  }, [mapping, requiredTouched]);
 
   // Polling du statut quand l'import tourne
   useEffect(() => {
@@ -136,12 +174,27 @@ export default function ImportPage() {
       message.warning("Mappez au moins une colonne avant de continuer.");
       return;
     }
+    if (assignMode === "single" && assignees.length !== 1) {
+      message.warning("Choisissez le commercial à qui assigner les leads.");
+      return;
+    }
+    if (assignMode === "roundRobin" && assignees.length < 2) {
+      message.warning("Choisissez au moins deux commerciaux pour la répartition à tour de rôle.");
+      return;
+    }
     setStarting(true);
     try {
+      const assignment =
+        assignMode === "single" ? { mode: "single", userId: assignees[0] }
+          : assignMode === "roundRobin" ? { mode: "roundRobin", userIds: assignees }
+          : { mode: "none" };
       const { data } = await api.post<{ data: ImportJob }>(`/import/${uploadResult.id}/start`, {
         mapping,
         skipDuplicates,
         defaultSource: defaultSource || undefined,
+        defaultTags: defaultTags.length ? defaultTags : undefined,
+        requiredFields: requiredFields.filter((f) => mapping[f]),
+        assignment,
       });
       setCurrentJob(data.data);
       setStep(3);
@@ -160,8 +213,15 @@ export default function ImportPage() {
     setMapping({});
     setCurrentJob(null);
     setDefaultSource("");
+    setDefaultTags([]);
+    setRequiredFields([]);
+    setRequiredTouched(false);
+    setAssignMode("none");
+    setAssignees([]);
     setSkipDuplicates(true);
   }
+
+  const userName = (id: string) => users?.find((u) => u.id === id)?.name ?? "Commercial";
 
   // ── Step 1 : Upload ───────────────────────────────────────────────────────
   function renderUpload() {
@@ -177,7 +237,7 @@ export default function ImportPage() {
             disabled={uploading}
             style={{ padding: "40px 20px" }}
           >
-            <p className="ant-upload-drag-icon"><InboxOutlined style={{ fontSize: 48, color: "#1677ff" }} /></p>
+            <p className="ant-upload-drag-icon"><InboxOutlined style={{ fontSize: 48, color: "#8b5cf6" }} /></p>
             <p className="ant-upload-text" style={{ fontSize: 18 }}>Glissez votre fichier ici</p>
             <p className="ant-upload-hint">Formats acceptés : CSV, XLSX, XLS · Taille max : 50 Mo</p>
           </Dragger>
@@ -256,21 +316,95 @@ export default function ImportPage() {
           </Row>
         </Card>
 
+        <Card title="Contrôle des lignes">
+          <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+            <div>
+              <div style={{ marginBottom: 4 }}><Text strong>Colonnes obligatoires</Text></div>
+              <Select<ImportableField[]>
+                mode="multiple"
+                data-testid="import-required-fields"
+                style={{ width: "100%" }}
+                placeholder="Aucune colonne obligatoire"
+                value={requiredFields.filter((f) => mapping[f])}
+                onChange={(v) => { setRequiredFields(v); setRequiredTouched(true); }}
+                options={LEAD_FIELDS.filter(({ value }) => mapping[value as ImportableField])}
+              />
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Une ligne dont l&apos;une de ces colonnes est vide ou invalide est rejetée et listée dans le rapport.
+                Par défaut : l&apos;email, ou l&apos;entreprise si le fichier n&apos;a pas de colonne email.
+              </Text>
+            </div>
+            <Alert
+              type="info"
+              showIcon
+              message="Formats vérifiés automatiquement"
+              description="Email (format standard), téléphone (normalisé au format international +33…) et site web (adresse http(s) complète). Une valeur invalide rejette la ligne si la colonne est obligatoire ; sinon elle est retirée et la ligne est importée « nettoyée »."
+            />
+          </Space>
+        </Card>
+
         <Card title="Options d'import">
-          <Space direction="vertical" size="small">
+          <Space direction="vertical" size="middle" style={{ width: "100%" }}>
             <Space>
               <Switch checked={skipDuplicates} onChange={setSkipDuplicates} />
               <Text>Ignorer les doublons (même email)</Text>
             </Space>
-            <Space>
-              <Text>Source par défaut :</Text>
-              <Input
-                value={defaultSource}
-                onChange={(e) => setDefaultSource(e.target.value)}
-                placeholder="CSV import, salon…"
-                style={{ width: 220 }}
-              />
-            </Space>
+            <Row gutter={[16, 12]}>
+              <Col xs={24} md={12}>
+                <div style={{ marginBottom: 4 }}><Text strong>Source par défaut</Text></div>
+                <Input
+                  value={defaultSource}
+                  onChange={(e) => setDefaultSource(e.target.value)}
+                  placeholder="CSV import, salon…"
+                />
+              </Col>
+              <Col xs={24} md={12}>
+                <div style={{ marginBottom: 4 }}><Text strong>Tags par défaut</Text></div>
+                <Select<string[]>
+                  mode="tags"
+                  data-testid="import-default-tags"
+                  style={{ width: "100%" }}
+                  placeholder="Salon 2026, Webinar…"
+                  value={defaultTags}
+                  onChange={(v) => setDefaultTags(v.map((t) => t.trim()).filter(Boolean).slice(0, 20))}
+                  tokenSeparators={[","]}
+                  options={tagsRef.map((t) => ({ value: t.name, label: t.name }))}
+                />
+              </Col>
+            </Row>
+            {users && users.length > 0 && (
+              <div>
+                <div style={{ marginBottom: 4 }}><Text strong>Assignation des leads importés</Text></div>
+                <Radio.Group
+                  value={assignMode}
+                  onChange={(e) => { setAssignMode(e.target.value as AssignMode); setAssignees([]); }}
+                  optionType="button"
+                  options={[
+                    { value: "none", label: "Aucune" },
+                    { value: "single", label: "Un commercial" },
+                    { value: "roundRobin", label: "Tour de rôle" },
+                  ]}
+                />
+                {assignMode !== "none" && (
+                  <Select<string | string[]>
+                    mode={assignMode === "roundRobin" ? "multiple" : undefined}
+                    data-testid="import-assignees"
+                    style={{ width: "100%", marginTop: 8 }}
+                    placeholder={assignMode === "roundRobin" ? "Choisir au moins deux commerciaux" : "Choisir le commercial"}
+                    value={assignMode === "roundRobin" ? assignees : assignees[0]}
+                    onChange={(v) => setAssignees(Array.isArray(v) ? v : v ? [v] : [])}
+                    showSearch
+                    optionFilterProp="label"
+                    options={users.map((u) => ({ value: u.id, label: u.name }))}
+                  />
+                )}
+                {assignMode === "roundRobin" && (
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    Les leads créés sont répartis un par un, dans l&apos;ordre de la liste (1er lead au 1er commercial, 2e au 2e…).
+                  </Text>
+                )}
+              </div>
+            )}
           </Space>
         </Card>
 
@@ -345,7 +479,7 @@ export default function ImportPage() {
         <Card>
           {isRunning && (
             <>
-              <Progress percent={pct} status="active" strokeColor="#1677ff" />
+              <Progress percent={pct} status="active" strokeColor="#8b5cf6" />
               <Text type="secondary">Traitement en cours… ({currentJob.importedRows} / {currentJob.totalRows} lignes)</Text>
             </>
           )}
@@ -358,9 +492,10 @@ export default function ImportPage() {
                 message="Import terminé"
                 description={
                   <Row gutter={24} style={{ marginTop: 8 }}>
-                    <Col><Statistic title="Importés" value={currentJob.importedRows} valueStyle={{ color: "#52c41a" }} /></Col>
+                    <Col><Statistic title="Importés" value={currentJob.importedRows} valueStyle={{ color: "#34d399" }} /></Col>
                     <Col><Statistic title="Doublons ignorés" value={currentJob.duplicateRows} valueStyle={{ color: "#faad14" }} /></Col>
-                    <Col><Statistic title="Erreurs" value={currentJob.errorRows} valueStyle={{ color: currentJob.errorRows > 0 ? "#ff4d4f" : undefined }} /></Col>
+                    <Col><Statistic title="Nettoyées" value={currentJob.cleanedRows ?? 0} valueStyle={{ color: (currentJob.cleanedRows ?? 0) > 0 ? "#8b5cf6" : undefined }} /></Col>
+                    <Col><Statistic title="Rejetées" value={currentJob.errorRows} valueStyle={{ color: currentJob.errorRows > 0 ? "#ff4d4f" : undefined }} /></Col>
                     <Col><Statistic title="Total" value={currentJob.totalRows} /></Col>
                   </Row>
                 }
@@ -376,18 +511,73 @@ export default function ImportPage() {
             </>
           )}
 
-          {isDone && currentJob.errorRows > 0 && currentJob.errorReport && (
-            <Collapse style={{ marginTop: 16 }} items={[{
-              key: "errors",
-              label: `${currentJob.errorRows} erreur(s) de ligne`,
-              children: <pre style={{ maxHeight: 300, overflow: "auto", fontSize: 12 }}>{currentJob.errorReport}</pre>,
-            }]} />
-          )}
+          {isDone && renderReport(currentJob)}
         </Card>
 
         <div style={{ display: "flex", gap: 12 }}>
           <Button icon={<ReloadOutlined />} onClick={reset}>Nouvel import</Button>
         </div>
+      </Space>
+    );
+  }
+
+  // ── Rapport détaillé (I-03 / I-07 / I-09) ─────────────────────────────────
+  function renderReport(job: ImportJob) {
+    const report = job.report;
+    const issues = report?.issues ?? [];
+    const counts = Object.entries(report?.assignment?.counts ?? {});
+    const issueCols: ColumnsType<ImportIssue> = [
+      { title: "Ligne", dataIndex: "row", key: "row", width: 80, sorter: (a, b) => a.row - b.row },
+      {
+        title: "Résultat", dataIndex: "action", key: "action", width: 120,
+        filters: [{ text: "Rejetée", value: "rejected" }, { text: "Nettoyée", value: "cleaned" }],
+        onFilter: (v, r) => r.action === v,
+        render: (a: ImportIssue["action"]) => a === "rejected" ? <Tag color="red">Rejetée</Tag> : <Tag color="purple">Nettoyée</Tag>,
+      },
+      {
+        title: "Colonne", dataIndex: "field", key: "field", width: 130,
+        render: (f: ImportableField | null) => f ? IMPORTABLE_FIELD_LABELS[f] : <Text type="secondary">—</Text>,
+      },
+      { title: "Raison", dataIndex: "reason", key: "reason" },
+    ];
+    return (
+      <Space direction="vertical" size="middle" style={{ width: "100%", marginTop: 16 }}>
+        {(report?.requiredFields?.length ?? 0) > 0 && (
+          <Text type="secondary">
+            Colonnes obligatoires : {report!.requiredFields!.map((f) => <Tag key={f}>{IMPORTABLE_FIELD_LABELS[f]}</Tag>)}
+          </Text>
+        )}
+        {counts.length > 0 && (
+          <Alert
+            type="info"
+            showIcon
+            message={report?.assignment?.mode === "roundRobin" ? "Leads répartis à tour de rôle" : "Leads assignés"}
+            description={<Space wrap>{counts.map(([id, n]) => <Tag key={id} color="blue">{userName(id)} : {n}</Tag>)}</Space>}
+          />
+        )}
+        {issues.length > 0 ? (
+          <Collapse defaultActiveKey={job.errorRows > 0 ? ["issues"] : []} items={[{
+            key: "issues",
+            label: `Rapport d'import : ${job.errorRows} ligne(s) rejetée(s), ${job.cleanedRows ?? 0} nettoyée(s)${report?.truncated ? " — détail limité aux 2 000 premières anomalies" : ""}`,
+            children: (
+              <Table<ImportIssue>
+                size="small"
+                data-testid="import-report"
+                rowKey={(r, i) => `${r.row}-${r.field ?? "row"}-${i}`}
+                columns={issueCols}
+                dataSource={issues}
+                pagination={{ pageSize: 20, hideOnSinglePage: true }}
+                scroll={{ x: "max-content" }}
+              />
+            ),
+          }]} />
+        ) : job.errorRows > 0 && job.errorReport ? (
+          <Collapse items={[{
+            key: "errors",
+            label: `${job.errorRows} erreur(s) de ligne`,
+            children: <pre style={{ maxHeight: 300, overflow: "auto", fontSize: 12 }}>{job.errorReport}</pre>,
+          }]} />
+        ) : null}
       </Space>
     );
   }
@@ -414,14 +604,19 @@ export default function ImportPage() {
 
   return (
     <Space direction="vertical" size="large" style={{ width: "100%" }}>
-      <div className="page-toolbar">
-        <Title level={isMobile ? 4 : 3} style={{ margin: 0 }}>Import de leads</Title>
-        <div className="page-toolbar-actions">
+      <PageHeader
+        icon={<CloudUploadOutlined />}
+        title="Import de"
+        highlight="leads"
+        subtitle="CSV ou Excel : mapping des colonnes, dédoublonnage, traitement en tâche de fond."
+        extra={
+          <>
           <Tooltip title="Actualiser l&apos;historique">
             <Button icon={<ReloadOutlined />} onClick={() => fetchHistory()} loading={historyLoading} />
           </Tooltip>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <Row gutter={[16, 24]}>
         <Col xs={24} lg={16}>
@@ -479,7 +674,7 @@ export default function ImportPage() {
                         </Text>
                         {job.status === "done" && (
                           <Text style={{ fontSize: 11 }}>
-                            ✓ {job.importedRows} · ↯ {job.duplicateRows} · ✗ {job.errorRows}
+                            ✓ {job.importedRows} · ↯ {job.duplicateRows} · ✗ {job.errorRows}{job.cleanedRows ? ` · ✎ ${job.cleanedRows}` : ""}
                           </Text>
                         )}
                       </Space>

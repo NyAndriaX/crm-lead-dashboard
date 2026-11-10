@@ -21,13 +21,13 @@ export const TAG_FIXTURES = [
 ];
 
 export const PIPELINE_STAGES = [
-  { name: "Nouveau", color: "#8c8c8c" },
-  { name: "Contacté", color: "#1677ff" },
-  { name: "Qualifié", color: "#13c2c2" },
-  { name: "Proposition", color: "#722ed1" },
-  { name: "Négociation", color: "#fa8c16" },
-  { name: "Gagné", color: "#52c41a" },
-  { name: "Perdu", color: "#ff4d4f" },
+  { name: "Nouveau", color: "#94a3b8" },
+  { name: "Contacté", color: "#c4b5fd" },
+  { name: "Qualifié", color: "#a78bfa" },
+  { name: "Proposition", color: "#8b5cf6" },
+  { name: "Négociation", color: "#fbbf24" },
+  { name: "Gagné", color: "#34d399" },
+  { name: "Perdu", color: "#fb7185" },
 ];
 
 export const LEAD_VIEW_FIXTURES = [
@@ -269,8 +269,8 @@ export const TEMPLATE_FIXTURES = [
   {
     name: "Cold outreach — SaaS B2B",
     category: "Prospection",
-    subject: "{{firstName}}, un retour rapide sur {{company}} ?",
-    bodyHtml: "<p>Bonjour {{firstName}},</p><p>Je vous contacte au sujet de {{company}}. Avez-vous 15 min cette semaine pour échanger ?</p><p>Bien cordialement,<br/>Lucas</p>",
+    subject: "{{prenom}}, un retour rapide sur {{entreprise}} ?",
+    bodyHtml: "<p>Bonjour {{prenom}},</p><p>Je vous contacte au sujet de {{entreprise}}. Avez-vous 15 min cette semaine pour échanger ?</p><p>Bien cordialement,<br/>Lucas</p>",
     variables: ["firstName", "company"],
     isPreset: true,
   },
@@ -278,15 +278,15 @@ export const TEMPLATE_FIXTURES = [
     name: "Suivi webinar croissance B2B",
     category: "Webinar",
     subject: "Merci pour votre participation au webinar !",
-    bodyHtml: "<p>Bonjour {{firstName}},</p><p>Merci d'avoir assisté à notre webinar sur la croissance B2B. Voici le replay et les slides en pièce jointe.</p>",
+    bodyHtml: "<p>Bonjour {{prenom}},</p><p>Merci d'avoir assisté à notre webinar sur la croissance B2B. Voici le replay et les slides en pièce jointe.</p>",
     variables: ["firstName"],
     isPreset: true,
   },
   {
     name: "Relance VIP — proposition commerciale",
     category: "Relance",
-    subject: "{{firstName}}, proposition commerciale {{company}}",
-    bodyHtml: "<p>Bonjour {{firstName}},</p><p>Suite à nos derniers échanges, vous trouverez ci-joint la proposition commerciale pour {{company}}.</p>",
+    subject: "{{prenom}}, proposition commerciale {{entreprise}}",
+    bodyHtml: "<p>Bonjour {{prenom}},</p><p>Suite à nos derniers échanges, vous trouverez ci-joint la proposition commerciale pour {{entreprise}}.</p>",
     variables: ["firstName", "company"],
     isPreset: false,
   },
@@ -297,7 +297,7 @@ export const SEGMENT_FIXTURES = [
   { name: "Leads SaaS qualifiés", filters: { sector: "SaaS", status: "QUALIFIE" } },
   { name: "Participants webinar", filters: { source: "Webinar" } },
   { name: "Salon Paris 2026", filters: { source: "Salon Paris 2026" } },
-  { name: "Leads VIP", filters: { tags: ["VIP"] } },
+  { name: "Leads VIP", filters: { tag: "VIP" } },
 ];
 
 // ── Blacklist (CRM-040) ───────────────────────────────────────────────────────

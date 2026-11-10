@@ -1,0 +1,61 @@
+Received: from DB9PR02MB1234.eurprd02.prod.outlook.com (2603:10a6:10:2c3::14)
+ by AM6PR02MB5678.eurprd02.prod.outlook.com with HTTPS; Mon, 26 Oct 2026
+ 14:02:41 +0000
+MIME-Version: 1.0
+From: postmaster@outlook.com
+To: prospection@exemple-crm.fr
+Date: Mon, 26 Oct 2026 14:02:41 +0000
+Content-Type: multipart/report; report-type=delivery-status;
+	boundary="56c5a1e4-22b9-4f4a-9b1d-0b7e1c9d2e11"
+X-MS-Exchange-Message-Is-Ndr:
+Content-Language: fr-FR
+Message-ID: <3b2a8f8e-0c1d-4e6f-9a7b-1c2d3e4f5a6b@DB9PR02MB1234.eurprd02.prod.outlook.com>
+In-Reply-To: <crm-cmcampaign000000000000002-cmlead00000000000000000003-A@exemple-crm.fr>
+References: <crm-cmcampaign000000000000002-cmlead00000000000000000003-A@exemple-crm.fr>
+Subject: =?utf-8?B?Tm9uIHJlbWlzIDogT2ZmcmUgcGFydGVuYWlyZXM=?=
+Auto-Submitted: auto-replied
+
+--56c5a1e4-22b9-4f4a-9b1d-0b7e1c9d2e11
+Content-Type: multipart/alternative; differences=Content-Type;
+	boundary="7e2f3c1a-5d4b-4a3e-8f9c-2d1e0f9a8b7c"
+
+--7e2f3c1a-5d4b-4a3e-8f9c-2d1e0f9a8b7c
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Impossible de remettre votre message =C3=A0 contact@cabinet-leroy.fr. Elle n=
+'existe pas ou ne peut pas recevoir de messages.
+
+Diagnostic pour les administrateurs :
+Serveur g=C3=A9n=C3=A9rateur : DB9PR02MB1234.eurprd02.prod.outlook.com
+contact@cabinet-leroy.fr
+Remote Server returned '550 5.1.10 RESOLVER.ADR.RecipientNotFound; Recipien=
+t not found by SMTP address lookup'
+
+--7e2f3c1a-5d4b-4a3e-8f9c-2d1e0f9a8b7c--
+
+--56c5a1e4-22b9-4f4a-9b1d-0b7e1c9d2e11
+Content-Type: message/delivery-status
+
+Reporting-MTA: dns;DB9PR02MB1234.eurprd02.prod.outlook.com
+Received-From-MTA: dns;mail.exemple-crm.fr
+Arrival-Date: Mon, 26 Oct 2026 14:02:40 +0000
+
+Final-Recipient: rfc822;contact@cabinet-leroy.fr
+Action: failed
+Status: 5.1.10
+Diagnostic-Code: smtp;550 5.1.10 RESOLVER.ADR.RecipientNotFound; Recipient not found by SMTP address lookup
+
+--56c5a1e4-22b9-4f4a-9b1d-0b7e1c9d2e11
+Content-Type: text/rfc822-headers
+
+Return-Path: prospection@exemple-crm.fr
+From: "Equipe Commerciale" <prospection@exemple-crm.fr>
+To: <contact@cabinet-leroy.fr>
+Subject: Offre partenaires
+Date: Mon, 26 Oct 2026 14:02:38 +0000
+Message-ID: <crm-cmcampaign000000000000002-cmlead00000000000000000003-A@exemple-crm.fr>
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+--56c5a1e4-22b9-4f4a-9b1d-0b7e1c9d2e11--

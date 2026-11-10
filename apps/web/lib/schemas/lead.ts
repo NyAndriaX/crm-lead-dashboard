@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { objectId, paginationQuery } from "./common";
+import { entityId, paginationQuery } from "./common";
 
 export const LEAD_STATUSES = [
   "NOUVEAU", "CONTACTE", "QUALIFIE", "EN_DISCUSSION", "CONVERTI", "PERDU",
@@ -22,7 +22,7 @@ export const createLeadSchema = z.object({
   status: leadStatus.optional(),
   tags: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
   notes: z.string().max(10_000).optional().nullable(),
-  assignedToId: objectId.optional().nullable(),
+  assignedToId: entityId.optional().nullable(),
 });
 export type CreateLeadInput = z.infer<typeof createLeadSchema>;
 
@@ -41,7 +41,7 @@ export const leadFilters = z.object({
   sector: z.string().optional(),
   city: z.string().optional(),
   country: z.string().optional(),
-  assignedToId: objectId.optional(),
+  assignedToId: entityId.optional(),
   tag: z.string().optional(),
   scoreMin: z.coerce.number().int().min(0).max(100).optional(),
   scoreMax: z.coerce.number().int().min(0).max(100).optional(),
@@ -61,7 +61,7 @@ export const changeStatusSchema = z.object({
 export type ChangeStatusInput = z.infer<typeof changeStatusSchema>;
 
 export const assignLeadSchema = z.object({
-  assignedToId: objectId.nullable(), // null = désassigner
+  assignedToId: entityId.nullable(), // null = désassigner
 });
 export type AssignLeadInput = z.infer<typeof assignLeadSchema>;
 

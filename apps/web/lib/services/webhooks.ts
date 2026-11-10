@@ -11,7 +11,7 @@
  *    permettre au destinataire de vérifier l'authenticité.
  */
 import * as crypto from "node:crypto";
-import { prisma } from "@crm/db";
+import { asStringArray, prisma } from "@crm/db";
 
 export type WebhookEvent =
   | "newLead"
@@ -44,11 +44,15 @@ export type WebhookItem = {
   createdAt: Date;
 };
 
+const WEBHOOK_SELECT = { id: true, url: true, events: true, isActive: true, createdAt: true } as const;
+
+function toItem(w: { id: string; url: string; events: unknown; isActive: boolean; createdAt: Date }): WebhookItem {
+  return { ...w, events: asStringArray(w.events) };
+}
+
 export async function listWebhooks(): Promise<WebhookItem[]> {
-  return prisma.webhookOut.findMany({
-    select: { id: true, url: true, events: true, isActive: true, createdAt: true },
-    orderBy: { createdAt: "desc" },
-  });
+  const rows = await prisma.webhookOut.findMany({ select: WEBHOOK_SELECT, orderBy: { createdAt: "desc" } });
+  return rows.map(toItem);
 }
 
 export async function createWebhook(input: {
@@ -58,26 +62,24 @@ export async function createWebhook(input: {
   isActive?: boolean;
 }): Promise<WebhookItem> {
   const secret = input.secret ?? crypto.randomBytes(32).toString("base64url");
-  return prisma.webhookOut.create({
-    data: {
-      url: input.url,
-      events: input.events,
-      secret,
-      isActive: input.isActive ?? true,
-    },
-    select: { id: true, url: true, events: true, isActive: true, createdAt: true },
-  });
+  return toItem(
+    await prisma.webhookOut.create({
+      data: {
+        url: input.url,
+        events: input.events,
+        secret,
+        isActive: input.isActive ?? true,
+      },
+      select: WEBHOOK_SELECT,
+    }),
+  );
 }
 
 export async function updateWebhook(
   id: string,
   input: { url?: string; events?: string[]; isActive?: boolean },
 ): Promise<WebhookItem> {
-  return prisma.webhookOut.update({
-    where: { id },
-    data: input,
-    select: { id: true, url: true, events: true, isActive: true, createdAt: true },
-  });
+  return toItem(await prisma.webhookOut.update({ where: { id }, data: input, select: WEBHOOK_SELECT }));
 }
 
 export async function deleteWebhook(id: string): Promise<void> {
@@ -104,7 +106,7 @@ export async function emitWebhookEvent(
   payload: unknown,
 ): Promise<{ dispatched: number; failed: number }> {
   const targets = await prisma.webhookOut.findMany({
-    where: { isActive: true, events: { has: event } },
+    where: { isActive: true, events: { array_contains: [event] } },
     select: { id: true, url: true, secret: true },
   });
   if (targets.length === 0) return { dispatched: 0, failed: 0 };

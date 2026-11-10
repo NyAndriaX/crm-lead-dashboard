@@ -9,22 +9,26 @@
   },
   "scripts": {
     "generate": "prisma generate",
-    "push": "prisma db push",
-    "reset": "prisma db push --force-reset --skip-generate",
-    "seed": "prisma db seed",
+    "push": "dotenv -e ../../.env -- prisma db push",
+    "migrate:dev": "dotenv -e ../../.env -- prisma migrate dev",
+    "migrate:deploy": "prisma migrate deploy",
+    "seed": "dotenv -e ../../.env -- prisma db seed",
     "init-prod": "node prisma/init-prod.mjs",
-    "studio": "prisma studio",
+    "studio": "dotenv -e ../../.env -- prisma studio",
     "build": "prisma generate",
     "lint": "echo \"(no lint for @crm/db)\"",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"(no tests for @crm/db)\""
+    "test": "node --import tsx --test test/*.test.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^2.4.3"
   },
   "devDependencies": {
+    "@types/node": "^22.9.0",
+    "dotenv-cli": "^7.4.4",
     "prisma": "^5.22.0",
+    "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   }
 }

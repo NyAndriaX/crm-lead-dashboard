@@ -1,0 +1,37 @@
+{
+  "name": "@crm/jobs",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tâches de fond du CRM (campagnes, IMAP, séquences, scraping, imports, scoring) — démarrées dans le serveur Next.js via instrumentation.ts, ou en process dédié (src/standalone.ts).",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "start": "dotenv -e ../../.env -- tsx src/standalone.ts",
+    "build": "echo \"(@crm/jobs est consommé en TS directement, pas d'étape de build)\"",
+    "lint": "echo \"(no lint for @crm/jobs)\"",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@crm/ai": "workspace:*",
+    "@crm/db": "workspace:*",
+    "@crm/queue": "workspace:*",
+    "html-to-text": "^9.0.5",
+    "imapflow": "^1.0.187",
+    "mailparser": "^3.7.4",
+    "nodemailer": "^8.0.7",
+    "pdfkit": "^0.20.2",
+    "undici": "^6.21.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/html-to-text": "^9.0.4",
+    "@types/mailparser": "^3.4.6",
+    "@types/node": "^22.9.0",
+    "@types/nodemailer": "^8.0.0",
+    "@types/pdfkit": "^0.17.7",
+    "dotenv-cli": "^7.4.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

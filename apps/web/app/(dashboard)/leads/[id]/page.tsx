@@ -1,20 +1,23 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+/** Fiche lead « 360° » : identité, étape commerciale, analyse IA, activité unifiée et contexte. */
+import { use, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { Button, Col, Dropdown, Modal, Row, Select, Skeleton, Tooltip, message } from "antd";
 import {
-  Card, Descriptions, Timeline, Tag, Select, Button, Space, Typography, Progress,
-  message, Skeleton, Result, Row, Col, Modal, Empty,
-} from "antd";
-import { ArrowLeftOutlined, ReloadOutlined, MailOutlined } from "@ant-design/icons";
-import { api } from "@/lib/client";
-import SafeHtml from "@/components/SafeHtml";
-import { LeadEnrichmentCard } from "@/components/leads/LeadEnrichmentCard";
-import { STATUS_LABELS, STATUS_COLORS, allowedTransitions } from "@/lib/leadStatus";
-import { useBreakpoint, useIsMobile } from "@/lib/responsive";
+  ArrowLeftOutlined, BankOutlined, CopyOutlined, DeleteOutlined, EllipsisOutlined, EnvironmentOutlined, GlobalOutlined, HistoryOutlined,
+  ImportOutlined, InboxOutlined, MailOutlined, PhoneOutlined, ReloadOutlined, RetweetOutlined, TagsOutlined, ThunderboltOutlined, UserOutlined,
+} from "@ant-design/icons";
+import dayjs from "dayjs";
 import type { LeadStatus } from "@crm/db";
-
-const { Title, Text, Paragraph } = Typography;
+import { api } from "@/lib/client";
+import { palette, statusColors } from "@/lib/theme";
+import { STATUS_LABELS, allowedTransitions } from "@/lib/leadStatus";
+import { AIBadge } from "@/components/ui/Brand";
+import { Chip, EmptyState, Panel, ScoreRing } from "@/components/ui/Kit";
+import { LeadEnrichmentCard } from "@/components/leads/LeadEnrichmentCard";
+import { LeadActivity, type EngagementEvent, type HistoryEntry, type ThreadMessage } from "@/components/leads/LeadActivity";
+import { SEQ_LEAD_STATUS, STOP_REASON } from "@/components/sequences/types";
 
 interface LeadDTO {
   id: string; email: string | null; phone: string | null;
@@ -22,308 +25,424 @@ interface LeadDTO {
   sector: string | null; city: string | null; country: string | null; source: string | null;
   status: LeadStatus; emailStatus: string; score: number; tags: string[]; notes: string | null;
   assignedToId: string | null; lastActionAt: string | null; lastReplyAt: string | null;
-  enrichment: unknown;
+  enrichment: unknown; deletedAt: string | null;
+  contacts: { phones: { number: string; display: string; kind: string }[]; decisionMaker?: { email?: string | null; phone?: string | null } | null; linkedinProfiles?: string[] } | null;
   createdAt: string; updatedAt: string;
 }
-interface HistoryEntry { id: string; type: string; userId: string | null; payload: unknown; createdAt: string }
 interface UserLite { id: string; name: string; email: string; role: string }
 interface TagRef { id: string; name: string; color: string | null }
-interface ThreadMessage {
-  id: string;
-  direction: "inbound" | "outbound";
-  from: string;
-  to: string;
-  subject: string | null;
-  bodyText: string | null;
-  bodyHtml: string | null;
-  isAutoReply: boolean;
-  receivedAt: string;
-}
+type Engagement = {
+  events: EngagementEvent[];
+  sequences: { id: string; status: string; currentStep: number; sentCount: number; stoppedReason: string | null; nextSendAt: string | null; sequence: { id: string; name: string; stepCount: number } }[];
+};
+type SiteAnalysis = { summary?: string; activity?: string | null; services?: string[]; signals?: string[]; fitScore?: number; fitReason?: string | null; decisionMaker?: { name: string; role: string | null } | null };
+type SiteContacts = {
+  legal?: { siren?: string; siret?: string; legal_form?: string; capital?: string } | null;
+  socials?: Partial<Record<string, string>>;
+  contactUrl?: string | null;
+};
+const SOCIAL_LABEL: Record<string, string> = { linkedin: "LinkedIn", facebook: "Facebook", instagram: "Instagram", x: "X", youtube: "YouTube", tiktok: "TikTok" };
+const PHONE_KIND: Record<string, string> = { fixe: "Standard", mobile: "Mobile", special: "Numéro spécial" };
+type AiBrief = { summary: string; angle: string; score: number; source: "ai" | "fallback" };
 
-const HISTORY_LABELS: Record<string, string> = {
-  created: "Lead créé", updated: "Modifié", status_change: "Changement de statut",
-  assigned: "Assigné", unassigned: "Désassigné", tags_set: "Tags modifiés",
-  soft_deleted: "Archivé", restored: "Restauré", recalc_score: "Score recalculé",
+const FLOW: LeadStatus[] = ["NOUVEAU", "CONTACTE", "QUALIFIE", "EN_DISCUSSION", "CONVERTI"];
+const EMAIL_STATUS: Record<string, { label: string; color: string }> = {
+  VALID: { label: "Email valide", color: palette.green },
+  UNKNOWN: { label: "Email non vérifié", color: "#94a0bd" },
+  SOFT_BOUNCE: { label: "Rebond temporaire", color: palette.amber },
+  HARD_BOUNCE: { label: "Email invalide", color: palette.red },
+  UNSUBSCRIBED: { label: "Désinscrit", color: palette.red },
 };
 
 function fullName(l: LeadDTO) {
   return [l.firstName, l.lastName].filter(Boolean).join(" ") || l.company || "Lead sans nom";
 }
 
+function ContactRow({ icon, label, value, href, copy }: { icon: ReactNode; label: string; value: string | null; href?: string; copy?: boolean }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0", borderBottom: "1px solid var(--nb-border)" }}>
+      <span style={{ color: "var(--nb-text-3)", width: 18, textAlign: "center" }}>{icon}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 11, color: "var(--nb-text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
+        <div style={{ fontSize: 13.5, color: value ? "var(--nb-text-strong)" : "var(--nb-text-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {value ? (href ? <a href={href} target={href.startsWith("http") ? "_blank" : undefined} rel="noreferrer">{value}</a> : value) : "—"}
+        </div>
+      </div>
+      {copy && value && (
+        <Tooltip title="Copier">
+          <Button size="small" type="text" icon={<CopyOutlined />} onClick={() => void navigator.clipboard.writeText(value).then(() => message.success("Copié"))} />
+        </Tooltip>
+      )}
+    </div>
+  );
+}
+
+function StatusFlow({ status, onChange }: { status: LeadStatus; onChange: (s: LeadStatus) => void }) {
+  const allowed = new Set(allowedTransitions(status));
+  const idx = FLOW.indexOf(status);
+  const lost = status === "PERDU";
+  return (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+      {FLOW.map((s, i) => {
+        const current = s === status;
+        const passed = !lost && idx >= 0 && i < idx;
+        const can = allowed.has(s);
+        const color = statusColors[s] ?? palette.violet;
+        return (
+          <Tooltip key={s} title={current ? "Étape actuelle" : can ? `Passer en « ${STATUS_LABELS[s]} »` : "Transition non autorisée depuis l'étape actuelle"}>
+            <button
+              type="button"
+              disabled={!can}
+              onClick={() => onChange(s)}
+              style={{
+                flex: "1 1 110px", padding: "9px 12px", borderRadius: 12, fontSize: 12.5, fontWeight: 650, transition: "all .2s var(--nb-ease)",
+                cursor: can ? "pointer" : current ? "default" : "not-allowed",
+                border: `1.5px solid ${current ? color : can ? `${color}66` : "var(--nb-border)"}`,
+                background: current ? `${color}26` : passed ? `${color}12` : "var(--nb-control)",
+                color: current || passed ? color : can ? "var(--nb-text-2)" : "var(--nb-text-3)",
+                boxShadow: current ? `0 0 18px -6px ${color}` : "none",
+              }}
+            >
+              {passed ? "✓ " : ""}{STATUS_LABELS[s]}
+            </button>
+          </Tooltip>
+        );
+      })}
+      <Tooltip title={lost ? "Étape actuelle" : allowed.has("PERDU") ? "Marquer comme perdu" : undefined}>
+        <button
+          type="button"
+          disabled={!allowed.has("PERDU") && !lost}
+          onClick={() => !lost && onChange("PERDU")}
+          style={{
+            padding: "9px 14px", borderRadius: 12, fontSize: 12.5, fontWeight: 650, cursor: allowed.has("PERDU") ? "pointer" : "default",
+            border: `1.5px solid ${lost ? palette.red : `${palette.red}55`}`, background: lost ? `${palette.red}22` : "transparent", color: palette.red,
+          }}
+        >
+          Perdu
+        </button>
+      </Tooltip>
+    </div>
+  );
+}
+
 export default function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const [modal, modalHolder] = Modal.useModal();
   const [lead, setLead] = useState<LeadDTO | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [thread, setThread] = useState<ThreadMessage[]>([]);
+  const [engagement, setEngagement] = useState<Engagement>({ events: [], sequences: [] });
   const [users, setUsers] = useState<UserLite[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
-  const [savingTags, setSavingTags] = useState(false);
-  const [tags, setTags] = useState<string[]>([]);
   const [tagsRef, setTagsRef] = useState<TagRef[]>([]);
-  const isMobile = useIsMobile();
-  const screens = useBreakpoint();
+  const [notFound, setNotFound] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
     try {
-      const [{ data: l }, { data: h }, { data: t }] = await Promise.all([
+      const [{ data: l }, { data: h }, t, e] = await Promise.all([
         api.get<LeadDTO>(`/leads/${id}`),
         api.get<{ data: HistoryEntry[] }>(`/leads/${id}/history`),
-        api.get<{ data: ThreadMessage[] }>(`/leads/${id}/thread`),
+        api.get<{ data: ThreadMessage[] }>(`/leads/${id}/thread`).catch(() => ({ data: { data: [] as ThreadMessage[] } })),
+        api.get<{ data: Engagement }>(`/leads/${id}/engagement`).catch(() => ({ data: { data: { events: [], sequences: [] } as Engagement } })),
       ]);
-      setLead(l); setTags(l.tags); setHistory(h.data); setThread(t.data);
-    } catch (e) {
-      if ((e as { response?: { status?: number } }).response?.status === 404) setNotFound(true);
+      setLead(l);
+      setHistory(h.data);
+      setThread(t.data.data);
+      setEngagement(e.data.data);
+    } catch (err) {
+      if ((err as { response?: { status?: number } }).response?.status === 404) setNotFound(true);
       else message.error("Impossible de charger le lead.");
-    } finally { setLoading(false); }
+    }
   }, [id]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { api.get<{ data: UserLite[] }>("/users").then((r) => setUsers(r.data.data)).catch(() => {}); }, []);
   useEffect(() => { api.get<{ data: TagRef[] }>("/tags").then((r) => setTagsRef(r.data.data ?? [])).catch(() => {}); }, []);
 
-  async function changeStatus(to: LeadStatus) {
+  const userName = useCallback((uid: string) => users.find((u) => u.id === uid)?.name ?? "un commercial", [users]);
+
+  const changeStatus = async (to: LeadStatus) => {
     try {
-      const { data } = await api.post<LeadDTO>(`/leads/${id}/status`, { status: to });
-      setLead(data); message.success(`Statut → ${STATUS_LABELS[to]}`); void load();
-    } catch (e) { message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Échec du changement de statut."); }
-  }
-  async function assign(userId: string | null) {
+      await api.post(`/leads/${id}/status`, { status: to });
+      message.success(`Étape : ${STATUS_LABELS[to]}`);
+      void load();
+    } catch (e) {
+      message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Changement impossible.");
+    }
+  };
+  const assign = async (userId: string | null) => {
     try {
-      const { data } = await api.post<LeadDTO>(`/leads/${id}/assign`, { assignedToId: userId });
-      setLead(data); message.success(userId ? "Lead assigné" : "Lead désassigné"); void load();
+      await api.post(`/leads/${id}/assign`, { assignedToId: userId });
+      message.success(userId ? `Assigné à ${userName(userId)}` : "Lead désassigné");
+      void load();
     } catch { message.error("Échec de l'assignation."); }
-  }
-  async function saveTags() {
-    setSavingTags(true);
+  };
+  const saveTags = async (tags: string[]) => {
+    setLead((l) => (l ? { ...l, tags } : l));
     try {
-      const { data } = await api.put<LeadDTO>(`/leads/${id}/tags`, { tags });
-      setLead(data); message.success("Tags enregistrés"); void load();
+      await api.put(`/leads/${id}/tags`, { tags });
+      void load();
     } catch { message.error("Échec de l'enregistrement des tags."); }
-    finally { setSavingTags(false); }
-  }
-  async function recalc() {
-    try { const { data } = await api.post<{ score: number }>(`/leads/${id}/recalculate-score`); setLead((l) => (l ? { ...l, score: data.score } : l)); message.success(`Score : ${data.score}`); }
-    catch { message.error("Échec du recalcul."); }
-  }
-  function confirmDelete() {
-    Modal.confirm({
-      title: "Archiver ce lead ?", content: "Le lead sera soft-deleté (restaurable).", okText: "Archiver", okButtonProps: { danger: true },
+  };
+  const recalc = async () => {
+    try {
+      const { data } = await api.post<{ score: number }>(`/leads/${id}/recalculate-score`);
+      setLead((l) => (l ? { ...l, score: data.score } : l));
+      message.success(`Score recalculé : ${data.score}`);
+    } catch { message.error("Échec du recalcul."); }
+  };
+  const archive = () => {
+    void modal.confirm({
+      title: "Archiver ce lead ?",
+      content: "Il disparaît des listes et des envois ; il reste restaurable.",
+      okText: "Archiver",
+      okButtonProps: { danger: true },
+      cancelText: "Annuler",
       onOk: async () => { await api.delete(`/leads/${id}`); message.success("Lead archivé"); void load(); },
     });
-  }
+  };
+  const restore = async () => {
+    try { await api.post(`/leads/${id}/restore`); message.success("Lead restauré"); void load(); }
+    catch { message.error("Restauration impossible."); }
+  };
 
-  if (loading) return <Skeleton active paragraph={{ rows: 8 }} />;
-  if (notFound || !lead) return <Result status="404" title="Lead introuvable" extra={<Link href="/leads"><Button type="primary">Retour à la liste</Button></Link>} />;
+  const ai = useMemo(() => {
+    const e = (lead?.enrichment ?? {}) as { siteAnalysis?: SiteAnalysis; aiBrief?: AiBrief };
+    return { site: e.siteAnalysis ?? null, brief: e.aiBrief ?? null };
+  }, [lead]);
+
+  if (notFound) return <Panel><EmptyState title="Lead introuvable" action={<Link href="/leads"><Button>Retour à la liste</Button></Link>} /></Panel>;
+  if (!lead) return <Panel><Skeleton active avatar paragraph={{ rows: 10 }} /></Panel>;
+
+  const name = fullName(lead);
+  const initials = name.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+  const emailSt = EMAIL_STATUS[lead.emailStatus] ?? { label: lead.emailStatus, color: "#94a0bd" };
+  const opens = engagement.events.filter((e) => e.type === "OPEN").length;
+  const clicks = engagement.events.filter((e) => e.type === "CLICK").length;
+  const sent = engagement.events.filter((e) => e.type === "SENT").length;
 
   return (
-    <Space direction="vertical" size="middle" style={{ width: "100%" }}>
-      <div className="page-stack page-stack-between">
-        <Space wrap>
-          <Link href="/leads"><Button icon={<ArrowLeftOutlined />}>Leads</Button></Link>
-          <Title level={isMobile ? 4 : 3} style={{ margin: 0 }}>{fullName(lead)}</Title>
-          <Tag color={STATUS_COLORS[lead.status]}>{STATUS_LABELS[lead.status]}</Tag>
-        </Space>
-        <Space wrap style={{ width: isMobile ? "100%" : undefined }}>
-          <Select<LeadStatus>
-            placeholder="Changer le statut" style={{ width: isMobile ? "100%" : 200 }} value={undefined}
-            onChange={changeStatus}
-            options={allowedTransitions(lead.status).map((s) => ({ value: s, label: STATUS_LABELS[s] }))}
-          />
-          <Button danger onClick={confirmDelete} block={isMobile}>Archiver</Button>
-        </Space>
+    <div style={{ display: "grid", gap: 20, gridTemplateColumns: "minmax(0, 1fr)" }}>
+      {modalHolder}
+
+      <div className="nb-glass" style={{ borderRadius: 22, padding: 22, position: "relative", overflow: "hidden" }}>
+        <div aria-hidden style={{ position: "absolute", top: -120, right: -80, width: 320, height: 320, borderRadius: "50%", background: `radial-gradient(circle, ${statusColors[lead.status] ?? palette.violet}26, transparent 70%)` }} />
+        <div style={{ display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap", position: "relative" }}>
+          <Link href="/leads"><Button shape="circle" icon={<ArrowLeftOutlined />} aria-label="Retour aux leads" /></Link>
+          <span style={{ width: 64, height: 64, borderRadius: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 800, color: "#fff", background: palette.gradient, boxShadow: `0 12px 30px -12px ${palette.violet}` }}>{initials}</span>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+              <Chip color={statusColors[lead.status] ?? palette.violet} dot>{STATUS_LABELS[lead.status]}</Chip>
+              <Chip size="sm" color={emailSt.color}>{emailSt.label}</Chip>
+              {lead.deletedAt && <Chip size="sm" color={palette.red}>Archivé</Chip>}
+            </div>
+            <div className="nb-display" style={{ fontSize: 26, fontWeight: 700, color: "var(--nb-text-strong)", lineHeight: 1.2 }}>{name}</div>
+            <div style={{ fontSize: 13, color: "var(--nb-text-2)", marginTop: 2 }}>
+              {[lead.company !== name ? lead.company : null, lead.sector, [lead.city, lead.country].filter(Boolean).join(", ")].filter(Boolean).join(" · ") || "—"}
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
+            <Tooltip title="Score de potentiel (0-100) — engagement email, statut, enrichissement">
+              <div style={{ textAlign: "center" }}>
+                <ScoreRing score={lead.score} size={62} />
+                <div style={{ fontSize: 11, color: "var(--nb-text-3)", marginTop: 4 }}>score</div>
+              </div>
+            </Tooltip>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {lead.email && <a href={`mailto:${lead.email}`}><Button type="primary" icon={<MailOutlined />}>Écrire</Button></a>}
+              <Link href={`/inbox?leadId=${lead.id}`}><Button icon={<InboxOutlined />}>Conversation</Button></Link>
+              <Dropdown
+                trigger={["click"]}
+                menu={{
+                  items: [
+                    { key: "score", icon: <ReloadOutlined />, label: "Recalculer le score", onClick: () => void recalc() },
+                    { type: "divider" },
+                    lead.deletedAt
+                      ? { key: "restore", icon: <ReloadOutlined />, label: "Restaurer", onClick: () => void restore() }
+                      : { key: "archive", icon: <DeleteOutlined />, label: "Archiver", danger: true, onClick: archive },
+                  ],
+                }}
+              >
+                <Button icon={<EllipsisOutlined />} aria-label="Plus d'actions" />
+              </Dropdown>
+            </div>
+          </div>
+        </div>
+        <div style={{ marginTop: 18, position: "relative" }}>
+          <div className="nb-eyebrow" style={{ marginBottom: 8 }}>Étape commerciale</div>
+          <StatusFlow status={lead.status} onChange={(s) => void changeStatus(s)} />
+        </div>
       </div>
 
-      <Row gutter={16}>
-        <Col xs={24} lg={16}>
-          <Card title="Coordonnées" size="small" style={{ marginBottom: 16 }}>
-            <Descriptions column={screens.md ? 2 : 1} size="small">
-              <Descriptions.Item label="Prénom">{lead.firstName ?? "—"}</Descriptions.Item>
-              <Descriptions.Item label="Nom">{lead.lastName ?? "—"}</Descriptions.Item>
-              <Descriptions.Item label="Email">{lead.email ?? "—"}</Descriptions.Item>
-              <Descriptions.Item label="Téléphone">{lead.phone ?? "—"}</Descriptions.Item>
-              <Descriptions.Item label="Entreprise">{lead.company ?? "—"}</Descriptions.Item>
-              <Descriptions.Item label="Site web">{lead.website ? <a href={lead.website} target="_blank" rel="noreferrer">{lead.website}</a> : "—"}</Descriptions.Item>
-              <Descriptions.Item label="Secteur">{lead.sector ?? "—"}</Descriptions.Item>
-              <Descriptions.Item label="Localisation">{[lead.city, lead.country].filter(Boolean).join(", ") || "—"}</Descriptions.Item>
-              <Descriptions.Item label="Source">{lead.source ?? "—"}</Descriptions.Item>
-              <Descriptions.Item label="Statut email">{lead.emailStatus}</Descriptions.Item>
-              <Descriptions.Item label="Créé le">{new Date(lead.createdAt).toLocaleString("fr-FR")}</Descriptions.Item>
-              <Descriptions.Item label="Dernière action">{lead.lastActionAt ? new Date(lead.lastActionAt).toLocaleString("fr-FR") : "—"}</Descriptions.Item>
-            </Descriptions>
-            {lead.notes && <Paragraph style={{ marginTop: 12 }}><Text type="secondary">Notes :</Text><br />{lead.notes}</Paragraph>}
-          </Card>
-
-          <Card title="Historique" size="small" style={{ marginBottom: 16 }}>
-            {history.length === 0 ? <Text type="secondary">Aucun événement.</Text> : (
-              <Timeline
-                items={history.map((h) => ({
-                  children: (
-                    <div>
-                      <Text strong>{HISTORY_LABELS[h.type] ?? h.type}</Text>
-                      <div><Text type="secondary" style={{ fontSize: 12 }}>{new Date(h.createdAt).toLocaleString("fr-FR")}</Text></div>
-                      {!!(h.payload && Object.keys(h.payload as object).length > 0) && (
-                        <pre style={{ fontSize: 12, margin: "4px 0 0", color: "#888" }}>{JSON.stringify(h.payload)}</pre>
-                      )}
-                    </div>
-                  ),
-                }))}
-              />
-            )}
-          </Card>
-
-          <Card
-            title={<Space><MailOutlined /> Historique des échanges</Space>}
-            size="small"
-            extra={
-              <Link href={`/inbox?leadId=${lead.id}`}>
-                <Button size="small">Ouvrir la boîte</Button>
-              </Link>
-            }
-          >
-            {thread.length === 0 ? (
-              <Empty
-                description="Aucun email envoyé ou reçu pour ce lead."
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-              />
+      <Row gutter={[20, 20]} align="top">
+        <Col xs={24} xl={16}>
+          <div style={{ display: "grid", gap: 20, gridTemplateColumns: "minmax(0, 1fr)" }}>
+            {ai.site || ai.brief ? (
+              <div className="nb-glass nb-gradient-border" style={{ borderRadius: 20, padding: 22, display: "grid", gap: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <ThunderboltOutlined style={{ color: palette.violet, fontSize: 18 }} />
+                    <span className="nb-display" style={{ fontWeight: 650, fontSize: 16, color: "var(--nb-text-strong)" }}>Ce que l'IA a compris</span>
+                    <AIBadge>{ai.brief?.source === "fallback" ? "Heuristique" : "IA"}</AIBadge>
+                  </div>
+                  {ai.site?.fitScore != null && <Chip color={ai.site.fitScore >= 70 ? palette.green : ai.site.fitScore >= 40 ? palette.amber : palette.red}>Adéquation cible {ai.site.fitScore}/100</Chip>}
+                </div>
+                {(ai.brief?.summary || ai.site?.summary) && <div style={{ fontSize: 14, color: "var(--nb-text)", lineHeight: 1.65 }}>{ai.brief?.summary ?? ai.site?.summary}</div>}
+                {ai.brief?.angle && (
+                  <div style={{ padding: "12px 14px", borderRadius: 14, background: `${palette.violet}14`, border: `1px solid ${palette.violet}40`, fontSize: 13.5, color: "var(--nb-text)" }}>
+                    <b style={{ color: palette.violet }}>Angle d&apos;approche · </b>{ai.brief.angle}
+                  </div>
+                )}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+                  {ai.site?.decisionMaker && (
+                    <div><div className="nb-eyebrow">Décideur identifié</div><div style={{ color: "var(--nb-text-strong)", marginTop: 4 }}>{ai.site.decisionMaker.name}{ai.site.decisionMaker.role ? ` — ${ai.site.decisionMaker.role}` : ""}</div></div>
+                  )}
+                  {ai.site?.activity && <div><div className="nb-eyebrow">Activité</div><div style={{ color: "var(--nb-text-strong)", marginTop: 4 }}>{ai.site.activity}</div></div>}
+                </div>
+                {!!ai.site?.signals?.length && (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <span className="nb-eyebrow" style={{ marginRight: 4 }}>Signaux</span>
+                    {ai.site.signals.map((s) => <Chip key={s} size="sm" color={palette.cyan}>{s}</Chip>)}
+                  </div>
+                )}
+                {ai.site?.fitReason && <div style={{ fontSize: 12.5, color: "var(--nb-text-3)" }}>{ai.site.fitReason}</div>}
+              </div>
             ) : (
-              <Space direction="vertical" size="small" style={{ width: "100%" }}>
-                {thread.map((m) => (
-                  <Card
-                    key={m.id}
-                    size="small"
-                    style={{
-                      background: m.direction === "outbound" ? "#fafafa" : "#fff",
-                      borderLeft: m.direction === "outbound" ? "3px solid #1677ff" : "3px solid #52c41a",
-                    }}
-                    title={
-                      <Space size={6} wrap>
-                        <Tag color={m.direction === "outbound" ? "blue" : "green"}>
-                          {m.direction === "outbound" ? "envoyé" : "reçu"}
-                        </Tag>
-                        {m.isAutoReply && <Tag color="default">auto-reply</Tag>}
-                        <Text style={{ fontWeight: 500 }}>{m.subject ?? "(sans sujet)"}</Text>
-                      </Space>
-                    }
-                    extra={
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        {new Date(m.receivedAt).toLocaleString("fr-FR")}
-                      </Text>
-                    }
-                  >
-                    <div style={{ fontSize: 12, color: "#888", marginBottom: 6 }}>
-                      {m.direction === "outbound" ? `→ ${m.to}` : `← ${m.from}`}
-                    </div>
-                    {m.bodyHtml ? (
-                      <SafeHtml html={m.bodyHtml} style={{ maxHeight: 320, overflow: "auto" }} />
-                    ) : (
-                      <Paragraph style={{ whiteSpace: "pre-wrap", margin: 0 }}>
-                        {m.bodyText ?? <Text type="secondary">(corps vide)</Text>}
-                      </Paragraph>
-                    )}
-                  </Card>
-                ))}
-              </Space>
+              <div className="nb-glass" style={{ borderRadius: 20, padding: 18, display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+                <ThunderboltOutlined style={{ color: palette.violet, fontSize: 22 }} />
+                <div style={{ flex: 1, minWidth: 220 }}>
+                  <div style={{ fontWeight: 650, color: "var(--nb-text-strong)" }}>Pas encore d&apos;analyse IA pour ce lead</div>
+                  <div style={{ fontSize: 12.5, color: "var(--nb-text-3)" }}>Les leads trouvés par la prospection IA sont analysés automatiquement. Lancez l&apos;enrichissement « Brief IA » (bloc Enrichissement) pour celui-ci.</div>
+                </div>
+              </div>
             )}
-          </Card>
+
+            <Panel icon={<HistoryOutlined />} title="Activité" subtitle={`${sent} email(s) envoyé(s) · ${opens} ouverture(s) · ${clicks} clic(s) · ${thread.length} message(s)`}>
+              <LeadActivity history={history} thread={thread} events={engagement.events} userName={userName} />
+            </Panel>
+          </div>
         </Col>
 
-        <Col xs={24} lg={8}>
-          <Card title="Score" size="small" style={{ marginBottom: 16 }} extra={<Button size="small" icon={<ReloadOutlined />} onClick={recalc}>Recalculer</Button>}>
-            <Progress percent={lead.score} status={lead.score >= 70 ? "success" : lead.score >= 40 ? "active" : "normal"} />
-          </Card>
-          <Card title="Assignation" size="small" style={{ marginBottom: 16 }}>
-            <Select<string>
-              allowClear placeholder="Aucun commercial" style={{ width: "100%" }}
-              value={lead.assignedToId ?? undefined}
-              onChange={(v) => assign(v ?? null)}
-              options={users.map((u) => ({ value: u.id, label: `${u.name} (${u.role})` }))}
-            />
-          </Card>
-          <Card title="Tags" size="small">
-            <Space direction="vertical" style={{ width: "100%" }} size={10}>
-              {/* Tags actuels visualisés (couleurs du référentiel) */}
-              {tags.length > 0 ? (
-                <Space size={4} wrap>
-                  {tags.map((t) => {
-                    const ref = tagsRef.find((x) => x.name === t);
-                    return (
-                      <Tag
-                        key={t}
-                        color={ref?.color ?? "default"}
-                        closable
-                        onClose={(e) => { e.preventDefault(); setTags((cur) => cur.filter((x) => x !== t)); }}
-                        style={{ margin: 0 }}
-                      >
-                        {t}
-                      </Tag>
-                    );
-                  })}
-                </Space>
-              ) : (
-                <Text type="secondary" style={{ fontSize: 12 }}>Aucun tag</Text>
-              )}
-
-              {/* Select avec mode tags (autocomplete sur le référentiel + saisie libre) */}
-              <Select<string[]>
-                mode="tags"
-                placeholder="Ajouter un tag…"
-                style={{ width: "100%" }}
-                value={tags}
-                onChange={setTags}
-                tokenSeparators={[","]}
-                options={tagsRef.map((t) => ({
-                  value: t.name,
-                  label: <Tag color={t.color ?? "default"} style={{ margin: 0 }}>{t.name}</Tag>,
-                }))}
-                filterOption={(input, opt) =>
-                  String(opt?.value ?? "").toLowerCase().includes(input.toLowerCase())
-                }
-              />
-
-              {/* Suggestions rapides : tags du référentiel non encore appliqués */}
+        <Col xs={24} xl={8}>
+          <div style={{ display: "grid", gap: 20, gridTemplateColumns: "minmax(0, 1fr)" }}>
+            <Panel icon={<UserOutlined />} title="Coordonnées" accent={palette.cyan}>
+              <ContactRow icon={<MailOutlined />} label="Email" value={lead.email} href={lead.email ? `mailto:${lead.email}` : undefined} copy />
+              <ContactRow icon={<PhoneOutlined />} label="Téléphone" value={lead.phone} href={lead.phone ? `tel:${lead.phone}` : undefined} copy />
+              <ContactRow icon={<BankOutlined />} label="Entreprise" value={lead.company} />
+              <ContactRow icon={<GlobalOutlined />} label="Site web" value={lead.website} href={lead.website ?? undefined} />
+              <ContactRow icon={<EnvironmentOutlined />} label="Localisation" value={[lead.city, lead.country].filter(Boolean).join(", ") || null} />
+              <ContactRow icon={<ImportOutlined />} label="Source" value={lead.source ? `${lead.source} · ${dayjs(lead.createdAt).format("DD/MM/YYYY")}` : null} />
               {(() => {
-                const suggestions = tagsRef.filter((t) => !tags.includes(t.name)).slice(0, 6);
-                if (suggestions.length === 0) return null;
+                const dm = lead.contacts?.decisionMaker;
+                const site = ((lead.enrichment ?? {}) as { siteContacts?: SiteContacts }).siteContacts;
+                const extraPhones = (lead.contacts?.phones ?? []).filter((p) => p.display.replace(/\D/g, "") !== (lead.phone ?? "").replace(/\D/g, "").replace(/^33/, "0"));
+                const socials = Object.entries(site?.socials ?? {}).filter(([, url]) => !!url) as [string, string][];
+                const legal = site?.legal;
+                if (!dm?.email && !dm?.phone && !extraPhones.length && !socials.length && !site?.contactUrl && !legal) return null;
                 return (
-                  <div>
-                    <Text type="secondary" style={{ fontSize: 11 }}>Suggestions :</Text>
-                    <Space size={4} wrap style={{ marginTop: 4 }}>
-                      {suggestions.map((t) => (
-                        <Tag
-                          key={t.id}
-                          color={t.color ?? "default"}
-                          style={{ cursor: "pointer", margin: 0 }}
-                          onClick={() => setTags((cur) => Array.from(new Set([...cur, t.name])))}
-                        >
-                          + {t.name}
-                        </Tag>
-                      ))}
-                    </Space>
+                  <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+                    <div className="nb-eyebrow">Trouvé sur le site</div>
+                    {(dm?.email || dm?.phone) && (
+                      <div style={{ display: "grid", gap: 4 }}>
+                        <span style={{ fontSize: 12, color: "var(--nb-text-3)" }}>Contact direct du décideur</span>
+                        {dm.email && <a href={`mailto:${dm.email}`} style={{ fontSize: 13.5 }}><MailOutlined /> {dm.email}</a>}
+                        {dm.phone && <a href={`tel:${dm.phone.replace(/\s/g, "")}`} style={{ fontSize: 13.5 }}><PhoneOutlined /> {dm.phone}</a>}
+                      </div>
+                    )}
+                    {extraPhones.length > 0 && (
+                      <div style={{ display: "grid", gap: 6 }}>
+                        {extraPhones.map((p) => (
+                          <div key={p.number} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13.5 }}>
+                            <PhoneOutlined style={{ color: "var(--nb-text-3)" }} />
+                            <a href={`tel:${p.number}`}>{p.display}</a>
+                            <Chip size="sm" color={p.kind === "mobile" ? palette.violet : "#94a0bd"}>{PHONE_KIND[p.kind] ?? p.kind}</Chip>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {(socials.length > 0 || site?.contactUrl) && (
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {socials.map(([k, url]) => (
+                          <a key={k} href={url} target="_blank" rel="noreferrer"><Chip size="sm" color={palette.violet}>{SOCIAL_LABEL[k] ?? k}</Chip></a>
+                        ))}
+                        {site?.contactUrl && <a href={site.contactUrl} target="_blank" rel="noreferrer"><Chip size="sm" color="#94a0bd">Page contact</Chip></a>}
+                      </div>
+                    )}
+                    {legal && (legal.siren || legal.legal_form) && (
+                      <div style={{ fontSize: 12.5, color: "var(--nb-text-2)" }}>
+                        {legal.legal_form ?? ""}{legal.capital ? ` au capital de ${legal.capital}` : ""}
+                        {legal.siren && (
+                          <> · SIREN{" "}
+                            <a href={`https://annuaire-entreprises.data.gouv.fr/entreprise/${legal.siren}`} target="_blank" rel="noreferrer">{legal.siren.replace(/(\d{3})(?=\d)/g, "$1 ")}</a>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })()}
+              {lead.notes && <div style={{ marginTop: 12, fontSize: 13, color: "var(--nb-text-2)", whiteSpace: "pre-wrap" }}>{lead.notes}</div>}
+            </Panel>
 
-              <Button
-                size="small"
-                type="primary"
-                loading={savingTags}
-                onClick={saveTags}
-                disabled={JSON.stringify(tags) === JSON.stringify(lead.tags)}
-              >
-                Enregistrer les tags
-              </Button>
-            </Space>
-          </Card>
+            <Panel icon={<TagsOutlined />} title="Suivi" accent={palette.amber}>
+              <div style={{ display: "grid", gap: 14, gridTemplateColumns: "minmax(0, 1fr)" }}>
+                <div style={{ display: "grid", gap: 6 }}>
+                  <span className="nb-eyebrow">Commercial assigné</span>
+                  <Select<string>
+                    allowClear
+                    placeholder="Aucun commercial"
+                    value={lead.assignedToId ?? undefined}
+                    onChange={(v) => void assign(v ?? null)}
+                    options={users.map((u) => ({ value: u.id, label: u.name }))}
+                  />
+                </div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  <span className="nb-eyebrow">Tags <span style={{ textTransform: "none", letterSpacing: 0 }}>· enregistrés automatiquement</span></span>
+                  <Select<string[]>
+                    mode="tags"
+                    placeholder="Ajouter un tag…"
+                    value={lead.tags}
+                    onChange={(v) => void saveTags(v)}
+                    tokenSeparators={[","]}
+                    options={tagsRef.map((t) => ({ value: t.name, label: t.name }))}
+                  />
+                </div>
+              </div>
+            </Panel>
 
-          <LeadEnrichmentCard
-            leadId={lead.id}
-            enrichment={lead.enrichment}
-            onEnriched={() => void load()}
-          />
+            <Panel icon={<RetweetOutlined />} title="Séquences de relance" accent={palette.violet}>
+              {engagement.sequences.length === 0 ? (
+                <div style={{ fontSize: 13, color: "var(--nb-text-3)" }}>Ce lead n&apos;est inscrit dans aucune séquence. <Link href="/sequences">Voir les relances</Link></div>
+              ) : (
+                <div style={{ display: "grid", gap: 10 }}>
+                  {engagement.sequences.map((s) => {
+                    const st = SEQ_LEAD_STATUS[s.status] ?? { label: s.status, color: "#94a0bd" };
+                    return (
+                      <Link key={s.id} href={`/sequences/${s.sequence.id}`} style={{ display: "grid", gap: 6, padding: "10px 12px", borderRadius: 14, background: "var(--nb-control)", border: "1px solid var(--nb-border)", color: "inherit" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                          <span style={{ fontWeight: 600, color: "var(--nb-text-strong)" }}>{s.sequence.name}</span>
+                          <Chip size="sm" color={st.color} dot>{st.label}</Chip>
+                        </div>
+                        <div style={{ display: "flex", gap: 3 }}>
+                          {Array.from({ length: s.sequence.stepCount }, (_, i) => (
+                            <span key={i} style={{ flex: 1, height: 5, borderRadius: 4, background: i < s.sentCount ? palette.violet : "var(--nb-border-strong)" }} />
+                          ))}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: "var(--nb-text-3)" }}>
+                          {s.sentCount}/{s.sequence.stepCount} envoyé(s)
+                          {s.status === "active" && s.nextSendAt ? ` · prochain ${dayjs(s.nextSendAt).format("DD/MM HH:mm")}` : ""}
+                          {s.stoppedReason ? ` · ${STOP_REASON[s.stoppedReason] ?? s.stoppedReason}` : ""}
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </Panel>
+
+            <LeadEnrichmentCard leadId={lead.id} enrichment={lead.enrichment} contacts={lead.contacts} onEnriched={() => void load()} />
+          </div>
         </Col>
       </Row>
-    </Space>
+    </div>
   );
 }

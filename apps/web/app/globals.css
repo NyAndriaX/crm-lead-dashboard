@@ -1,3 +1,63 @@
+/* ══════════════════════════════════════════════════════════════════════
+   Design system « Nebula » — fond animé, verre dépoli, animations.
+   Les couleurs de base sont des tokens Ant Design (lib/theme.ts) ; ce fichier
+   ajoute ce que les tokens ne savent pas faire (flou, dégradés, mouvement).
+   Deux modes : sombre (défaut, :root) et clair ([data-theme="light"]).
+   ══════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --nb-bg: #060913;
+  --nb-surface: rgba(15, 21, 38, 0.62);
+  --nb-drawer: rgba(10, 14, 27, 0.92);
+  --nb-control: rgba(148, 163, 184, 0.06);
+  --nb-border: rgba(148, 163, 184, 0.14);
+  --nb-border-strong: rgba(148, 163, 184, 0.24);
+  --nb-text: #e6eaf5;
+  --nb-text-strong: #ffffff;
+  --nb-text-2: #94a0bd;
+  --nb-text-3: #64708f;
+  --nb-grid-line: rgba(148, 163, 184, 0.05);
+  --nb-aurora-1: #6d28d9;
+  --nb-aurora-2: #1e293b;
+  --nb-aurora-opacity: 0.16;
+  --nb-card-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 24px 48px -28px rgba(0, 0, 0, 0.7);
+  --nb-card-shadow-hover: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 28px 56px -24px rgba(139, 92, 246, 0.35);
+  --nb-scrollbar: rgba(148, 163, 184, 0.18);
+  --nb-shimmer: rgba(255, 255, 255, 0.08);
+  --nb-violet: #8b5cf6;
+  --nb-cyan: #a78bfa;
+  --nb-pink: #94a3b8;
+  --nb-green: #34d399;
+  --nb-amber: #fbbf24;
+  --nb-red: #fb7185;
+  --nb-gradient: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+  --nb-blur: blur(18px) saturate(140%);
+  --nb-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --nb-bg: #f3f5fb;
+  --nb-surface: rgba(255, 255, 255, 0.78);
+  --nb-drawer: rgba(255, 255, 255, 0.96);
+  --nb-control: rgba(15, 23, 42, 0.04);
+  --nb-border: rgba(15, 23, 42, 0.08);
+  --nb-border-strong: rgba(15, 23, 42, 0.16);
+  --nb-text: #1e2538;
+  --nb-text-strong: #0b1020;
+  --nb-text-2: #5b6478;
+  --nb-text-3: #8c94a8;
+  --nb-grid-line: rgba(15, 23, 42, 0.045);
+  --nb-aurora-1: #c4b5fd;
+  --nb-aurora-2: #e2e8f0;
+  --nb-aurora-opacity: 0.22;
+  --nb-card-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 20px 44px -28px rgba(30, 41, 80, 0.3);
+  --nb-card-shadow-hover: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 28px 56px -24px rgba(124, 58, 237, 0.28);
+  --nb-scrollbar: rgba(15, 23, 42, 0.16);
+  --nb-shimmer: rgba(255, 255, 255, 0.6);
+  color-scheme: light;
+}
+
 html,
 body {
   margin: 0;
@@ -13,6 +73,454 @@ body {
   min-height: 100vh;
 }
 
+body {
+  background: var(--nb-bg);
+  color: var(--nb-text);
+  font-family: var(--font-inter), "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: rgba(139, 92, 246, 0.45);
+  color: #fff;
+}
+
+/* ── Fond : aurore animée + grille ──────────────────────────────────── */
+.nb-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.nb-backdrop::before,
+.nb-backdrop::after {
+  content: "";
+  position: absolute;
+  width: 60vmax;
+  height: 60vmax;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: var(--nb-aurora-opacity);
+  animation: nb-aurora 26s var(--nb-ease) infinite alternate;
+}
+
+.nb-backdrop::before {
+  top: -22vmax;
+  left: -12vmax;
+  background: radial-gradient(circle, var(--nb-aurora-1) 0%, transparent 65%);
+}
+
+.nb-backdrop::after {
+  bottom: -26vmax;
+  right: -14vmax;
+  background: radial-gradient(circle, var(--nb-aurora-2) 0%, transparent 65%);
+  animation-delay: -13s;
+}
+
+.nb-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--nb-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--nb-grid-line) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse at 50% 30%, #000 20%, transparent 75%);
+}
+
+.nb-orb {
+  position: absolute;
+  width: 34vmax;
+  height: 34vmax;
+  top: 35%;
+  left: 55%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(148, 163, 184, 0.18) 0%, transparent 65%);
+  filter: blur(70px);
+  animation: nb-aurora 32s var(--nb-ease) infinite alternate-reverse;
+}
+
+.nb-app {
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Verre dépoli : cartes, tableaux, panneaux ─────────────────────── */
+.ant-card,
+.nb-glass {
+  background: var(--nb-surface) !important;
+  backdrop-filter: var(--nb-blur);
+  -webkit-backdrop-filter: var(--nb-blur);
+  border: 1px solid var(--nb-border) !important;
+  box-shadow: var(--nb-card-shadow);
+  transition: border-color 0.3s var(--nb-ease), transform 0.3s var(--nb-ease), box-shadow 0.3s var(--nb-ease);
+}
+
+.ant-card:hover {
+  border-color: var(--nb-border-strong) !important;
+}
+
+.ant-card .ant-card-head {
+  border-bottom-color: var(--nb-border);
+}
+
+.nb-lift:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--nb-card-shadow-hover);
+}
+
+/* Bordure en dégradé animé (cartes « héros ») */
+.nb-gradient-border {
+  position: relative;
+  border-radius: 20px;
+  isolation: isolate;
+}
+
+.nb-gradient-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(140deg, rgba(139, 92, 246, 0.7), rgba(139, 92, 246, 0.08) 45%, rgba(139, 92, 246, 0.45));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  z-index: -1;
+}
+
+.ant-table-wrapper .ant-table {
+  background: transparent;
+}
+
+.ant-table-wrapper .ant-table-container {
+  border-radius: 14px;
+}
+
+.ant-modal .ant-modal-content,
+.ant-drawer .ant-drawer-content,
+.ant-dropdown .ant-dropdown-menu,
+.ant-popover .ant-popover-inner {
+  backdrop-filter: var(--nb-blur);
+  -webkit-backdrop-filter: var(--nb-blur);
+  border: 1px solid var(--nb-border);
+}
+
+.ant-drawer .ant-drawer-content {
+  background: var(--nb-drawer);
+}
+
+.ant-drawer .ant-drawer-header {
+  border-bottom-color: var(--nb-border);
+}
+
+/* Mode clair : navigation, textes en dégradé et sélection plus contrastés */
+[data-theme="light"] .nb-nav .ant-menu-item-selected {
+  background: rgba(139, 92, 246, 0.1) !important;
+  box-shadow: inset 3px 0 0 #7c3aed;
+}
+
+[data-theme="light"] .nb-nav .ant-menu-item-selected .anticon,
+[data-theme="light"] .nb-nav .ant-menu-item-selected a {
+  color: #6d28d9 !important;
+}
+
+[data-theme="light"] .nb-gradient-text {
+  color: #6d28d9 !important;
+}
+
+[data-theme="light"] ::selection {
+  background: rgba(139, 92, 246, 0.25);
+  color: #0b1020;
+}
+
+/* Navigation latérale */
+.nb-nav .ant-menu-item-group-title {
+  font-size: 10px !important;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 18px 24px 6px !important;
+}
+
+.nb-nav .ant-menu-item-selected {
+  box-shadow: inset 3px 0 0 #8b5cf6;
+  background: rgba(139, 92, 246, 0.14) !important;
+}
+
+.nb-nav .ant-menu-item-selected .anticon {
+  color: #a78bfa;
+}
+
+/* Bouton primaire en dégradé de marque */
+.ant-btn-primary:not(.ant-btn-dangerous):not(:disabled) {
+  background: #7c3aed;
+  border: none;
+}
+
+.ant-btn-primary:not(.ant-btn-dangerous):not(:disabled):hover {
+  background: #8b5cf6;
+  box-shadow: 0 8px 24px -10px rgba(139, 92, 246, 0.7);
+}
+
+/* Barre de défilement discrète */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--nb-scrollbar);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.32);
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ── Typographie ───────────────────────────────────────────────────── */
+.nb-display {
+  font-family: var(--font-grotesk), "Space Grotesk", var(--font-inter), sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.nb-gradient-text {
+  /* Mot mis en avant : couleur d'accent unie (charte sobre). */
+  color: #a78bfa !important;
+}
+
+.nb-mono {
+  font-family: var(--font-mono), "JetBrains Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.nb-eyebrow {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--nb-text-3);
+  font-weight: 600;
+}
+
+/* ── Animations ────────────────────────────────────────────────────── */
+.nb-fade-up {
+  animation: nb-fade-up 0.7s var(--nb-ease) both;
+}
+
+.nb-stagger > * {
+  animation: nb-fade-up 0.7s var(--nb-ease) both;
+}
+
+.nb-stagger > *:nth-child(1) { animation-delay: 0.04s; }
+.nb-stagger > *:nth-child(2) { animation-delay: 0.1s; }
+.nb-stagger > *:nth-child(3) { animation-delay: 0.16s; }
+.nb-stagger > *:nth-child(4) { animation-delay: 0.22s; }
+.nb-stagger > *:nth-child(5) { animation-delay: 0.28s; }
+.nb-stagger > *:nth-child(6) { animation-delay: 0.34s; }
+.nb-stagger > *:nth-child(7) { animation-delay: 0.4s; }
+.nb-stagger > *:nth-child(8) { animation-delay: 0.46s; }
+.nb-stagger > *:nth-child(n + 9) { animation-delay: 0.5s; }
+
+.nb-float {
+  animation: nb-float 6s ease-in-out infinite;
+}
+
+.nb-pulse-dot {
+  position: relative;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.nb-pulse-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: currentColor;
+  animation: nb-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.nb-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.nb-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, var(--nb-shimmer) 50%, transparent 80%);
+  transform: translateX(-100%);
+  animation: nb-shimmer 2.4s infinite;
+}
+
+.nb-scanline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--nb-cyan), transparent);
+  box-shadow: 0 0 18px var(--nb-cyan);
+  animation: nb-scan 2.6s ease-in-out infinite;
+}
+
+@keyframes nb-aurora {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(8vmax, 6vmax) scale(1.15); }
+  100% { transform: translate(-6vmax, 10vmax) scale(0.95); }
+}
+
+@keyframes nb-gradient-shift {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 300% 50%; }
+}
+
+@keyframes nb-fade-up {
+  from { opacity: 0; transform: translateY(14px); filter: blur(4px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+
+@keyframes nb-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes nb-ping {
+  75%, 100% { transform: scale(2.6); opacity: 0; }
+}
+
+@keyframes nb-shimmer {
+  100% { transform: translateX(100%); }
+}
+
+@keyframes nb-scan {
+  0% { top: 8%; opacity: 0; }
+  15% { opacity: 1; }
+  85% { opacity: 1; }
+  100% { top: 92%; opacity: 0; }
+}
+
+@keyframes nb-donut {
+  from { stroke-dasharray: 0 1000; }
+}
+
+@keyframes nb-grow {
+  from { transform: scaleY(0); opacity: 0; }
+  to { transform: scaleY(1); opacity: 1; }
+}
+
+@keyframes nb-grow-x {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes nb-travel {
+  0% { left: 20px; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { left: calc(100% - 30px); opacity: 0; }
+}
+
+@keyframes nb-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes nb-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes nb-blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.1); }
+}
+
+@keyframes nb-glow {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+@keyframes nb-pop-in {
+  0% { opacity: 0; transform: scale(0.6); }
+  70% { opacity: 1; transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes nb-slide-in {
+  from { opacity: 0; transform: translateX(-18px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ── Robot de prospection (components/ui/ProspectorRobot.tsx) ──────── */
+.rb { position: relative; display: inline-block; }
+.rb svg { overflow: visible; }
+.rb-body { animation: nb-float 5s ease-in-out infinite; transform-origin: 110px 120px; }
+.rb-shadow { animation: rb-shadow 5s ease-in-out infinite; transform-origin: 110px 228px; }
+.rb-eye-shape { transform-box: fill-box; transform-origin: center; animation: nb-blink 5.5s infinite; }
+.rb-antenna { animation: nb-glow 2.4s ease-in-out infinite; }
+.rb-core { animation: nb-glow 3s ease-in-out infinite; }
+.rb-ring { transform-box: fill-box; transform-origin: center; animation: nb-spin 9s linear infinite; }
+.rb-beam, .rb-particles, .rb-happy { opacity: 0; transition: opacity 0.5s var(--nb-ease); }
+.rb-halo { opacity: 0; transform-box: fill-box; transform-origin: center; }
+.rb-thrust { transform-box: fill-box; transform-origin: top center; animation: rb-thrust 0.9s ease-in-out infinite; }
+.rb-arm-l { transform-box: fill-box; transform-origin: top center; animation: rb-wave 5s ease-in-out infinite; }
+.rb-arm-r { transform-box: fill-box; transform-origin: top center; animation: rb-wave 5s ease-in-out infinite reverse; }
+
+.rb-scanning .rb-body { animation-duration: 2.6s; }
+.rb-scanning .rb-beam { opacity: 1; animation: rb-beam 1.6s ease-in-out infinite; transform-origin: 110px 92px; }
+.rb-scanning .rb-eyes { animation: rb-look 2.2s ease-in-out infinite; }
+.rb-scanning .rb-antenna { animation-duration: 0.7s; }
+.rb-scanning .rb-ring { animation-duration: 1.6s; }
+.rb-scanning .rb-core { animation-duration: 0.9s; }
+.rb-scanning .rb-halo { opacity: 1; animation: rb-halo 2.2s ease-out infinite; }
+.rb-scanning .rb-halo-2 { animation-delay: 1.1s; }
+.rb-scanning .rb-particles { opacity: 1; }
+.rb-scanning .rb-particles circle { animation: rb-particle 2.4s ease-in-out infinite; }
+.rb-scanning .rb-particles circle:nth-child(2n) { animation-delay: 0.6s; }
+.rb-scanning .rb-particles circle:nth-child(3n) { animation-delay: 1.2s; }
+.rb-scanning .rb-arm-l { animation: rb-type 0.45s ease-in-out infinite; }
+.rb-scanning .rb-arm-r { animation: rb-type 0.45s ease-in-out infinite reverse; }
+
+.rb-success .rb-eyes { opacity: 0; }
+.rb-success .rb-happy { opacity: 1; }
+.rb-success .rb-halo { opacity: 1; animation: rb-halo 2.8s ease-out infinite; }
+.rb-success .rb-arm-r { animation: rb-cheer 1.2s ease-in-out infinite; }
+
+.rb-error .rb-antenna { animation: nb-glow 0.5s steps(2) infinite; }
+.rb-error .rb-halo { opacity: 1; animation: rb-halo 3s ease-out infinite; }
+
+@keyframes rb-shadow { 0%, 100% { transform: scaleX(1); opacity: 0.45; } 50% { transform: scaleX(0.78); opacity: 0.25; } }
+@keyframes rb-thrust { 0%, 100% { transform: scaleY(1); opacity: 0.55; } 50% { transform: scaleY(1.45); opacity: 0.95; } }
+@keyframes rb-wave { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(6deg); } }
+@keyframes rb-type { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(10deg); } }
+@keyframes rb-cheer { 0%, 100% { transform: rotate(-20deg); } 50% { transform: rotate(-150deg); } }
+@keyframes rb-look { 0%, 100% { transform: translateX(-7px); } 50% { transform: translateX(7px); } }
+@keyframes rb-beam { 0%, 100% { transform: skewX(-9deg); opacity: 0.55; } 50% { transform: skewX(9deg); opacity: 1; } }
+@keyframes rb-halo { 0% { transform: scale(0.75); opacity: 0.9; } 100% { transform: scale(1.18); opacity: 0; } }
+@keyframes rb-particle { 0%, 100% { transform: translateY(0); opacity: 0.2; } 50% { transform: translateY(-14px); opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Mise en page (utilitaires historiques, conservés) ─────────────── */
 .page-toolbar {
   display: flex;
   justify-content: space-between;
@@ -54,7 +562,7 @@ body {
 }
 
 .page-hero {
-  border-radius: 16px;
+  border-radius: 20px;
   padding: 20px 16px;
   display: flex;
   justify-content: space-between;
@@ -137,3 +645,51 @@ body {
     align-items: center;
   }
 }
+
+/* Ligne de campagne : colonnes alignées sur grand écran, empilées sur mobile. */
+.nb-camp-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2.2fr) 150px minmax(140px, 1fr) 216px 92px;
+  align-items: center;
+  gap: 18px;
+}
+@media (max-width: 1100px) {
+  .nb-camp-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .nb-camp-row > .nb-camp-progress, .nb-camp-row > .nb-camp-metrics { grid-column: 1 / -1; }
+}
+
+/* Chips : couleur d'accent en sombre, assombrie en clair pour rester lisible sur fond blanc. */
+.nb-chip { color: var(--chip); }
+[data-theme="light"] .nb-chip { color: color-mix(in srgb, var(--chip) 62%, #0b1020); }
+
+/* Barres segmentées longues : défilement horizontal plutôt que débordement de la page (mobile). */
+.ant-segmented { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.ant-segmented::-webkit-scrollbar { display: none; }
+
+/* Assistant de campagne : sur téléphone, seules les pastilles d'étapes restent visibles. */
+@media (max-width: 760px) {
+  .nb-stepper-text { display: none !important; }
+}
+@media (max-width: 760px) {
+  .nb-hide-mobile { display: none !important; }
+}
+
+/* Carte : tuiles OSM assombries en mode sombre (les marqueurs gardent leurs couleurs). */
+.nb-map-dark .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9) saturate(0.6); }
+.nb-map-dark .leaflet-container { background: #0b1020; }
+
+/* Éditeur d'email (Quill « snow ») : barre d'outils aux couleurs du thème,
+   zone d'édition blanche comme l'email reçu par le prospect (WYSIWYG fidèle). */
+.crm-email-quill .ql-toolbar.ql-snow { border: 0; border-bottom: 1px solid var(--nb-border); background: var(--nb-control); }
+.crm-email-quill .ql-container.ql-snow { border: 0; background: #ffffff; color: #1f2937; font-family: var(--font-inter), Arial, sans-serif; font-size: 14px; }
+.crm-email-quill .ql-editor.ql-blank::before { color: #9ca3af; }
+.crm-email-quill .ql-snow .ql-stroke { stroke: var(--nb-text-2); }
+.crm-email-quill .ql-snow .ql-fill { fill: var(--nb-text-2); }
+.crm-email-quill .ql-snow .ql-picker { color: var(--nb-text-2); }
+.crm-email-quill .ql-snow button:hover .ql-stroke, .crm-email-quill .ql-snow button.ql-active .ql-stroke { stroke: #8b5cf6; }
+.crm-email-quill .ql-snow button:hover .ql-fill, .crm-email-quill .ql-snow button.ql-active .ql-fill { fill: #8b5cf6; }
+.crm-email-quill .ql-snow .ql-picker-options { background: var(--nb-drawer); border-color: var(--nb-border); }
+
+/* Menu de la Configuration : défilement interne discret. */
+.nb-settings-nav { scrollbar-width: thin; }
+.nb-settings-nav::-webkit-scrollbar { width: 6px; }

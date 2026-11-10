@@ -6,15 +6,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Pas de badge Next.js en développement (démos, captures d'écran) ; les erreurs restent affichées.
+  devIndicators: false,
   output: "standalone",
   // Monorepo : tracer les fichiers depuis la racine du repo (pour la sortie standalone).
   outputFileTracingRoot: path.join(__dirname, "../../"),
-  // Le client Prisma vit dans le package workspace @crm/db (source TypeScript).
-  transpilePackages: ["@crm/db", "@crm/queue"],
-  // Charger ces deps Node natives via require() au lieu de les bundler par webpack.
-  // Évite les warnings "Module not found" pour les peer deps optionnelles de mongodb
-  // (bson-ext, kerberos, snappy, aws4, @mongodb-js/zstd, mongodb-client-encryption).
-  serverExternalPackages: ["@hokify/agenda", "mongodb"],
+  // Packages workspace consommés en source TypeScript (client Prisma, file, IA, tâches de fond).
+  transpilePackages: ["@crm/ai", "@crm/db", "@crm/jobs", "@crm/queue"],
+  // Libs Node des tâches de fond (IMAP / parsing mail) : chargées via require(), pas bundlées.
+  serverExternalPackages: ["imapflow", "mailparser"],
   experimental: {
     optimizePackageImports: ["antd", "@ant-design/icons"],
   },

@@ -31,11 +31,11 @@ type Notif = {
 };
 
 const ICON_BY_TYPE: Record<string, React.ReactNode> = {
-  reply_received: <MailOutlined style={{ color: "#13c2c2" }} />,
-  lead_assigned: <UserSwitchOutlined style={{ color: "#1677ff" }} />,
+  reply_received: <MailOutlined style={{ color: "#a78bfa" }} />,
+  lead_assigned: <UserSwitchOutlined style={{ color: "#8b5cf6" }} />,
   sequence_started: <ProjectOutlined style={{ color: "#722ed1" }} />,
-  team_invite: <TeamOutlined style={{ color: "#fa8c16" }} />,
-  scraping_done: <RadarChartOutlined style={{ color: "#52c41a" }} />,
+  team_invite: <TeamOutlined style={{ color: "#fbbf24" }} />,
+  scraping_done: <RadarChartOutlined style={{ color: "#34d399" }} />,
   scraping_error: <CloseCircleOutlined style={{ color: "#ff4d4f" }} />,
 };
 
@@ -113,12 +113,13 @@ export function NotificationsBell({ borderColor, textColor }: { borderColor: str
     <div
       style={{
         width: 380, maxHeight: 480, overflow: "auto",
-        background: "#fff", borderRadius: 8, boxShadow: "0 6px 24px rgba(0,0,0,0.12)",
+        background: "rgba(14, 19, 36, 0.96)", borderRadius: 16, border: "1px solid var(--nb-border)",
+        boxShadow: "0 24px 60px -12px rgba(0,0,0,0.7)", backdropFilter: "blur(18px)",
       }}
     >
       <div
         style={{
-          padding: "10px 16px", borderBottom: "1px solid #f0f0f0",
+          padding: "12px 16px", borderBottom: "1px solid var(--nb-border)",
           display: "flex", alignItems: "center", justifyContent: "space-between",
         }}
       >
@@ -143,15 +144,15 @@ export function NotificationsBell({ borderColor, textColor }: { borderColor: str
               style={{
                 padding: "10px 16px",
                 cursor: n.link ? "pointer" : "default",
-                background: n.isRead ? "transparent" : "#e6f4ff",
-                borderBottom: "1px solid #f5f5f5",
+                background: n.isRead ? "transparent" : "rgba(139,92,246,0.12)",
+                borderBottom: "1px solid var(--nb-border)",
                 transition: "background 0.15s",
               }}
               onMouseEnter={(e) => {
-                if (n.link) (e.currentTarget as HTMLElement).style.background = n.isRead ? "#fafafa" : "#d6eaff";
+                if (n.link) (e.currentTarget as HTMLElement).style.background = n.isRead ? "rgba(148,163,184,0.08)" : "rgba(139,92,246,0.2)";
               }}
               onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.background = n.isRead ? "transparent" : "#e6f4ff";
+                (e.currentTarget as HTMLElement).style.background = n.isRead ? "transparent" : "rgba(139,92,246,0.12)";
               }}
             >
               <Space align="start" size={10} style={{ width: "100%" }}>
@@ -159,14 +160,14 @@ export function NotificationsBell({ borderColor, textColor }: { borderColor: str
                   style={{
                     fontSize: 20, marginTop: 2, width: 28, height: 28,
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    borderRadius: 6,
-                    background: n.type === "scraping_done" ? "#f6ffed"
-                      : n.type === "scraping_error" ? "#fff2f0"
-                      : n.type === "reply_received" ? "#e6fffb"
-                      : "#f0f5ff",
+                    borderRadius: 10,
+                    background: n.type === "scraping_done" ? "rgba(52,211,153,0.14)"
+                      : n.type === "scraping_error" ? "rgba(251,113,133,0.14)"
+                      : n.type === "reply_received" ? "rgba(167, 139, 250,0.14)"
+                      : "rgba(139,92,246,0.14)",
                   }}
                 >
-                  {ICON_BY_TYPE[n.type] ?? <BellOutlined style={{ color: "#8c8c8c" }} />}
+                  {ICON_BY_TYPE[n.type] ?? <BellOutlined style={{ color: "var(--nb-text-2)" }} />}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start" }}>
@@ -187,7 +188,7 @@ export function NotificationsBell({ borderColor, textColor }: { borderColor: str
                       </Tag>
                     )}
                     {n.link && (
-                      <Text style={{ fontSize: 11, color: "#1677ff" }}>
+                      <Text style={{ fontSize: 11, color: "#8b5cf6" }}>
                         Cliquer pour ouvrir →
                       </Text>
                     )}
@@ -207,13 +208,13 @@ export function NotificationsBell({ borderColor, textColor }: { borderColor: str
       onOpenChange={setOpen}
       placement="bottomRight"
       trigger={["click"]}
-      dropdownRender={() => content}
+      popupRender={() => content}
     >
       <Tooltip title="Notifications">
         <Badge count={unread} overflowCount={99} offset={[-4, 4]}>
           <div
             style={{
-              width: 36, height: 36, borderRadius: 8, border: `1px solid ${borderColor}`,
+              width: 38, height: 38, borderRadius: 12, border: `1px solid ${borderColor}`, background: "rgba(148,163,184,0.06)",
               display: "flex", alignItems: "center", justifyContent: "center",
               cursor: "pointer", color: textColor,
             }}

@@ -5,8 +5,8 @@
  * compte, 10 000 emails / jour) afin d'anticiper la montée en charge et
  * d'alimenter les jauges de l'onglet Paramètres → Système.
  *
- * Les index Mongo nécessaires à cette échelle sont décrits dans
- * packages/db/prisma/manual-indexes.md (déjà posés sur leads/emailEvents).
+ * Les index MySQL nécessaires à cette échelle sont déclarés dans le schéma Prisma
+ * (@@index) et créés par les migrations (packages/db/prisma/migrations).
  */
 import { prisma } from "@crm/db";
 import { handler, json, requirePermission } from "@/lib/api";
@@ -62,7 +62,7 @@ export const GET = handler(async () => {
       inboxMessages: inboxTotal,
       sequencesActive,
       smtpAccounts: smtpConfigs._count._all,
-      indexesDoc: "packages/db/prisma/manual-indexes.md",
+      indexesDoc: "packages/db/prisma/schema.prisma",
     },
   });
 });

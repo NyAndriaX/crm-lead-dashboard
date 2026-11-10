@@ -1,9 +1,7 @@
 import type { LeadStatus, Prisma } from "@prisma/client";
 
-/** Lead non supprimé (Mongo : champ absent ou null). */
-export const LEAD_NOT_DELETED: Prisma.LeadWhereInput = {
-  OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
-};
+/** Lead non supprimé (soft delete : `deletedAt` NULL). */
+export const LEAD_NOT_DELETED: Prisma.LeadWhereInput = { deletedAt: null };
 
 /** Filtres segment = même forme que `leadFilters` (apps/web) pour buildWhere. */
 export type LeadSegmentFilters = {
@@ -31,7 +29,7 @@ export function buildLeadWhereFromSegmentFilters(f: LeadSegmentFilters): Prisma.
   if (f.city) where.city = f.city;
   if (f.country) where.country = f.country;
   if (f.assignedToId) where.assignedToId = f.assignedToId;
-  if (f.tag) where.tags = { has: f.tag };
+  if (f.tag) where.tags = { array_contains: [f.tag] };
   if (f.scoreMin != null || f.scoreMax != null) {
     where.score = {
       ...(f.scoreMin != null ? { gte: f.scoreMin } : {}),
@@ -44,12 +42,13 @@ export function buildLeadWhereFromSegmentFilters(f: LeadSegmentFilters): Prisma.
       ...(f.createdBefore ? { lte: new Date(f.createdBefore) } : {}),
     };
   }
+  // Collation utf8mb4_0900_ai_ci : `contains` (LIKE) est déjà insensible à la casse et aux accents.
   if (f.q) {
     where.OR = [
-      { firstName: { contains: f.q, mode: "insensitive" } },
-      { lastName: { contains: f.q, mode: "insensitive" } },
-      { company: { contains: f.q, mode: "insensitive" } },
-      { notes: { contains: f.q, mode: "insensitive" } },
+      { firstName: { contains: f.q } },
+      { lastName: { contains: f.q } },
+      { company: { contains: f.q } },
+      { notes: { contains: f.q } },
     ];
   }
   return where;

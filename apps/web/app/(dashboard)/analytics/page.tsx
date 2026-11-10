@@ -13,8 +13,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import {
-  Alert, Button, Card, Col, Empty, Progress, Row, Segmented,
-  Space, Spin, Statistic, Table, Tag, Typography, Tabs, message,
+  Button, Card, Col, Empty, Progress, Row, Segmented, Space, Spin, Table, Tag, Typography, message,
 } from "antd";
 import {
   BarChartOutlined, DollarOutlined, DownloadOutlined, FireOutlined,
@@ -23,8 +22,40 @@ import {
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { palette } from "@/lib/theme";
+import { useThemeMode } from "@/components/ThemeProvider";
+import { StatCard } from "@/components/ui/StatCard";
+import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
+import { Chip, EmptyState, Panel, ScoreRing } from "@/components/ui/Kit";
 
-const { Title, Text } = Typography;
+const CAMPAIGN_STATUS_LABEL: Record<string, string> = {
+  DRAFT: "Brouillon", SCHEDULED: "Planifiée", SENDING: "En cours", PAUSED: "En pause", DONE: "Terminée", CANCELLED: "Annulée",
+};
+
+/** Taux en barre colorée (tableaux). */
+function RateBar({ value, color }: { value: number | null; color: string }) {
+  if (value == null) return <span style={{ color: "var(--nb-text-3)" }}>—</span>;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
+      <div style={{ width: 54, height: 6, borderRadius: 6, background: "rgba(148,163,184,0.12)", overflow: "hidden" }}>
+        <div style={{ width: `${Math.min(100, value)}%`, height: "100%", background: color, borderRadius: 6 }} />
+      </div>
+      <span className="nb-mono" style={{ color, fontWeight: 700, fontSize: 12, width: 44, textAlign: "right" }}>{value}%</span>
+    </div>
+  );
+}
+
+/** Thème G2 (sombre ou clair selon le mode) + palette Nebula, partagé par les graphiques. */
+function useChartTheme() {
+  const { mode } = useThemeMode();
+  return {
+    theme: mode === "dark" ? "classicDark" : "classic",
+    scale: { color: { range: [palette.cyan, palette.violet, palette.pink, palette.green, palette.amber, palette.blue] } },
+  } as const;
+}
+
+const { Text } = Typography;
 
 const Column = dynamic(() => import("@ant-design/charts").then((m) => m.Column), { ssr: false });
 const Line = dynamic(() => import("@ant-design/charts").then((m) => m.Line), { ssr: false });
@@ -80,129 +111,59 @@ function GlobalView({ period }: { period: Period }) {
   if (loading) return <div style={{ padding: 48, textAlign: "center" }}><Spin /></div>;
   if (!kpis) return <Empty />;
 
-  const pct = (v: number | null) => v != null ? v : 0;
+  const rings = [
+    { label: "Ouverture", value: kpis.openRate, color: palette.cyan },
+    { label: "Clic", value: kpis.clickRate, color: palette.violet },
+    { label: "Réponse", value: kpis.replyRate, color: palette.green },
+    { label: "Bounce", value: kpis.bounceRate, color: palette.amber },
+  ];
 
   return (
-    <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="Leads (total)"
-              value={kpis.leadsTotal}
-              prefix={<TeamOutlined />}
-              valueStyle={{ color: "#1677ff" }}
-            />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              dont {kpis.leadsActive} actifs
-            </Text>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="Leads créés"
-              value={kpis.leadsCreated}
-              prefix={<RiseOutlined />}
-              valueStyle={{ color: "#52c41a" }}
-            />
-            <Text type="secondary" style={{ fontSize: 12 }}>sur la période</Text>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="Emails envoyés"
-              value={kpis.emailsSent}
-              prefix={<MailOutlined />}
-              valueStyle={{ color: "#722ed1" }}
-            />
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {kpis.campaignsActive} campagne(s) active(s)
-            </Text>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card>
-            <Statistic
-              title="Conversions"
-              value={kpis.conversionRate ?? 0}
-              suffix="%"
-              prefix={<TrophyOutlined />}
-              valueStyle={{ color: "#fa8c16" }}
-            />
-            <Text type="secondary" style={{ fontSize: 12 }}>taux global</Text>
-          </Card>
-        </Col>
+    <div style={{ display: "grid", gap: 16 }}>
+      <Row gutter={[16, 16]} className="nb-stagger">
+        <Col xs={12} xl={6}><StatCard label="Leads (total)" value={kpis.leadsTotal} icon={<TeamOutlined />} color={palette.violet} hint={`dont ${kpis.leadsActive} actifs`} /></Col>
+        <Col xs={12} xl={6}><StatCard label="Leads créés" value={kpis.leadsCreated} icon={<RiseOutlined />} color={palette.green} hint="sur la période" /></Col>
+        <Col xs={12} xl={6}><StatCard label="Emails envoyés" value={kpis.emailsSent} icon={<MailOutlined />} color={palette.pink} hint={`${kpis.campaignsActive} campagne(s) active(s)`} /></Col>
+        <Col xs={12} xl={6}><StatCard label="Conversion" value={kpis.conversionRate ?? 0} decimals={1} suffix="%" icon={<TrophyOutlined />} color={palette.amber} hint="taux global" /></Col>
       </Row>
 
       <Row gutter={[16, 16]}>
-        <Col xs={24} md={12}>
-          <Card title={<Space><MailOutlined /> Performance emailing</Space>}>
-            <Space direction="vertical" size={16} style={{ width: "100%" }}>
-              <div>
-                <Text>Taux d'ouverture</Text>
-                <Progress
-                  percent={pct(kpis.openRate)}
-                  strokeColor="#1677ff"
-                  format={() => kpis.openRate != null ? `${kpis.openRate}%` : "—"}
-                />
-              </div>
-              <div>
-                <Text>Taux de clic</Text>
-                <Progress
-                  percent={pct(kpis.clickRate)}
-                  strokeColor="#52c41a"
-                  format={() => kpis.clickRate != null ? `${kpis.clickRate}%` : "—"}
-                />
-              </div>
-              <div>
-                <Text>Taux de réponse</Text>
-                <Progress
-                  percent={pct(kpis.replyRate)}
-                  strokeColor="#fa8c16"
-                  format={() => kpis.replyRate != null ? `${kpis.replyRate}%` : "—"}
-                />
-              </div>
-              <div>
-                <Text>Taux de bounce</Text>
-                <Progress
-                  percent={pct(kpis.bounceRate)}
-                  strokeColor="#ff4d4f"
-                  format={() => kpis.bounceRate != null ? `${kpis.bounceRate}%` : "—"}
-                />
-              </div>
-            </Space>
-          </Card>
+        <Col xs={24} lg={15}>
+          <Panel icon={<MailOutlined />} title="Performance emailing" subtitle="Taux calculés sur les envois de la période" style={{ height: "100%" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+              {rings.map((r) => (
+                <div key={r.label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "8px 0" }}>
+                  <ScoreRing score={r.value} size={104} color={r.color} />
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--nb-text-2)" }}>{r.label}</div>
+                </div>
+              ))}
+            </div>
+          </Panel>
         </Col>
-        <Col xs={24} md={12}>
-          <Card title={<Space><FireOutlined /> Engagement</Space>}>
-            <Space direction="vertical" size={16} style={{ width: "100%" }}>
-              <Statistic
-                title="Réponses reçues (inbox)"
-                value={kpis.inboxMessagesReceived}
-                prefix={<MailOutlined />}
-                valueStyle={{ color: "#13c2c2" }}
-              />
+        <Col xs={24} lg={9}>
+          <Panel icon={<FireOutlined />} title="Engagement" subtitle="Réponses et désabonnements" accent={palette.pink} style={{ height: "100%" }}>
+            <div style={{ display: "grid", gap: 18 }}>
               <div>
-                <Text>Taux de désabonnement</Text>
-                <Progress
-                  percent={pct(kpis.unsubscribeRate)}
-                  strokeColor="#8c8c8c"
-                  format={() => kpis.unsubscribeRate != null ? `${kpis.unsubscribeRate}%` : "—"}
-                />
+                <div className="nb-eyebrow">Réponses reçues</div>
+                <AnimatedNumber value={kpis.inboxMessagesReceived} className="nb-display nb-mono" style={{ fontSize: 44, fontWeight: 700, color: palette.cyan }} />
+                <div style={{ fontSize: 12, color: "var(--nb-text-3)" }}>relevées dans la boîte de réception et triées par l'IA</div>
               </div>
-              <Alert
-                type="info"
-                showIcon
-                message="Indicateurs sur les emails envoyés pendant la période"
-                description="Les taux sont calculés sur les envois effectués depuis le début de la période. Les leads totaux et actifs restent des compteurs absolus."
-              />
-            </Space>
-          </Card>
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
+                  <span style={{ color: "var(--nb-text-2)" }}>Taux de désabonnement</span>
+                  <span className="nb-mono" style={{ fontWeight: 700, color: (kpis.unsubscribeRate ?? 0) <= 0.5 ? palette.green : palette.red }}>
+                    {kpis.unsubscribeRate != null ? `${kpis.unsubscribeRate} %` : "—"}
+                  </span>
+                </div>
+                <div style={{ height: 8, borderRadius: 8, background: "rgba(148,163,184,0.12)", overflow: "hidden" }}>
+                  <div style={{ width: `${Math.min(100, (kpis.unsubscribeRate ?? 0) * 10)}%`, height: "100%", background: palette.red, borderRadius: 8, transformOrigin: "left", animation: "nb-grow-x 1s var(--nb-ease) both" }} />
+                </div>
+              </div>
+            </div>
+          </Panel>
         </Col>
       </Row>
-    </Space>
+    </div>
   );
 }
 
@@ -278,9 +239,9 @@ function CampaignsView() {
       key: "status",
       width: 110,
       render: (v) => (
-        <Tag color={v === "DONE" ? "green" : v === "SENDING" ? "blue" : v === "PAUSED" ? "orange" : "default"}>
-          {v}
-        </Tag>
+        <Chip size="sm" color={v === "DONE" ? palette.green : v === "SENDING" ? palette.cyan : v === "PAUSED" ? palette.amber : "#94a0bd"}>
+          {CAMPAIGN_STATUS_LABEL[v] ?? v}
+        </Chip>
       ),
     },
     { title: "Envoyés", dataIndex: "sent", key: "sent", width: 90, align: "right" },
@@ -292,11 +253,11 @@ function CampaignsView() {
     { title: "Réponses", dataIndex: "replies", key: "replies", width: 90, align: "right" },
     {
       title: "Taux ouv.", dataIndex: "openRate", key: "openRate", width: 100, align: "right",
-      render: (v) => v != null ? <Tag color={v >= 25 ? "green" : v >= 15 ? "blue" : "default"}>{v}%</Tag> : "—",
+      render: (v) => <RateBar value={v} color={palette.cyan} />,
     },
     {
       title: "Taux clic", dataIndex: "clickRate", key: "clickRate", width: 100, align: "right",
-      render: (v) => v != null ? <Tag color={v >= 3 ? "green" : v >= 1 ? "blue" : "default"}>{v}%</Tag> : "—",
+      render: (v) => <RateBar value={v} color={palette.pink} />,
     },
     {
       title: "CTOR", dataIndex: "ctorRate", key: "ctorRate", width: 90, align: "right",
@@ -304,33 +265,17 @@ function CampaignsView() {
     },
     {
       title: "Réponses", dataIndex: "replyRate", key: "replyRate", width: 100, align: "right",
-      render: (v) => v != null ? <Tag color={v >= 5 ? "green" : "default"}>{v}%</Tag> : "—",
+      render: (v) => <RateBar value={v} color={palette.green} />,
     },
   ];
 
   return (
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      <Row gutter={[16, 16]}>
-        <Col xs={12} md={6}>
-          <Card size="small">
-            <Statistic title="Total envoyés" value={totals.sent} valueStyle={{ fontSize: 20 }} />
-          </Card>
-        </Col>
-        <Col xs={12} md={6}>
-          <Card size="small">
-            <Statistic title="Ouvertures" value={totals.openRate ?? 0} suffix="%" valueStyle={{ fontSize: 20, color: "#1677ff" }} />
-          </Card>
-        </Col>
-        <Col xs={12} md={6}>
-          <Card size="small">
-            <Statistic title="Clics" value={totals.clickRate ?? 0} suffix="%" valueStyle={{ fontSize: 20, color: "#52c41a" }} />
-          </Card>
-        </Col>
-        <Col xs={12} md={6}>
-          <Card size="small">
-            <Statistic title="Réponses" value={totals.replyRate ?? 0} suffix="%" valueStyle={{ fontSize: 20, color: "#fa8c16" }} />
-          </Card>
-        </Col>
+      <Row gutter={[16, 16]} className="nb-stagger">
+        <Col xs={12} xl={6}><StatCard label="Total envoyés" value={totals.sent} icon={<MailOutlined />} color={palette.violet} /></Col>
+        <Col xs={12} xl={6}><StatCard label="Ouverture" value={totals.openRate ?? 0} decimals={1} suffix="%" icon={<RiseOutlined />} color={palette.cyan} /></Col>
+        <Col xs={12} xl={6}><StatCard label="Clic" value={totals.clickRate ?? 0} decimals={1} suffix="%" icon={<FireOutlined />} color={palette.pink} /></Col>
+        <Col xs={12} xl={6}><StatCard label="Réponse" value={totals.replyRate ?? 0} decimals={1} suffix="%" icon={<TrophyOutlined />} color={palette.green} /></Col>
       </Row>
       <Table
         rowKey="id"
@@ -354,6 +299,7 @@ type TimelineBucket = {
 };
 
 function TimelineView({ period }: { period: Period }) {
+  const chartTheme = useChartTheme();
   const [granularity, setGranularity] = useState<Granularity>("week");
   const [buckets, setBuckets] = useState<TimelineBucket[]>([]);
   const [sources, setSources] = useState<string[]>([]);
@@ -427,6 +373,7 @@ function TimelineView({ period }: { period: Period }) {
           <Col xs={24} lg={16}>
             <Card title="Évolution des leads par source">
               <Line
+                {...chartTheme}
                 data={lineData}
                 xField="period"
                 yField="count"
@@ -440,6 +387,7 @@ function TimelineView({ period }: { period: Period }) {
           <Col xs={24} lg={8}>
             <Card title="Répartition par source (cumul)">
               <Pie
+                {...chartTheme}
                 data={pieData}
                 angleField="count"
                 colorField="source"
@@ -453,11 +401,12 @@ function TimelineView({ period }: { period: Period }) {
           <Col xs={24}>
             <Card title="Volume par période">
               <Column
+                {...chartTheme}
                 data={buckets.map((b) => ({ period: b.period, total: b.total }))}
                 xField="period"
                 yField="total"
                 height={200}
-                color="#1677ff"
+                style={{ fill: palette.violet, radiusTopLeft: 6, radiusTopRight: 6 }}
               />
             </Card>
           </Col>
@@ -485,6 +434,7 @@ type SalesPerf = {
 };
 
 function SalesView({ period }: { period: Period }) {
+  const chartTheme = useChartTheme();
   const [rows, setRows] = useState<SalesPerf[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -560,30 +510,81 @@ function SalesView({ period }: { period: Period }) {
     },
   ];
 
+  const ranked = [...rows].sort((x, y) => y.leadsConverted - x.leadsConverted || (y.conversionRate ?? 0) - (x.conversionRate ?? 0));
+  const maxAssigned = Math.max(1, ...rows.map((r) => r.leadsAssigned));
+  const MEDALS = ["#fbbf24", "#cbd5e1", "#f97316"];
+
   return (
-    <Space direction="vertical" size={16} style={{ width: "100%" }}>
+    <div style={{ display: "grid", gap: 16 }}>
+      <Panel icon={<TrophyOutlined />} title="Classement des commerciaux" subtitle="Trié par leads convertis sur la période" accent={palette.amber}>
+        {loading ? (
+          <Spin />
+        ) : ranked.length === 0 ? (
+          <EmptyState title="Aucune donnée" description="Assignez des leads aux commerciaux pour suivre leur performance." />
+        ) : (
+          <div style={{ display: "grid", gap: 10 }} className="nb-stagger">
+            {ranked.map((r, i) => (
+              <div
+                key={r.userId}
+                style={{
+                  display: "grid", gridTemplateColumns: "44px minmax(160px, 1.2fr) minmax(200px, 2fr) 90px 90px", gap: 16, alignItems: "center",
+                  padding: "12px 16px", borderRadius: 16, border: "1px solid var(--nb-border)",
+                  background: i === 0 ? "linear-gradient(90deg, rgba(251,191,36,0.14), transparent)" : "var(--nb-control)",
+                }}
+              >
+                <div
+                  className="nb-mono"
+                  style={{
+                    width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700,
+                    color: i < 3 ? "#1e2538" : "var(--nb-text-2)", background: i < 3 ? MEDALS[i] : "rgba(148,163,184,0.15)",
+                    boxShadow: i < 3 ? `0 0 16px -2px ${MEDALS[i]}` : "none",
+                  }}
+                >
+                  {i + 1}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, color: "var(--nb-text-strong)" }}>{r.userName}</div>
+                  <div style={{ fontSize: 12, color: "var(--nb-text-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.userEmail}</div>
+                </div>
+                <div style={{ display: "grid", gap: 5 }}>
+                  {[
+                    { label: "Assignés", v: r.leadsAssigned, c: palette.violet },
+                    { label: "Convertis", v: r.leadsConverted, c: palette.green },
+                    { label: "Perdus", v: r.leadsLost, c: palette.red },
+                  ].map((m) => (
+                    <div key={m.label} style={{ display: "grid", gridTemplateColumns: "70px 1fr 28px", gap: 8, alignItems: "center", fontSize: 11 }}>
+                      <span style={{ color: "var(--nb-text-3)" }}>{m.label}</span>
+                      <div style={{ height: 6, borderRadius: 6, background: "rgba(148,163,184,0.12)", overflow: "hidden" }}>
+                        <div style={{ width: `${(m.v / maxAssigned) * 100}%`, height: "100%", background: m.c, borderRadius: 6, transformOrigin: "left", animation: "nb-grow-x 1s var(--nb-ease) both" }} />
+                      </div>
+                      <span className="nb-mono" style={{ color: "var(--nb-text-strong)", textAlign: "right" }}>{m.v}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <ScoreRing score={r.conversionRate} size={54} color={palette.green} />
+                  <div style={{ fontSize: 10, color: "var(--nb-text-3)", marginTop: 4 }}>conversion</div>
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  <ScoreRing score={r.avgScore} size={54} />
+                  <div style={{ fontSize: 10, color: "var(--nb-text-3)", marginTop: 4 }}>score moyen</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+
       {rows.length > 0 && (
-        <Card title="Volume par commercial">
-          <Column
-            data={chartData}
-            xField="user"
-            yField="count"
-            colorField="metric"
-            group
-            height={280}
-          />
-        </Card>
+        <Panel icon={<BarChartOutlined />} title="Volume par commercial" subtitle="Assignés, convertis et perdus">
+          <Column {...chartTheme} data={chartData} xField="user" yField="count" colorField="metric" group height={280} />
+        </Panel>
       )}
-      <Table
-        rowKey="userId"
-        columns={columns}
-        dataSource={rows}
-        loading={loading}
-        size="middle"
-        scroll={{ x: 1100 }}
-        pagination={false}
-      />
-    </Space>
+
+      <Panel icon={<UserOutlined />} title="Détail" subtitle="Toutes les métriques par commercial" padding={8}>
+        <Table rowKey="userId" columns={columns} dataSource={rows} loading={loading} size="middle" scroll={{ x: 1100 }} pagination={false} />
+      </Panel>
+    </div>
   );
 }
 
@@ -608,51 +609,33 @@ function ExportView({ period }: { period: Period }) {
   }
 
   return (
-    <Space direction="vertical" size={16} style={{ width: "100%" }}>
-      <Alert
-        type="info"
-        showIcon
-        message="Téléchargement instantané"
-        description="Choisissez un rapport puis le format. Les exports utilisent la période sélectionnée en haut de page."
-      />
-      <Row gutter={[16, 16]}>
-        {reports.map((r) => (
-          <Col key={r.key} xs={24} md={12}>
-            <Card>
-              <Space align="start" size={16} style={{ width: "100%" }}>
-                <div style={{ fontSize: 32, color: "#1677ff" }}>{r.icon}</div>
-                <div style={{ flex: 1 }}>
-                  <Title level={5} style={{ margin: 0 }}>{r.title}</Title>
-                  <Text type="secondary" style={{ fontSize: 12 }}>{r.desc}</Text>
-                  <div style={{ marginTop: 12 }}>
-                    <Space>
-                      <Button
-                        icon={<DownloadOutlined />}
-                        type="primary"
-                        onClick={() => doExport(r.key, "xlsx")}
-                      >
-                        Excel (.xlsx)
-                      </Button>
-                      <Button
-                        icon={<DownloadOutlined />}
-                        onClick={() => doExport(r.key, "csv")}
-                      >
-                        CSV
-                      </Button>
-                    </Space>
-                  </div>
+    <div style={{ display: "grid", gap: 16 }}>
+      <Row gutter={[16, 16]} className="nb-stagger">
+        {reports.map((r, i) => {
+          const c = [palette.violet, palette.cyan, palette.pink, palette.green][i % 4]!;
+          return (
+            <Col key={r.key} xs={24} md={12}>
+              <div className="nb-glass nb-lift" style={{ borderRadius: 20, padding: 22, display: "flex", gap: 18, alignItems: "flex-start", height: "100%" }}>
+                <div style={{ width: 54, height: 54, borderRadius: 16, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, color: "#fff", background: `linear-gradient(135deg, ${c}, ${palette.indigo})`, boxShadow: `0 10px 26px -10px ${c}` }}>
+                  {r.icon}
                 </div>
-              </Space>
-            </Card>
-          </Col>
-        ))}
+                <div style={{ flex: 1 }}>
+                  <div className="nb-display" style={{ fontSize: 17, fontWeight: 600, color: "var(--nb-text-strong)" }}>{r.title}</div>
+                  <div style={{ fontSize: 13, color: "var(--nb-text-3)", marginTop: 4 }}>{r.desc}</div>
+                  <Space style={{ marginTop: 14 }}>
+                    <Button icon={<DownloadOutlined />} type="primary" onClick={() => doExport(r.key, "xlsx")}>Excel</Button>
+                    <Button icon={<DownloadOutlined />} onClick={() => doExport(r.key, "csv")}>CSV</Button>
+                  </Space>
+                </div>
+              </div>
+            </Col>
+          );
+        })}
       </Row>
-      <Alert
-        type="info"
-        message="Planification automatique"
-        description="L'envoi récurrent des rapports par email (hebdo / mensuel) reste à câbler côté worker. Pour l'instant, lancez l'export à la demande."
-      />
-    </Space>
+      <div style={{ fontSize: 12, color: "var(--nb-text-3)" }}>
+        Les exports utilisent la période sélectionnée en haut de page. L'envoi récurrent par email des rapports n'est pas encore disponible : lancez l'export à la demande.
+      </div>
+    </div>
   );
 }
 
@@ -663,14 +646,15 @@ export default function AnalyticsPage() {
   const [activeTab, setActiveTab] = useState("global");
 
   return (
-    <div style={{ padding: "16px 24px" }}>
-      <Space align="center" style={{ width: "100%", justifyContent: "space-between", marginBottom: 16 }} wrap>
-        <Space>
-          <BarChartOutlined style={{ fontSize: 24, color: "#1677ff" }} />
-          <Title level={3} style={{ margin: 0 }}>Analytique & Reporting</Title>
-        </Space>
-        <Space>
-          <Text type="secondary">Période :</Text>
+    <div>
+      <PageHeader
+        icon={<BarChartOutlined />}
+        title="Analytique &"
+        highlight="reporting"
+        subtitle="Performance emailing, évolution des leads, conversion par commercial et exports."
+        extra={
+          <Space>
+            <Text type="secondary">Période :</Text>
           <Segmented<Period>
             value={period}
             onChange={(v) => setPeriod(v as Period)}
@@ -679,41 +663,31 @@ export default function AnalyticsPage() {
               value: p,
             }))}
           />
-        </Space>
-      </Space>
-
-      <Tabs
-        activeKey={activeTab}
-        onChange={setActiveTab}
-        size="large"
-        items={[
-          {
-            key: "global",
-            label: <Space><BarChartOutlined /> Vue globale</Space>,
-            children: <GlobalView period={period} />,
-          },
-          {
-            key: "campaigns",
-            label: <Space><MailOutlined /> Campagnes</Space>,
-            children: <CampaignsView />,
-          },
-          {
-            key: "timeline",
-            label: <Space><LineChartOutlined /> Évolution leads</Space>,
-            children: <TimelineView period={period} />,
-          },
-          {
-            key: "sales",
-            label: <Space><UserOutlined /> Performance</Space>,
-            children: <SalesView period={period} />,
-          },
-          {
-            key: "export",
-            label: <Space><DownloadOutlined /> Export</Space>,
-            children: <ExportView period={period} />,
-          },
-        ]}
+          </Space>
+        }
       />
+
+      <div style={{ marginBottom: 18 }}>
+        <Segmented
+          size="large"
+          value={activeTab}
+          onChange={(v) => setActiveTab(String(v))}
+          options={[
+            { value: "global", label: <span><BarChartOutlined /> Vue globale</span> },
+            { value: "campaigns", label: <span><MailOutlined /> Campagnes</span> },
+            { value: "timeline", label: <span><LineChartOutlined /> Évolution des leads</span> },
+            { value: "sales", label: <span><TrophyOutlined /> Commerciaux</span> },
+            { value: "export", label: <span><DownloadOutlined /> Export</span> },
+          ]}
+        />
+      </div>
+      <div key={activeTab} className="nb-fade-up">
+        {activeTab === "global" && <GlobalView period={period} />}
+        {activeTab === "campaigns" && <CampaignsView />}
+        {activeTab === "timeline" && <TimelineView period={period} />}
+        {activeTab === "sales" && <SalesView period={period} />}
+        {activeTab === "export" && <ExportView period={period} />}
+      </div>
     </div>
   );
 }

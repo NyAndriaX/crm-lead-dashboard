@@ -2,24 +2,23 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { Row, Col, Card, Typography, Space, Tag, Table, Alert, Button, Skeleton, Progress } from "antd";
 import {
-  Row, Col, Card, Statistic, Typography, Space, Tag, Table, Spin, Alert,
-  Button, Avatar, Tooltip, Progress, Badge,
-} from "antd";
-import {
-  TeamOutlined, RiseOutlined, FallOutlined, FireOutlined, TrophyOutlined,
-  ArrowUpOutlined, ArrowDownOutlined, PlusOutlined, UploadOutlined,
-  UserOutlined, CalendarOutlined, BarChartOutlined,
+  TeamOutlined, RiseOutlined, FireOutlined, TrophyOutlined, UploadOutlined, CalendarOutlined,
+  PieChartOutlined, RadarChartOutlined, ArrowRightOutlined, ThunderboltOutlined, FunnelPlotOutlined,
 } from "@ant-design/icons";
-import { Pie, Column } from "@ant-design/charts";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
+import { palette, statusColors } from "@/lib/theme";
 import { useIsMobile } from "@/lib/responsive";
+import { StatCard } from "@/components/ui/StatCard";
+import { DonutChart, BarChart } from "@/components/ui/Charts";
+import { ProspectorRobot } from "@/components/ui/ProspectorRobot";
+import { AIBadge } from "@/components/ui/Brand";
+import { ActionCenter } from "@/components/dashboard/ActionCenter";
 
-const { Title, Text } = Typography;
-
-// ── Types ─────────────────────────────────────────────────────────────────────
+const { Text } = Typography;
 
 interface Kpis {
   total: number; activeLeads: number; newToday: number; thisWeek: number;
@@ -39,13 +38,6 @@ interface DashStats {
   }[];
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-const STATUS_HEX: Record<string, string> = {
-  NOUVEAU: "#8c8c8c", CONTACTE: "#1677ff", QUALIFIE: "#13c2c2",
-  EN_DISCUSSION: "#faad14", CONVERTI: "#52c41a", PERDU: "#ff4d4f",
-};
-
 function greeting() {
   const h = new Date().getHours();
   if (h < 12) return "Bonjour";
@@ -57,55 +49,18 @@ function fullName(r: { firstName: string | null; lastName: string | null; compan
   return [r.firstName, r.lastName].filter(Boolean).join(" ") || r.company || "—";
 }
 
-// ── KPI Card ──────────────────────────────────────────────────────────────────
-
-function KpiCard({
-  title, value, suffix, icon, color, trend, trendLabel, sub,
-}: {
-  title: string; value: number | string; suffix?: string; icon: React.ReactNode;
-  color: string; trend?: number | null; trendLabel?: string; sub?: string;
-}) {
-  return (
-    <Card
-      style={{ borderTop: `3px solid ${color}`, height: "100%" }}
-      bodyStyle={{ padding: "20px 24px" }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div>
-          <Text type="secondary" style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1 }}>
-            {title}
-          </Text>
-          <div style={{ marginTop: 4 }}>
-            <span style={{ fontSize: 28, fontWeight: 700, color }}>{value}</span>
-            {suffix && <span style={{ fontSize: 14, color: "#8c8c8c", marginLeft: 4 }}>{suffix}</span>}
-          </div>
-          {trend != null && (
-            <Space size={4} style={{ marginTop: 6 }}>
-              {trend >= 0
-                ? <ArrowUpOutlined style={{ color: "#52c41a", fontSize: 11 }} />
-                : <ArrowDownOutlined style={{ color: "#ff4d4f", fontSize: 11 }} />}
-              <Text style={{ fontSize: 12, color: trend >= 0 ? "#52c41a" : "#ff4d4f" }}>
-                {Math.abs(trend)}% {trendLabel}
-              </Text>
-            </Space>
-          )}
-          {sub && <Text type="secondary" style={{ fontSize: 12, display: "block", marginTop: 4 }}>{sub}</Text>}
-        </div>
-        <div
-          style={{
-            width: 48, height: 48, borderRadius: 12, background: `${color}18`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 22, color,
-          }}
-        >
-          {icon}
-        </div>
-      </div>
-    </Card>
-  );
+function scoreColor(v: number) {
+  return v >= 70 ? palette.green : v >= 40 ? palette.amber : palette.red;
 }
 
-// ── Page principale ───────────────────────────────────────────────────────────
+function CardTitle({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <Space size={10}>
+      <span style={{ color: palette.cyan }}>{icon}</span>
+      <span className="nb-display" style={{ fontWeight: 600 }}>{children}</span>
+    </Space>
+  );
+}
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashStats | null>(null);
@@ -118,72 +73,44 @@ export default function DashboardPage() {
     api.get<{ user: { name: string } }>("/auth/me")
       .then((r) => setUserName(r.data.user.name.split(" ")[0] ?? r.data.user.name))
       .catch(() => {});
-
     api.get<{ data: DashStats }>("/dashboard/stats")
       .then((r) => setStats(r.data.data))
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return (
-    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 400 }}>
-      <Spin size="large" tip="Chargement du tableau de bord…" />
-    </div>
-  );
   if (error) return <Alert type="error" message="Impossible de charger le tableau de bord." showIcon />;
-  if (!stats) return null;
 
-  const { kpis, byStatus, dailyLeads, recentLeads } = stats;
+  const kpis = stats?.kpis;
+  const donut = stats
+    ? Object.entries(STATUS_LABELS).map(([key, label]) => ({
+        key, label, value: stats.byStatus[key] ?? 0, color: statusColors[key] ?? palette.violet,
+      })).filter((d) => d.value > 0)
+    : [];
+  const bars = (stats?.dailyLeads ?? []).map((d) => ({
+    label: new Date(d.date).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric" }),
+    value: d.leads,
+  }));
 
-  // Données pour le graphe en secteur (statuts)
-  const pieData = Object.entries(byStatus)
-    .filter(([, v]) => v > 0)
-    .map(([status, value]) => ({
-      type: STATUS_LABELS[status as keyof typeof STATUS_LABELS] ?? status,
-      value,
-      color: STATUS_HEX[status],
-    }));
-
-  // Config Pie
-  const pieConfig = {
-    data: pieData,
-    angleField: "value",
-    colorField: "type",
-    color: pieData.map((d) => d.color),
-    radius: 0.85,
-    innerRadius: 0.6,
-    label: { type: "spider", content: "{name}: {value}" },
-    legend: { position: "bottom" as const },
-    statistic: {
-      title: { content: "Total" },
-      content: { content: String(kpis.total) },
-    },
-    interactions: [{ type: "element-active" }],
-    animation: false,
-  };
-
-  // Config Column (évolution 7j)
-  const colConfig = {
-    data: dailyLeads,
-    xField: "date",
-    yField: "leads",
-    color: "#1677ff",
-    columnWidthRatio: 0.6,
-    label: { position: "top" as const, style: { fill: "#8c8c8c", fontSize: 11 } },
-    xAxis: { label: { autoHide: true, autoRotate: true } },
-    yAxis: { nice: true, grid: { line: { style: { stroke: "#f0f0f0" } } } },
-    animation: false,
-  };
-
-  // Colonnes table leads récents
-  const cols: ColumnsType<typeof recentLeads[number]> = [
+  const cols: ColumnsType<DashStats["recentLeads"][number]> = [
     {
       title: "Lead",
       key: "name",
       render: (_, r) => (
-        <Space>
-          <Avatar size="small" icon={<UserOutlined />} style={{ background: STATUS_HEX[r.status] }} />
-          <Link href={`/leads/${r.id}`} style={{ fontWeight: 500 }}>{fullName(r)}</Link>
+        <Space size={12}>
+          <div
+            style={{
+              width: 34, height: 34, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
+              fontWeight: 700, fontSize: 12, color: "#fff",
+              background: `linear-gradient(135deg, ${statusColors[r.status] ?? palette.violet}, ${palette.violet})`,
+            }}
+          >
+            {fullName(r).slice(0, 2).toUpperCase()}
+          </div>
+          <div style={{ lineHeight: 1.3 }}>
+            <Link href={`/leads/${r.id}`} style={{ fontWeight: 600, color: "var(--nb-text-strong)" }}>{fullName(r)}</Link>
+            {r.company && fullName(r) !== r.company && <div style={{ fontSize: 12, color: palette.textTertiary }}>{r.company}</div>}
+          </div>
         </Space>
       ),
     },
@@ -197,231 +124,176 @@ export default function DashboardPage() {
       title: "Score",
       dataIndex: "score",
       key: "score",
-      width: 100,
+      width: 150,
       render: (v: number) => (
-        <Space size={4}>
-          <Progress
-            type="circle"
-            percent={v}
-            size={28}
-            strokeColor={v >= 70 ? "#52c41a" : v >= 40 ? "#faad14" : "#ff4d4f"}
-            format={(p) => <span style={{ fontSize: 9 }}>{p}</span>}
-          />
-        </Space>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Progress percent={v} showInfo={false} size="small" strokeColor={scoreColor(v)} style={{ width: 80, margin: 0 }} />
+          <span className="nb-mono" style={{ color: scoreColor(v), fontWeight: 600 }}>{v}</span>
+        </div>
       ),
     },
     {
       title: "Assigné à",
       key: "assignee",
       responsive: ["md"],
-      render: (_, r) => r.assignedTo
-        ? <Tag icon={<UserOutlined />}>{r.assignedTo.name}</Tag>
-        : <Text type="secondary">—</Text>,
+      render: (_, r) => (r.assignedTo ? <Text type="secondary">{r.assignedTo.name}</Text> : <Text type="secondary">—</Text>),
     },
     {
       title: "Créé le",
       dataIndex: "createdAt",
       key: "createdAt",
       responsive: ["lg"],
-      render: (v: string) => new Date(v).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }),
+      render: (v: string) => <Text type="secondary">{new Date(v).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}</Text>,
     },
   ];
 
   return (
-    <Space direction="vertical" size="large" style={{ width: "100%" }}>
-
-      {/* ── Bannière de bienvenue ──────────────────────────────────────────── */}
-      <div className="page-hero" style={{ background: "linear-gradient(135deg, #1677ff 0%, #0950b3 100%)" }}>
-        <div>
-          <Title level={isMobile ? 4 : 3} style={{ color: "#fff", margin: 0 }}>
-            {greeting()}{userName ? `, ${userName}` : ""} 👋
-          </Title>
-          <Text style={{ color: "rgba(255,255,255,0.8)", marginTop: 4, display: "block" }}>
-            {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-          </Text>
-        </div>
-        <div className="page-hero-actions">
-          <Link href="/leads">
-            <Button icon={<PlusOutlined />} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "#fff" }}>
-              Nouveau lead
-            </Button>
-          </Link>
-          <Link href="/import">
-            <Button icon={<UploadOutlined />} type="primary" ghost style={{ borderColor: "rgba(255,255,255,0.5)", color: "#fff" }}>
-              Importer
-            </Button>
-          </Link>
+    <div style={{ display: "grid", gap: 20, gridTemplateColumns: "minmax(0, 1fr)" }}>
+      {/* ── Héros ─────────────────────────────────────────────────────── */}
+      <div className="nb-glass nb-gradient-border" style={{ borderRadius: 24, padding: isMobile ? 22 : "28px 34px", overflow: "hidden", position: "relative" }}>
+        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 85% 40%, rgba(139,92,246,0.28), transparent 55%)", pointerEvents: "none" }} />
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 24, position: "relative" }}>
+          <div style={{ maxWidth: 640 }}>
+            <Space size={10} wrap>
+              <span className="nb-eyebrow">
+                {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+              </span>
+              <AIBadge>Assistant de prospection</AIBadge>
+            </Space>
+            <h1 className="nb-display" style={{ margin: "12px 0 8px", fontSize: isMobile ? 28 : 38, fontWeight: 700, lineHeight: 1.1, color: "var(--nb-text-strong)" }}>
+              {greeting()}{userName ? ", " : ""}<span className="nb-gradient-text">{userName}</span>
+            </h1>
+            <div style={{ color: palette.textSecondary, fontSize: 15, lineHeight: 1.6 }}>
+              {kpis ? (
+                <>
+                  <b style={{ color: "var(--nb-text-strong)" }}>{kpis.thisWeek}</b> nouveaux leads cette semaine,{" "}
+                  <b style={{ color: "var(--nb-text-strong)" }}>{kpis.activeLeads}</b> en cours de traitement et un taux de conversion de{" "}
+                  <b style={{ color: palette.green }}>{kpis.conversionRate} %</b>.
+                </>
+              ) : (
+                "Chargement de votre activité…"
+              )}
+            </div>
+            <Space wrap style={{ marginTop: 22 }}>
+              <Link href="/scraping">
+                <Button type="primary" size="large" icon={<RadarChartOutlined />}>Lancer une prospection IA</Button>
+              </Link>
+              <Link href="/import"><Button size="large" icon={<UploadOutlined />}>Importer</Button></Link>
+              <Link href="/leads"><Button size="large" type="text" icon={<ArrowRightOutlined />} iconPosition="end">Voir les leads</Button></Link>
+            </Space>
+          </div>
+          {!isMobile && (
+            <div style={{ flexShrink: 0, marginRight: 10 }}>
+              <ProspectorRobot state="idle" size={170} />
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ── KPI cards ─────────────────────────────────────────────────────── */}
-      <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} xl={6}>
-          <KpiCard
-            title="Total leads"
-            value={kpis.total}
-            icon={<TeamOutlined />}
-            color="#1677ff"
-            sub={`${kpis.activeLeads} actifs`}
-          />
-        </Col>
-        <Col xs={24} sm={12} xl={6}>
-          <KpiCard
-            title="Nouveaux ce mois"
-            value={kpis.thisMonth}
-            icon={<CalendarOutlined />}
-            color="#13c2c2"
-            trend={kpis.monthTrend}
-            trendLabel="vs mois dernier"
-            sub={`${kpis.newToday} aujourd'hui · ${kpis.thisWeek} cette semaine`}
-          />
-        </Col>
-        <Col xs={24} sm={12} xl={6}>
-          <KpiCard
-            title="Taux de conversion"
-            value={kpis.conversionRate}
-            suffix="%"
-            icon={<TrophyOutlined />}
-            color="#52c41a"
-            sub={`${kpis.converted} lead${kpis.converted > 1 ? "s" : ""} converti${kpis.converted > 1 ? "s" : ""}`}
-          />
-        </Col>
-        <Col xs={24} sm={12} xl={6}>
-          <KpiCard
-            title="Score moyen"
-            value={kpis.avgScore}
-            suffix="/ 100"
-            icon={<FireOutlined />}
-            color={kpis.avgScore >= 60 ? "#52c41a" : kpis.avgScore >= 35 ? "#faad14" : "#ff4d4f"}
-            sub="Qualité du pipeline"
-          />
-        </Col>
-      </Row>
+      <ActionCenter />
 
-      {/* ── Graphiques ────────────────────────────────────────────────────── */}
+      {/* ── KPI ───────────────────────────────────────────────────────── */}
+      {loading || !kpis ? (
+        <Row gutter={[16, 16]}>
+          {[0, 1, 2, 3].map((i) => (
+            <Col key={i} xs={24} sm={12} xl={6}><Card><Skeleton active paragraph={{ rows: 2 }} /></Card></Col>
+          ))}
+        </Row>
+      ) : (
+        <Row gutter={[16, 16]} className="nb-stagger">
+          <Col xs={24} sm={12} xl={6}>
+            <StatCard label="Total leads" value={kpis.total} icon={<TeamOutlined />} color={palette.violet} hint={`${kpis.activeLeads} actifs`} />
+          </Col>
+          <Col xs={24} sm={12} xl={6}>
+            <StatCard
+              label="Nouveaux ce mois" value={kpis.thisMonth} icon={<CalendarOutlined />} color={palette.cyan}
+              trend={kpis.monthTrend} spark={(stats?.dailyLeads ?? []).map((d) => d.leads)}
+            />
+          </Col>
+          <Col xs={24} sm={12} xl={6}>
+            <StatCard
+              label="Taux de conversion" value={kpis.conversionRate} suffix="%" icon={<TrophyOutlined />} color={palette.green}
+              hint={`${kpis.converted} lead${kpis.converted > 1 ? "s" : ""} converti${kpis.converted > 1 ? "s" : ""}`}
+            />
+          </Col>
+          <Col xs={24} sm={12} xl={6}>
+            <StatCard label="Score moyen" value={kpis.avgScore} suffix="/ 100" icon={<FireOutlined />} color={scoreColor(kpis.avgScore)} hint="Qualité du pipeline" />
+          </Col>
+        </Row>
+      )}
+
+      {/* ── Graphiques ────────────────────────────────────────────────── */}
       <Row gutter={[16, 16]}>
-        <Col xs={24} lg={10}>
-          <Card
-            title={
-              <Space>
-                <BarChartOutlined style={{ color: "#1677ff" }} />
-                <span>Répartition par statut</span>
-              </Space>
-            }
-            style={{ minHeight: isMobile ? 320 : 380 }}
-          >
-            {pieData.length > 0
-              ? <Pie {...pieConfig} height={isMobile ? 220 : 280} />
-              : <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: 280 }}>
-                  <Text type="secondary">Aucune donnée</Text>
-                </div>
-            }
+        <Col xs={24} lg={11}>
+          <Card title={<CardTitle icon={<PieChartOutlined />}>Répartition par statut</CardTitle>} style={{ height: "100%" }}>
+            {loading ? <Skeleton active /> : donut.length > 0 ? <DonutChart data={donut} size={isMobile ? 180 : 210} /> : <Text type="secondary">Aucune donnée</Text>}
           </Card>
         </Col>
-
-        <Col xs={24} lg={14}>
-          <Card
-            title={
-              <Space>
-                <RiseOutlined style={{ color: "#1677ff" }} />
-                <span>Nouveaux leads — 7 derniers jours</span>
-              </Space>
-            }
-            style={{ minHeight: isMobile ? 320 : 380 }}
-          >
-            <Column {...colConfig} height={isMobile ? 220 : 280} />
+        <Col xs={24} lg={13}>
+          <Card title={<CardTitle icon={<RiseOutlined />}>Nouveaux leads — 7 derniers jours</CardTitle>} style={{ height: "100%" }}>
+            {loading ? <Skeleton active /> : <BarChart data={bars} height={isMobile ? 200 : 250} />}
           </Card>
         </Col>
       </Row>
 
-      {/* ── Derniers leads + Récap statuts ────────────────────────────────── */}
+      {/* ── Leads récents + pipeline ─────────────────────────────────── */}
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={16}>
           <Card
-            title={
-              <Space>
-                <TeamOutlined style={{ color: "#1677ff" }} />
-                <span>Leads récents</span>
-              </Space>
-            }
-            extra={<Link href="/leads"><Button type="link" size="small">Voir tous →</Button></Link>}
+            title={<CardTitle icon={<ThunderboltOutlined />}>Leads récents</CardTitle>}
+            extra={<Link href="/leads"><Button type="link" size="small">Voir tous <ArrowRightOutlined /></Button></Link>}
+            styles={{ body: { padding: "6px 8px 8px" } }}
           >
-            <div className="page-table-wrap">
-              <Table
-                size="small"
-                rowKey="id"
-                columns={cols}
-                dataSource={recentLeads}
-                pagination={false}
-                scroll={{ x: 720 }}
-                onRow={(r) => ({ onClick: () => window.location.assign(`/leads/${r.id}`), style: { cursor: "pointer" } })}
-              />
-            </div>
+            <Table
+              size="middle"
+              rowKey="id"
+              columns={cols}
+              dataSource={stats?.recentLeads ?? []}
+              loading={loading}
+              pagination={false}
+              scroll={{ x: 680 }}
+              onRow={(r) => ({ onClick: () => window.location.assign(`/leads/${r.id}`), style: { cursor: "pointer" } })}
+            />
           </Card>
         </Col>
-
         <Col xs={24} lg={8}>
-          <Card
-            title={
-              <Space>
-                <FallOutlined style={{ color: "#1677ff" }} />
-                <span>Synthèse du pipeline</span>
-              </Space>
-            }
-            style={{ height: "100%" }}
-          >
-            <Space direction="vertical" style={{ width: "100%" }} size="middle">
-              {Object.entries(STATUS_LABELS).map(([status, label]) => {
-                const count = byStatus[status] ?? 0;
-                const pct = kpis.total > 0 ? Math.round((count / kpis.total) * 100) : 0;
-                return (
-                  <div key={status}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, alignItems: "center" }}>
-                      <Space size={6}>
-                        <Badge color={STATUS_HEX[status]} />
-                        <Text style={{ fontSize: 13 }}>{label}</Text>
-                      </Space>
-                      <Space size={8}>
-                        <Text strong style={{ fontSize: 13 }}>{count}</Text>
-                        <Text type="secondary" style={{ fontSize: 11, width: 36, textAlign: "right" }}>
-                          {pct}%
-                        </Text>
-                      </Space>
+          <Card title={<CardTitle icon={<FunnelPlotOutlined />}>Entonnoir du pipeline</CardTitle>} style={{ height: "100%" }}>
+            {loading || !kpis ? (
+              <Skeleton active />
+            ) : (
+              <div style={{ display: "grid", gap: 14, gridTemplateColumns: "minmax(0, 1fr)" }} className="nb-stagger">
+                {Object.entries(STATUS_LABELS).map(([status, label]) => {
+                  const count = stats?.byStatus[status] ?? 0;
+                  const pct = kpis.total > 0 ? Math.round((count / kpis.total) * 100) : 0;
+                  const c = statusColors[status] ?? palette.violet;
+                  return (
+                    <div key={status}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13 }}>
+                        <span style={{ color: palette.textSecondary, display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: "50%", background: c, boxShadow: `0 0 8px ${c}` }} />
+                          {label}
+                        </span>
+                        <span className="nb-mono" style={{ color: "var(--nb-text-strong)", fontWeight: 600 }}>
+                          {count} <span style={{ color: palette.textTertiary, fontWeight: 400 }}>· {pct}%</span>
+                        </span>
+                      </div>
+                      <div style={{ height: 8, borderRadius: 8, background: "rgba(148,163,184,0.08)", overflow: "hidden" }}>
+                        <div
+                          style={{
+                            width: `${pct}%`, height: "100%", borderRadius: 8,
+                            background: `linear-gradient(90deg, ${c}, ${palette.violet})`, boxShadow: `0 0 12px ${c}`,
+                            transformOrigin: "left", animation: "nb-grow-x 1s var(--nb-ease) both",
+                          }}
+                        />
+                      </div>
                     </div>
-                    <Progress
-                      percent={pct}
-                      showInfo={false}
-                      strokeColor={STATUS_HEX[status]}
-                      trailColor="#f5f5f5"
-                      size="small"
-                    />
-                  </div>
-                );
-              })}
-            </Space>
-
-            <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid #f0f0f0" }}>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Statistic
-                    title={<Text style={{ fontSize: 11 }}>Leads actifs</Text>}
-                    value={kpis.activeLeads}
-                    valueStyle={{ fontSize: 20, color: "#1677ff" }}
-                  />
-                </Col>
-                <Col span={12}>
-                  <Statistic
-                    title={<Text style={{ fontSize: 11 }}>Convertis</Text>}
-                    value={kpis.converted}
-                    valueStyle={{ fontSize: 20, color: "#52c41a" }}
-                  />
-                </Col>
-              </Row>
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </Card>
         </Col>
       </Row>
-
-    </Space>
+    </div>
   );
 }

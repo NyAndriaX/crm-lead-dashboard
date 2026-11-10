@@ -1,114 +1,115 @@
-# CRM Lead Dashboard
+# CRM Lead
 
-Application full-stack de gestion, qualification et prospection de leads.
+Plateforme de prospection B2B : collecte de leads (scraping Google Maps), qualification et scoring,
+campagnes et séquences d'emails, boîte de réception des réponses, le tout assisté par l'**IA**.
+Le fournisseur d'IA est choisi par l'administrateur : **Claude** (Claude Skills, par défaut), **OpenAI**,
+**DeepSeek**, **Mistral**, **Gemini**, **Ollama** (local) ou tout service compatible OpenAI.
+Monorepo **pnpm + Turborepo**, base **MySQL 8**, déployable sur **un seul serveur**.
 
-**Périmètre actuel : site web + dashboard.** Le service de scraping (Python) et l'enrichissement OSINT/API sont planifiés dans une phase ultérieure.
+```
+                    ┌──────────────────────── serveur unique (Docker Compose) ────────────────────────┐
+ Navigateur ──443──►│ nginx ──► web : Next.js 15 (UI Ant Design + API REST + tâches de fond) ──► MySQL 8 │
+                    │                   │  @crm/jobs ── file queue_jobs (SKIP LOCKED)                  │
+                    │                   ├──HTTP──► scraper : FastAPI + Playwright (Google Maps)        │
+                    │                   └──IA──► Claude Skills (CLI) ou API compatible OpenAI          │
+                    └──────────────────────────────────────────────────────────────────────────────────┘
+```
 
 ## Stack
 
 | Couche | Techno |
 |---|---|
-| Frontend + API | Next.js 15 (App Router, TS strict) |
-| UI | Ant Design 5 + `@ant-design/charts` + `@ant-design/icons` |
-| ORM / BDD | Prisma 5 (provider `mongodb`) · MongoDB 7 (replica set 1 nœud) |
-| File de tâches | **@hokify/agenda** sur MongoDB (collection `crmAgendaJobs` par défaut) — **pas de Redis** |
-| Workers | Node.js 20 (process séparé) |
-| Reverse proxy | Nginx |
-| Orchestration | Docker Compose |
-| Monorepo | Yarn 1 (classic) workspaces |
+| Application (UI + API) | Next.js 15 (App Router, TypeScript strict) · Ant Design 5 · Zod · OpenAPI 3.1 |
+| Tâches de fond | `@crm/jobs` démarré dans le serveur Next.js (`instrumentation.ts`) · file `@crm/queue` sur MySQL |
+| Base de données | MySQL 8.4 · Prisma 5 (migrations versionnées) |
+| Scraper | Python 3.12 · FastAPI · Playwright (Chromium) |
+| IA | Fournisseur au choix de l'administrateur : Claude Skills (CLI Claude Code, sans clé API) ou API Chat Completions (OpenAI, DeepSeek, Mistral, Gemini, Ollama…) — mêmes skills `.claude/skills` pour tous |
+| Tests | `node --test` (TypeScript), pytest (scraper), Playwright (E2E) |
+| Sécurité | JWT + bcrypt + TOTP · RBAC 4 rôles · AES-256-GCM sur les PII · HMAC pour le dédoublonnage |
+| Déploiement | Docker Compose : nginx (TLS Let's Encrypt) + web + scraper + MySQL |
+| Monorepo | pnpm workspaces + Turborepo |
 
-## Structure du monorepo
+## Structure
 
 ```
-crm-lead-dashboard/
+crm-lead/
 ├── apps/
-│   ├── web/        # Next.js 15 — UI (dashboard Ant Design) + API Route Handlers
-│   │   ├── app/        # pages (auth)/(dashboard) + app/api/* (Route Handlers)
-│   │   ├── lib/        # auth, crypto, rbac, api, jobs, openapi, services, schemas (Zod)
-│   │   └── middleware.ts
-│   └── worker/     # Worker Node.js — @hokify/agenda (MongoDB), pas de Redis
+│   ├── web/          # @crm/web — Next.js : pages (auth)/(dashboard), API app/api/*, instrumentation.ts
+│   └── scraper/      # @crm/scraper — FastAPI + Playwright (Python), POST /scrape
 ├── packages/
-│   └── db/         # Schéma Prisma (~25 collections) + client partagé (@crm/db) + seed
-├── docker/         # Config Nginx
-├── docs/           # ARCHITECTURE.md, ENV.md, RUNBOOK.md, BACKLOG.md
-├── docker-compose.yml
-├── .gitlab-ci.yml
-└── package.json          # champ "workspaces"
+│   ├── db/           # @crm/db — schéma Prisma MySQL, migrations, client partagé, seed
+│   ├── queue/        # @crm/queue — file de tâches MySQL (enqueue, récurrents, SKIP LOCKED)
+│   ├── jobs/         # @crm/jobs — handlers : campagnes, IMAP, séquences, scraping, imports, scoring
+│   └── ai/           # @crm/ai — exécution des tâches IA avec le fournisseur actif (JSON Schema, timeout, concurrence)
+├── .claude/skills/   # 7 skills : plan de mission, analyse d'établissement, brief, personnalisation, variantes, tri des réponses, réponse auto
+├── deploy/           # docker-compose de production, nginx, scripts (bootstrap, TLS, deploy, backup)
+├── docs/             # ARCHITECTURE, ENV, RUNBOOK, BACKLOG
+├── CLAUDE.md         # guide pour Claude Code
+└── AGENTS.md         # démarrage rapide pour agents IA
 ```
 
-> `apps/scraper/` (Python · Playwright · rq) sera ajouté plus tard.
-
-## Démarrage rapide (dev)
+## Démarrage (développement)
 
 ```bash
-# 1. Pré-requis : Node 20+, Yarn 1.x (npm i -g yarn), Docker
-nvm use            # lit .nvmrc
-yarn install
+# Prérequis : Node 20+, pnpm 9 (corepack enable), Docker, Python 3.12 (scraper)
+pnpm install
+cp .env.example .env            # compléter les secrets (voir docs/ENV.md)
 
-# 2. Variables d'environnement (un seul .env à la racine — chargé via dotenv-cli)
-cp .env.example .env   # puis compléter les secrets (voir docs/ENV.md)
+pnpm db:up                      # MySQL 8.4 en conteneur (crm/crm, port 3307)
+pnpm db:deploy                  # applique les migrations Prisma
+pnpm db:seed                    # données de démo — admin@crm.local / ChangeMe!2026
 
-# 3. Base de données (MongoDB seul ; replica set auto-initialisé par le healthcheck)
-docker compose up -d mongo
-yarn db:generate
-yarn db:push
-yarn db:seed                    # Admin: admin@crm.local / ChangeMe!2026 + étapes pipeline
-
-# 4. App web (http://localhost:3000)
-yarn dev
-
-# 5. Worker (autre terminal) — traite la file Agenda (`crmAgendaJobs`)
-yarn worker
+pnpm dev                        # web + tâches de fond → http://localhost:3000
+pnpm --filter @crm/scraper setup && pnpm dev:full   # + scraper sur :8000
 ```
 
-Ou tout en conteneurs : `docker compose up --build` (Nginx sur :80). Pas de Redis.
-
-## Scripts racine
+## Scripts
 
 | Commande | Effet |
 |---|---|
-| `yarn dev` | Lance `apps/web` en mode dev |
-| `yarn worker` | Lance `apps/worker` en mode dev |
-| `yarn build` | Build de tous les workspaces (ordre topologique) |
-| `yarn lint` / `yarn typecheck` | Qualité sur tout le monorepo |
-| `yarn db:generate` / `yarn db:push` | Prisma client / sync schéma |
-| `yarn db:seed` | Seed (Admin + étapes pipeline) |
-| `yarn db:studio` | Prisma Studio |
+| `pnpm dev` / `pnpm dev:full` | Web (avec tâches de fond) / web + scraper |
+| `pnpm build` · `pnpm typecheck` · `pnpm lint` · `pnpm test` | Turborepo sur tous les workspaces (tests unitaires TS + pytest) |
+| `pnpm --filter @crm/web test:e2e` | Tests de bout en bout Playwright (application démarrée + `pnpm db:seed`) |
+| `pnpm db:migrate` | Nouvelle migration après modification du schéma |
+| `pnpm db:deploy` · `pnpm db:seed` · `pnpm db:studio` | Migrations · données de démo · Prisma Studio |
+| `pnpm jobs` | Tâches de fond dans un process dédié (avec `RUN_JOBS=false` côté web) |
+| `pnpm deploy` | Déploiement sur le serveur (`DEPLOY_HOST=user@ip`) — voir [deploy/README.md](deploy/README.md) |
 
-## État d'avancement
+## Intelligence artificielle
 
-- **L0 + L1** (socle) : monorepo + CI + Docker Compose · schéma Prisma (~25 collections) · `lib/crypto` AES-256-GCM + HMAC · auth JWT + bcrypt + TOTP (`/api/auth/*`) · RBAC (matrice + `middleware.ts` + `requirePermission`) · OpenAPI 3.1 + Swagger UI (`/api/docs`) · CRUD Leads · shell dashboard Ant Design · worker (**@hokify/agenda** sur MongoDB, sans Redis).
-- **L2** (Leads avancé — en cours) : fiche lead détaillée (Descriptions + Timeline) · filtres avancés multi-critères + recherche · workflow de statuts (transitions validées) · tags + référentiel · assignation + notification in-app · vues sauvegardées · export CSV/XLSX · lead scoring 0–100 (recalcul auto + job batch).
+Configuration › Intelligence artificielle (rôle ADMIN) : choix du fournisseur, clé d'API (stockée chiffrée),
+modèle de rédaction et modèle rapide, bouton « Tester la connexion ». Chaque tâche IA est décrite une seule fois
+dans `.claude/skills/<tâche>/SKILL.md` ; avec Claude, le CLI Claude Code exécute le skill, avec les autres
+fournisseurs le même fichier sert d'instructions à l'API Chat Completions. Sortie validée par JSON Schema,
+repli déterministe si l'IA est indisponible. Détails : [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#intelligence-artificielle).
 
-Détail et reste à faire : [docs/BACKLOG.md](docs/BACKLOG.md) (lots L2 → L10).
+## Tests
+
+```bash
+pnpm test                                   # unitaires : @crm/ai, @crm/db, @crm/jobs (node --test) + scraper (pytest)
+pnpm dev                                    # dans un autre terminal, avec la base de démo
+E2E_CHROME_PATH=/usr/bin/google-chrome pnpm --filter @crm/web test:e2e   # 9 parcours Playwright
+```
+
+## Déploiement
+
+Un seul serveur Ubuntu avec Docker : voir **[deploy/README.md](deploy/README.md)**
+(préparation du VPS, certificat TLS, premier lancement, mises à jour, sauvegardes).
 
 ## Workflow Git
 
-Modèle de branches (type Git Flow simplifié) :
-
 ```
-feat/CRM-XXX-...  ──MR──►  develop  ──MR──►  main
-fix/CRM-XXX-...   ──MR──►  develop          (= production / release)
+feat/CRM-XXX-...  ──MR──►  develop  ──MR──►  main (production)
 ```
 
-- **`main`** : branche de production, protégée. On n'y arrive **que** via une MR depuis `develop`.
-- **`develop`** : branche d'intégration, **branche par défaut du projet GitLab** (cible par défaut des MR). Protégée.
-- **`feat/CRM-XXX-courte-description`** / **`fix/CRM-XXX-...`** : une branche par ticket, créée **depuis `develop`**, mergée dans `develop` via MR (CI verte + revue obligatoires).
-
-```bash
-git checkout develop && git pull
-git checkout -b feat/CRM-011-fiche-lead
-# … commits …
-git push -u origin feat/CRM-011-fiche-lead   # puis ouvrir la MR vers develop
-```
-
+- Une branche par ticket depuis `develop`, MR avec CI verte et revue obligatoires.
 - Commits : [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `chore:`, `docs:`…).
-- 1 ticket = 1 MR ; le template de MR du repo référence le ticket et liste la checklist.
-- UI : **strictement Ant Design 5** (pas de Tailwind / shadcn / autre lib hors charts).
+- UI : strictement Ant Design 5.
 
 ## Documentation
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — architecture technique
 - [docs/ENV.md](docs/ENV.md) — variables d'environnement
-- [docs/RUNBOOK.md](docs/RUNBOOK.md) — exploitation, incidents, sauvegardes
-- API : Swagger UI sur `/api/docs` (auth Admin) une fois l'app lancée
+- [docs/RUNBOOK.md](docs/RUNBOOK.md) — exploitation et incidents
+- [deploy/README.md](deploy/README.md) — mise en production
+- API : Swagger UI sur `/api/docs` (connecté)

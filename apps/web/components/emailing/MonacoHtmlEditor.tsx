@@ -20,7 +20,7 @@ export function MonacoHtmlEditor({
   return (
     <div
       style={{
-        border: "1px solid #d9d9d9",
+        border: "1px solid var(--nb-border)",
         borderRadius: 8,
         overflow: "hidden",
         boxShadow: "inset 0 1px 3px rgba(0,0,0,0.08)",

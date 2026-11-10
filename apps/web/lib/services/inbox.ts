@@ -140,8 +140,8 @@ export async function listInbox(filter: InboxFilter): Promise<{
     const search = filter.search.trim();
     if (search) {
       where.OR = [
-        { subject: { contains: search, mode: "insensitive" } },
-        { bodyText: { contains: search, mode: "insensitive" } },
+        { subject: { contains: search } },
+        { bodyText: { contains: search } },
       ];
     }
   }

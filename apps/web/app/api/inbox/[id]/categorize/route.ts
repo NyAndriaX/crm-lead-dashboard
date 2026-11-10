@@ -1,6 +1,6 @@
 /**
  * POST /api/inbox/:id/categorize — re-catégorisation manuelle d'un message
- * inbound (R-04). Recalcule la catégorie via OpenAI ou heuristique, ou
+ * inbound (R-04). Recalcule la catégorie via le skill Claude ou l'heuristique, ou
  * applique la catégorie passée explicitement en body.
  */
 import { z } from "zod";

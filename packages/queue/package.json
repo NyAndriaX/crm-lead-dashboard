@@ -11,10 +11,11 @@
     "test": "echo \"(no tests for @crm/queue)\""
   },
   "dependencies": {
-    "@hokify/agenda": "^6.3.0",
-    "mongodb": "^7.2.0"
+    "@crm/db": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5.6.3"
-  }
+    "typescript": "^5.6.3",
+    "@types/node": "^22.9.0"
+  },
+  "description": "File de tâches asynchrones sur MySQL (SELECT … FOR UPDATE SKIP LOCKED) — remplace @hokify/agenda."
 }

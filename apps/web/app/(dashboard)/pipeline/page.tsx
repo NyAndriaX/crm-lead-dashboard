@@ -11,18 +11,21 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Avatar, Badge, Button, Card, Empty, Input, message, Select, Space, Spin,
-  Statistic, Tag, Tooltip, Typography,
+  Button, Col, Input, message, Row, Select, Spin, Tooltip,
 } from "antd";
 import {
   FilterOutlined, ProjectOutlined, ReloadOutlined, SearchOutlined, TrophyOutlined,
-  UserOutlined, RiseOutlined, ClockCircleOutlined,
+  UserOutlined, ClockCircleOutlined, AppstoreOutlined, RightOutlined,
 } from "@ant-design/icons";
 import Link from "next/link";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { api } from "@/lib/client";
-
-const { Text, Title } = Typography;
+import { STATUS_LABELS } from "@/lib/leadStatus";
+import { palette, statusColors } from "@/lib/theme";
+import { stageColor } from "@/lib/stageColor";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { StatCard } from "@/components/ui/StatCard";
+import { Chip, EmptyState, Panel, ScoreRing, scoreColor } from "@/components/ui/Kit";
 
 type Stage = {
   id: string;
@@ -62,15 +65,6 @@ type Metrics = {
   totalLeads: number;
   stages: StageMetric[];
   winRate: number | null;
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  NOUVEAU: "default",
-  CONTACTE: "blue",
-  QUALIFIE: "cyan",
-  EN_DISCUSSION: "purple",
-  CONVERTI: "green",
-  PERDU: "red",
 };
 
 // Repli statut → étape : un lead sans étape explicite est affiché dans la
@@ -241,185 +235,141 @@ export default function PipelinePage() {
     setSearch("");
   }
 
+  const totalInStages = stages.reduce((s, st) => s + (leadsByStage.get(st.id)?.length ?? 0), 0);
+
   return (
-    <div style={{ padding: "16px 24px", height: "100%", display: "flex", flexDirection: "column" }}>
-      <div style={{ marginBottom: 16 }}>
-        <Space align="center" style={{ width: "100%", justifyContent: "space-between" }}>
-          <Space>
-            <ProjectOutlined style={{ fontSize: 24, color: "#1677ff" }} />
-            <Title level={3} style={{ margin: 0 }}>Pipeline commercial</Title>
-            {unassignedCount > 0 && (
-              <Tag color="warning" style={{ marginLeft: 8 }}>
-                {unassignedCount} lead(s) sans étape
-              </Tag>
-            )}
-          </Space>
-          <Space>
-            <Button icon={<ReloadOutlined />} onClick={() => fetchAll()}>Actualiser</Button>
-          </Space>
-        </Space>
-      </div>
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", gap: 18 }}>
+      <PageHeader
+        icon={<ProjectOutlined />}
+        title="Pipeline"
+        highlight="commercial"
+        subtitle="Glissez-déposez les leads d'une étape à l'autre — le statut suit automatiquement."
+        badges={unassignedCount > 0 ? <Chip color={palette.amber} dot>{unassignedCount} lead(s) sans étape</Chip> : undefined}
+        extra={<Button icon={<ReloadOutlined />} onClick={() => fetchAll()}>Actualiser</Button>}
+      />
 
       {metrics && (
-        <Card size="small" style={{ marginBottom: 16 }}>
-          <Space size={32} wrap>
-            <Statistic
-              title="Total leads en pipeline"
-              value={metrics.totalLeads}
-              valueStyle={{ fontSize: 22, color: "#1677ff" }}
-              prefix={<ProjectOutlined />}
-            />
-            {metrics.winRate != null && (
-              <Statistic
-                title="Taux de conversion global"
-                value={metrics.winRate}
-                suffix="%"
-                valueStyle={{ fontSize: 22, color: "#52c41a" }}
-                prefix={<TrophyOutlined />}
-              />
-            )}
-            <Statistic
-              title="Étapes configurées"
-              value={stages.length}
-              valueStyle={{ fontSize: 22 }}
-            />
-          </Space>
-        </Card>
+        <Row gutter={[16, 16]} className="nb-stagger">
+          <Col xs={24} md={8}><StatCard label="Leads en pipeline" value={metrics.totalLeads} icon={<ProjectOutlined />} color={palette.violet} /></Col>
+          <Col xs={24} md={8}><StatCard label="Taux de conversion" value={metrics.winRate ?? 0} decimals={1} suffix="%" icon={<TrophyOutlined />} color={palette.green} hint="Leads gagnés / leads sortis du pipeline" /></Col>
+          <Col xs={24} md={8}><StatCard label="Étapes actives" value={stages.length} icon={<AppstoreOutlined />} color={palette.cyan} hint={`${totalInStages} leads répartis`} /></Col>
+        </Row>
       )}
 
-      <Card size="small" style={{ marginBottom: 16 }}>
-        <Space wrap>
-          <Space>
-            <FilterOutlined />
-            <Text strong>Filtres</Text>
-          </Space>
-          <Input.Search
-            placeholder="Rechercher (nom, entreprise…)"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            allowClear
-            style={{ width: 240 }}
-            prefix={<SearchOutlined />}
-          />
-          <Select
-            placeholder="Commercial assigné"
-            allowClear
-            value={filterAssignee}
-            onChange={setFilterAssignee}
-            style={{ width: 200 }}
-            showSearch
-            options={users.map((u) => ({ value: u.id, label: u.name }))}
-            filterOption={(input, opt) =>
-              String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())
-            }
-          />
-          <Select
-            placeholder="Source"
-            allowClear
-            value={filterSource}
-            onChange={setFilterSource}
-            style={{ width: 180 }}
-            options={allSources.map((s) => ({ value: s, label: s }))}
-          />
-          <Select
-            placeholder="Tag"
-            allowClear
-            value={filterTag}
-            onChange={setFilterTag}
-            style={{ width: 160 }}
-            options={allTags.map((t) => ({ value: t, label: t }))}
-          />
-          <Select
-            placeholder="Score min."
-            allowClear
-            value={filterScoreMin}
-            onChange={(v) => setFilterScoreMin(v as number | undefined)}
-            style={{ width: 130 }}
-            options={[0, 20, 40, 60, 80].map((v) => ({ value: v, label: `≥ ${v}` }))}
-          />
-          <Button onClick={resetFilters}>Réinitialiser</Button>
-        </Space>
-      </Card>
+      {/* Flux d'étapes : volume et taux de passage */}
+      {stages.length > 0 && (
+        <div className="nb-glass" style={{ borderRadius: 20, padding: "18px 18px", overflowX: "auto" }}>
+          <div style={{ display: "flex", alignItems: "stretch", gap: 0, minWidth: stages.length * 150 }}>
+            {stages.map((stage, i) => {
+              const c = stageColor(stage.color, i);
+              const count = leadsByStage.get(stage.id)?.length ?? 0;
+              const metric = metrics?.stages.find((m) => m.id === stage.id);
+              return (
+                <div key={stage.id} style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0 }}>
+                  <div
+                    className="nb-fade-up"
+                    style={{
+                      flex: 1, minWidth: 0, borderRadius: 16, padding: "12px 14px", position: "relative", overflow: "hidden",
+                      background: `linear-gradient(135deg, ${c}2e, ${c}0d)`, border: `1px solid ${c}55`,
+                      animationDelay: `${i * 0.06}s`,
+                    }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: c, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {stage.name}
+                    </div>
+                    <div className="nb-display nb-mono" style={{ fontSize: 28, fontWeight: 700, color: "var(--nb-text-strong)", lineHeight: 1.2 }}>{count}</div>
+                    <div style={{ fontSize: 11, color: "var(--nb-text-3)", whiteSpace: "nowrap" }}>
+                      {metric?.avgDaysInStage != null ? <><ClockCircleOutlined /> {metric.avgDaysInStage} j moy.</> : "—"}
+                    </div>
+                  </div>
+                  {i < stages.length - 1 && (
+                    <div style={{ width: 54, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                      <span className="nb-mono" style={{ fontSize: 11, fontWeight: 700, color: metrics?.stages.find((m) => m.id === stages[i + 1]!.id)?.conversionRateFromPrevious != null ? scoreColor(metrics?.stages.find((m) => m.id === stages[i + 1]!.id)?.conversionRateFromPrevious) : "var(--nb-text-3)" }}>
+                        {metrics?.stages.find((m) => m.id === stages[i + 1]!.id)?.conversionRateFromPrevious ?? "—"}
+                        {metrics?.stages.find((m) => m.id === stages[i + 1]!.id)?.conversionRateFromPrevious != null ? "%" : ""}
+                      </span>
+                      <RightOutlined style={{ color: "var(--nb-text-3)", fontSize: 12 }} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Filtres */}
+      <div className="nb-glass" style={{ borderRadius: 18, padding: 12, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, color: "var(--nb-text-2)", fontWeight: 600, paddingLeft: 6 }}>
+          <FilterOutlined /> Filtres
+        </span>
+        <Input
+          prefix={<SearchOutlined style={{ color: "var(--nb-text-3)" }} />}
+          placeholder="Rechercher (nom, entreprise…)"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          allowClear
+          style={{ width: 240 }}
+        />
+        <Select
+          placeholder="Commercial assigné"
+          allowClear
+          value={filterAssignee}
+          onChange={setFilterAssignee}
+          style={{ width: 190 }}
+          showSearch
+          options={users.map((u) => ({ value: u.id, label: u.name }))}
+          filterOption={(input, opt) => String(opt?.label ?? "").toLowerCase().includes(input.toLowerCase())}
+        />
+        <Select placeholder="Source" allowClear value={filterSource} onChange={setFilterSource} style={{ width: 170 }} options={allSources.map((s) => ({ value: s, label: s }))} />
+        <Select placeholder="Tag" allowClear value={filterTag} onChange={setFilterTag} style={{ width: 160 }} options={allTags.map((t) => ({ value: t, label: t }))} />
+        <Select
+          placeholder="Score min."
+          allowClear
+          value={filterScoreMin}
+          onChange={(v) => setFilterScoreMin(v as number | undefined)}
+          style={{ width: 130 }}
+          options={[0, 20, 40, 60, 80].map((v) => ({ value: v, label: `≥ ${v}` }))}
+        />
+        <Button type="text" onClick={resetFilters}>Réinitialiser</Button>
+      </div>
 
       {loading ? (
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Spin size="large" tip="Chargement du pipeline…" />
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 300 }}>
+          <Spin size="large" />
         </div>
       ) : stages.length === 0 ? (
-        <Empty
-          description={
-            <>
-              Aucune étape configurée.{" "}
-              <Link href="/settings">Configurer les étapes</Link>
-            </>
-          }
-        />
+        <Panel>
+          <EmptyState
+            title="Aucune étape configurée"
+            description="Définissez les étapes de votre cycle de vente pour activer le Kanban."
+            action={<Link href="/settings"><Button type="primary">Configurer les étapes</Button></Link>}
+          />
+        </Panel>
       ) : (
         <DragDropContext onDragEnd={onDragEnd}>
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              overflowX: "auto",
-              padding: "4px 0 12px",
-              flex: 1,
-              minHeight: 0,
-            }}
-          >
-            {stages.map((stage) => {
+          <div style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 12, alignItems: "flex-start" }}>
+            {stages.map((stage, si) => {
+              const c = stageColor(stage.color, si);
               const stageLeads = leadsByStage.get(stage.id) ?? [];
-              const metric = metrics?.stages.find((m) => m.id === stage.id);
               return (
                 <div
                   key={stage.id}
+                  className="nb-fade-up"
                   style={{
-                    flex: "0 0 320px",
-                    minWidth: 320,
-                    display: "flex",
-                    flexDirection: "column",
-                    background: "#fafafa",
-                    borderRadius: 8,
-                    border: "1px solid #f0f0f0",
+                    flex: "0 0 300px", minWidth: 300, display: "flex", flexDirection: "column", borderRadius: 20, overflow: "hidden",
+                    background: `linear-gradient(180deg, ${c}1f 0%, ${c}08 30%, var(--nb-surface) 100%)`,
+                    border: `1px solid ${c}40`, backdropFilter: "blur(14px)", animationDelay: `${si * 0.05}s`,
                   }}
                 >
-                  <div
-                    style={{
-                      padding: "12px 14px",
-                      borderBottom: "1px solid #f0f0f0",
-                      background: "#fff",
-                      borderRadius: "8px 8px 0 0",
-                    }}
-                  >
-                    <Space style={{ width: "100%", justifyContent: "space-between" }}>
-                      <Space>
-                        <div
-                          style={{
-                            width: 10, height: 10, borderRadius: "50%",
-                            background: stage.color ?? "#d9d9d9",
-                          }}
-                        />
-                        <Text strong>{stage.name}</Text>
-                        <Badge count={stageLeads.length} showZero color={stage.color ?? "#bfbfbf"} />
-                      </Space>
-                    </Space>
-                    {metric && (
-                      <Space size={12} style={{ marginTop: 4 }}>
-                        {metric.conversionRateFromPrevious != null && (
-                          <Tooltip title="Taux de conversion depuis l'étape précédente">
-                            <Text type="secondary" style={{ fontSize: 11 }}>
-                              <RiseOutlined /> {metric.conversionRateFromPrevious}%
-                            </Text>
-                          </Tooltip>
-                        )}
-                        {metric.avgDaysInStage != null && (
-                          <Tooltip title="Durée moyenne dans cette étape">
-                            <Text type="secondary" style={{ fontSize: 11 }}>
-                              <ClockCircleOutlined /> {metric.avgDaysInStage}j
-                            </Text>
-                          </Tooltip>
-                        )}
-                      </Space>
-                    )}
+                  <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, borderBottom: `1px solid ${c}33` }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: "50%", background: c, boxShadow: `0 0 12px ${c}`, flexShrink: 0 }} />
+                      <span className="nb-display" style={{ fontWeight: 600, color: "var(--nb-text-strong)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{stage.name}</span>
+                    </div>
+                    <span className="nb-mono" style={{ fontSize: 12, fontWeight: 700, color: c, background: `${c}1f`, padding: "2px 10px", borderRadius: 999 }}>
+                      {stageLeads.length}
+                    </span>
                   </div>
 
                   <Droppable droppableId={stage.id}>
@@ -428,95 +378,69 @@ export default function PipelinePage() {
                         ref={provided.innerRef}
                         {...provided.droppableProps}
                         style={{
-                          flex: 1,
-                          padding: 8,
-                          minHeight: 100,
-                          background: snapshot.isDraggingOver ? "#e6f4ff" : "transparent",
-                          transition: "background-color 0.2s",
-                          overflowY: "auto",
+                          flex: 1, padding: 10, minHeight: 120, maxHeight: "calc(100vh - 260px)", overflowY: "auto",
+                          background: snapshot.isDraggingOver ? `${c}1a` : "transparent", transition: "background-color 0.2s",
+                          outline: snapshot.isDraggingOver ? `2px dashed ${c}80` : "none", outlineOffset: -6, borderRadius: 16,
                         }}
                       >
                         {stageLeads.length === 0 && !snapshot.isDraggingOver && (
-                          <div style={{ textAlign: "center", color: "#bfbfbf", fontSize: 12, padding: "24px 8px" }}>
-                            Aucun lead
-                          </div>
+                          <div style={{ textAlign: "center", color: "var(--nb-text-3)", fontSize: 12, padding: "28px 8px" }}>Déposez un lead ici</div>
                         )}
-                        {stageLeads.map((lead, idx) => (
-                          <Draggable key={lead.id} draggableId={lead.id} index={idx}>
-                            {(drag, dragSnap) => (
-                              <div
-                                ref={drag.innerRef}
-                                {...drag.draggableProps}
-                                {...drag.dragHandleProps}
-                                style={{ ...drag.draggableProps.style, marginBottom: 8 }}
-                              >
-                                <Card
-                                  size="small"
-                                  hoverable
-                                  styles={{ body: { padding: 12 } }}
-                                  style={{
-                                    boxShadow: dragSnap.isDragging
-                                      ? "0 4px 12px rgba(0,0,0,0.15)"
-                                      : undefined,
-                                    cursor: "grab",
-                                  }}
-                                >
-                                  <Link href={`/leads/${lead.id}`} style={{ color: "inherit" }}>
-                                    <Space align="start" size={8} style={{ width: "100%" }}>
-                                      <Avatar
-                                        size="small"
-                                        style={{ background: "#1677ff", fontSize: 11, flexShrink: 0 }}
-                                      >
-                                        {initials(lead)}
-                                      </Avatar>
-                                      <div style={{ flex: 1, minWidth: 0 }}>
-                                        <Text strong style={{ display: "block", fontSize: 13 }}>
-                                          {fullName(lead)}
-                                        </Text>
-                                        {lead.company && (
-                                          <Text type="secondary" style={{ fontSize: 11, display: "block" }}>
-                                            {lead.company}
-                                          </Text>
-                                        )}
-                                        <Space size={4} wrap style={{ marginTop: 4 }}>
-                                          <Tag color={STATUS_COLORS[lead.status] ?? "default"} style={{ fontSize: 10, lineHeight: "16px", margin: 0 }}>
-                                            {lead.status}
-                                          </Tag>
-                                          {lead.score > 0 && (
-                                            <Tag color={lead.score >= 60 ? "green" : lead.score >= 40 ? "blue" : "default"} style={{ fontSize: 10, lineHeight: "16px", margin: 0 }}>
-                                              {lead.score}
-                                            </Tag>
-                                          )}
-                                          {lead.assignedToId && (
-                                            <Tooltip title={users.find((u) => u.id === lead.assignedToId)?.name ?? "?"}>
-                                              <Tag icon={<UserOutlined />} style={{ fontSize: 10, lineHeight: "16px", margin: 0 }}>
-                                                {users.find((u) => u.id === lead.assignedToId)?.name?.split(" ").map((p) => p[0]).join("") ?? "?"}
-                                              </Tag>
-                                            </Tooltip>
-                                          )}
-                                        </Space>
-                                        {lead.tags && lead.tags.length > 0 && (
-                                          <Space size={2} wrap style={{ marginTop: 4 }}>
-                                            {lead.tags.slice(0, 2).map((t) => (
-                                              <Tag key={t} style={{ fontSize: 10, lineHeight: "14px", margin: 0, padding: "0 4px" }}>
-                                                {t}
-                                              </Tag>
-                                            ))}
-                                            {lead.tags.length > 2 && (
-                                              <Text type="secondary" style={{ fontSize: 10 }}>
-                                                +{lead.tags.length - 2}
-                                              </Text>
-                                            )}
-                                          </Space>
+                        {stageLeads.map((lead, idx) => {
+                          const assignee = users.find((u) => u.id === lead.assignedToId);
+                          return (
+                            <Draggable key={lead.id} draggableId={lead.id} index={idx}>
+                              {(drag, dragSnap) => (
+                                <div ref={drag.innerRef} {...drag.draggableProps} {...drag.dragHandleProps} style={{ ...drag.draggableProps.style, marginBottom: 10 }}>
+                                  <Link href={`/leads/${lead.id}`} style={{ color: "inherit", display: "block" }}>
+                                    <div
+                                      className="nb-glass"
+                                      style={{
+                                        borderRadius: 14, padding: "12px 12px 12px 14px", position: "relative", overflow: "hidden", cursor: "grab",
+                                        boxShadow: dragSnap.isDragging ? `0 22px 44px -12px rgba(0,0,0,0.5), 0 0 0 1.5px ${c}` : undefined,
+                                        transform: dragSnap.isDragging ? "rotate(2deg) scale(1.02)" : undefined,
+                                        transition: "transform 0.2s",
+                                      }}
+                                    >
+                                      <span style={{ position: "absolute", left: 0, top: 10, bottom: 10, width: 3, borderRadius: 3, background: c, boxShadow: `0 0 10px ${c}` }} />
+                                      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                                        <div
+                                          style={{
+                                            width: 34, height: 34, borderRadius: 11, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                                            fontSize: 12, fontWeight: 700, color: "#fff", background: `linear-gradient(135deg, ${c}, ${palette.violet})`,
+                                          }}
+                                        >
+                                          {initials(lead)}
+                                        </div>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                          <div style={{ fontWeight: 600, fontSize: 13.5, color: "var(--nb-text-strong)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{fullName(lead)}</div>
+                                          {lead.company && lead.company !== fullName(lead) && <div style={{ fontSize: 12, color: "var(--nb-text-3)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{lead.company}</div>}
+                                        </div>
+                                        <ScoreRing score={lead.score} size={36} />
+                                      </div>
+                                      <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10, alignItems: "center" }}>
+                                        <Chip size="sm" color={statusColors[lead.status] ?? palette.violet}>
+                                          {STATUS_LABELS[lead.status as keyof typeof STATUS_LABELS] ?? lead.status}
+                                        </Chip>
+                                        {lead.tags?.slice(0, 2).map((t) => (
+                                          <span key={t} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 999, background: "rgba(148,163,184,0.12)", color: "var(--nb-text-2)" }}>{t}</span>
+                                        ))}
+                                        {(lead.tags?.length ?? 0) > 2 && <span style={{ fontSize: 11, color: "var(--nb-text-3)" }}>+{lead.tags.length - 2}</span>}
+                                        {assignee && (
+                                          <Tooltip title={`Assigné à ${assignee.name}`}>
+                                            <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--nb-text-3)" }}>
+                                              <UserOutlined /> {assignee.name.split(" ").map((p) => p[0]).join("")}
+                                            </span>
+                                          </Tooltip>
                                         )}
                                       </div>
-                                    </Space>
+                                    </div>
                                   </Link>
-                                </Card>
-                              </div>
-                            )}
-                          </Draggable>
-                        ))}
+                                </div>
+                              )}
+                            </Draggable>
+                          );
+                        })}
                         {provided.placeholder}
                       </div>
                     )}

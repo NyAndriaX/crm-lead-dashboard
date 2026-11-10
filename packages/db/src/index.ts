@@ -15,6 +15,7 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 export * from "@prisma/client";
+export { asStringArray } from "./json";
 export { LEAD_NOT_DELETED, buildLeadWhereFromSegmentFilters, type LeadSegmentFilters } from "./leadWhere";
 export { signEmailTrackToken, verifyEmailTrackToken, type EmailTrackKind, type EmailTrackPayload } from "./emailTrack";
 export {
@@ -24,9 +25,15 @@ export {
   namesFromEmail,
   isIdentifiableLead,
   scraperEnrichment,
+  scrapedFitScore,
+  scrapedPrivateContacts,
+  type LeadPrivateContacts,
+  type ScrapedLeadContacts,
+  type ScrapedPhone,
   tagsFromScrapedLead,
-  placeIdTag,
+  cleanWebsiteUrl,
   type ScrapedLead,
+  type ScrapedLeadAI,
   type ScraperApiResponse,
   type ScrapeSource,
   type ScrapeConfig,
@@ -41,8 +48,51 @@ export {
   scheduleLabel,
   localeToScraper,
   DEFAULT_MISSION_RATE,
+  MAX_SECTOR_SITES,
+  isMaskedProxy,
+  maskProxyUrl,
+  normalizeSectorSites,
+  proxyHasCredentials,
   type MissionConfig,
   type MissionSchedulePlan,
   type ScheduleMode,
   type ScheduleFrequency,
 } from "./scrapingMission";
+export { classifyLinkedinUrl, canonicalLinkedinUrl, siteLinkedinLinks, type LinkedinKind } from "./linkedin";
+export {
+  EMAIL_FORMAT,
+  IMPORT_FIELD_LABELS,
+  checkEmail,
+  checkImportRow,
+  checkPhone,
+  checkWebsite,
+  defaultRequiredFields,
+  normalizeFrPhone,
+  roundRobinAssignee,
+  type FieldCheck,
+  type ImportIssue,
+  type ImportRowCheck,
+  type ImportRowField,
+  type ImportRowValues,
+} from "./leadValidation";
+export {
+  DEFAULT_SCORING_WEIGHTS,
+  aiPotentialOf,
+  computeLeadScore,
+  loadScoringWeights,
+  recomputeLeadScore,
+  type ScoringWeights,
+  type ScoringSignals,
+} from "./scoring";
+export {
+  AB_RULES,
+  aggregateAbVariants,
+  abVerdict,
+  twoProportionZ,
+  type AbEvent,
+  type AbMetric,
+  type AbRules,
+  type AbVariant,
+  type AbVariantStats,
+  type AbVerdict,
+} from "./abTest";

@@ -153,7 +153,7 @@ export function TeamsSection() {
       key: "name",
       render: (_, r) => (
         <Space>
-          <TeamOutlined style={{ color: "#1677ff" }} />
+          <TeamOutlined style={{ color: "#8b5cf6" }} />
           <Text strong>{r.name}</Text>
         </Space>
       ),
@@ -215,8 +215,8 @@ export function TeamsSection() {
       <Card size="small">
         <Space size={32} wrap>
           <Statistic title="Équipes" value={teams.length} valueStyle={{ fontSize: 20 }} />
-          <Statistic title="Total membres" value={totalMembers} valueStyle={{ fontSize: 20, color: "#1677ff" }} />
-          <Statistic title="Non assignés" value={unassigned} valueStyle={{ fontSize: 20, color: "#fa8c16" }} />
+          <Statistic title="Total membres" value={totalMembers} valueStyle={{ fontSize: 20, color: "#8b5cf6" }} />
+          <Statistic title="Non assignés" value={unassigned} valueStyle={{ fontSize: 20, color: "#fbbf24" }} />
           <div style={{ flex: 1 }} />
           <Space>
             <Button icon={<ReloadOutlined />} onClick={() => fetchAll()}>Actualiser</Button>

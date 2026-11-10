@@ -1,6 +1,7 @@
 import { z } from "zod";
 
-export const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, "ObjectId invalide");
+/** Identifiant d'entité : cuid (MySQL, `@default(cuid())`). */
+export const entityId = z.string().regex(/^c[a-z0-9]{20,31}$/, "Identifiant invalide");
 
 export const paginationQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),

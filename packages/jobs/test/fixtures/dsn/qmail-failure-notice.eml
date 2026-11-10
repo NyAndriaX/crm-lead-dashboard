@@ -1,0 +1,25 @@
+Return-Path: <>
+Date: 27 Oct 2026 11:20:44 -0000
+From: MAILER-DAEMON@mail.hebergeur-pme.fr
+To: prospection@exemple-crm.fr
+Subject: failure notice
+Message-ID: <20261027112044.12345.qmail@mail.hebergeur-pme.fr>
+
+Hi. This is the qmail-send program at mail.hebergeur-pme.fr.
+I'm afraid I wasn't able to deliver your message to the following addresses.
+This is a permanent error; I've given up. Sorry it didn't work out.
+
+<marc@plomberie-petit.fr>:
+192.0.2.44 does not like recipient.
+Remote host said: 550 5.1.1 <marc@plomberie-petit.fr>... No such user
+Giving up on 192.0.2.44.
+
+--- Below this line is a copy of the message.
+
+Return-Path: <prospection@exemple-crm.fr>
+From: "Equipe Commerciale" <prospection@exemple-crm.fr>
+To: marc@plomberie-petit.fr
+Subject: Votre prospection, en pilote automatique
+Message-ID: <crm-cmcampaign000000000000001-cmlead00000000000000000006-B@exemple-crm.fr>
+
+Bonjour Marc,

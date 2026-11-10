@@ -8,9 +8,10 @@
  * Body : { ids: string[], providers?: EnrichProvider[], final?: boolean,
  *          totalSelected?: number }
  *  - `final: true` (dernier lot) → crée une Notification "enrichissement terminé".
+ * Chaque lead enrichi voit son score recalculé (E-07) : poids chargés une fois par lot.
  */
 import { z } from "zod";
-import { prisma } from "@crm/db";
+import { loadScoringWeights, prisma } from "@crm/db";
 import { handler, json, parseBody, requirePermission } from "@/lib/api";
 import { audit, clientIp } from "@/lib/audit";
 import { enrichLeadById } from "@/lib/services/enrichment";
@@ -31,14 +32,15 @@ export const POST = handler(async (req) => {
   const session = await requirePermission("leads:write");
   const input = await parseBody(req, bodySchema);
 
-  const results: { leadId: string; ok: boolean; ran?: string[]; error?: string }[] = [];
+  const results: { leadId: string; ok: boolean; ran?: string[]; score?: { before: number; after: number | null }; error?: string }[] = [];
   let succeeded = 0;
   let failed = 0;
+  const weights = await loadScoringWeights(prisma);
 
   for (const id of input.ids) {
     try {
-      const r = await enrichLeadById(id, input.providers);
-      results.push({ leadId: id, ok: true, ran: r.ran });
+      const r = await enrichLeadById(id, input.providers, { userId: session.sub, weights });
+      results.push({ leadId: id, ok: true, ran: r.ran, score: r.score });
       succeeded++;
     } catch (e) {
       results.push({ leadId: id, ok: false, error: e instanceof Error ? e.message : String(e) });

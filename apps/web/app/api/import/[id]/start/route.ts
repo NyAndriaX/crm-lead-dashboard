@@ -1,6 +1,7 @@
 /**
  * POST /api/import/:id/start — confirme le mapping et lance le traitement worker.
- * Body : { mapping, skipDuplicates?, defaultSource?, defaultTags? }
+ * Body : { mapping, skipDuplicates?, defaultSource?, defaultTags?, requiredFields?, assignment? }
+ * L'assignation à un ou plusieurs commerciaux exige en plus la permission `leads:assign`.
  */
 import { handler, json, parseBody, requirePermission } from "@/lib/api";
 import { startImportSchema } from "@/lib/schemas/import";
@@ -12,6 +13,6 @@ export const POST = handler(async (req, ctx: { params: Promise<{ id: string }> }
   const { id } = await ctx.params;
   const session = await requirePermission("import:run");
   const input = await parseBody(req, startImportSchema);
-  const job = await startImportJob(id, session.sub, input);
+  const job = await startImportJob(id, session.sub, input, session.role);
   return json({ data: job });
 });

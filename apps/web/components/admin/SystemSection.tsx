@@ -104,7 +104,7 @@ export function SystemSection() {
                 title={<Space><DatabaseOutlined /> Base de données</Space>}
                 value={health.checks.db?.status ?? "?"}
                 suffix={health.checks.db ? `${health.checks.db.latencyMs}ms` : ""}
-                valueStyle={{ fontSize: 18, color: health.checks.db?.status === "ok" ? "#52c41a" : "#ff4d4f" }}
+                valueStyle={{ fontSize: 18, color: health.checks.db?.status === "ok" ? "#34d399" : "#ff4d4f" }}
               />
             </Col>
             <Col xs={12} md={6}>
@@ -114,7 +114,7 @@ export function SystemSection() {
                 suffix={health.checks.worker?.lastJobAgeMin != null ? `il y a ${health.checks.worker.lastJobAgeMin}min` : ""}
                 valueStyle={{
                   fontSize: 18,
-                  color: health.checks.worker?.status === "ok" ? "#52c41a" : "#fa8c16",
+                  color: health.checks.worker?.status === "ok" ? "#34d399" : "#fbbf24",
                 }}
               />
             </Col>
@@ -138,7 +138,7 @@ export function SystemSection() {
 
       {/* P-02 — Capacité */}
       {capacity && (
-        <Card size="small" title={<Space><ThunderboltOutlined style={{ color: "#1677ff" }} /> Capacité (P-02)</Space>}>
+        <Card size="small" title={<Space><ThunderboltOutlined style={{ color: "#8b5cf6" }} /> Capacité (P-02)</Space>}>
           <Row gutter={[24, 16]}>
             <Col xs={24} md={12}>
               <Text strong>Leads — {capacity.leads.used.toLocaleString("fr-FR")} / {capacity.leads.limit.toLocaleString("fr-FR")}</Text>
@@ -175,7 +175,7 @@ export function SystemSection() {
             <Descriptions.Item label="Comptes SMTP">{capacity.smtpAccounts}</Descriptions.Item>
           </Descriptions>
           <Paragraph type="secondary" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>
-            Index Mongo pour la montée en charge : voir <Text code>packages/db/prisma/manual-indexes.md</Text>.
+            Index MySQL pour la montée en charge : déclarés dans <Text code>packages/db/prisma/schema.prisma</Text> (migrations Prisma).
           </Paragraph>
         </Card>
       )}

@@ -102,7 +102,7 @@ export const QuillMergeEditor = forwardRef<
     <div
       className="crm-email-quill"
       style={{
-        border: "1px solid #d9d9d9",
+        border: "1px solid var(--nb-border)",
         borderRadius: 8,
         overflow: "hidden",
         minHeight,

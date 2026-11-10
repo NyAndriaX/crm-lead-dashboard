@@ -1,68 +1,67 @@
-# CI — CRM Lead Dashboard (Yarn 1 classic)
-# Pipeline : install → lint / typecheck / test → build
-# (les jobs deploy seront ajoutés avec l'environnement de pré-prod — voir CRM-078)
+# CI — CRM Lead (pnpm + Turborepo)
+# Pipeline : quality (typecheck / lint / test / migrations MySQL) → build
+# Déploiement : manuel depuis main (deploy/scripts/deploy.sh, voir deploy/README.md).
 
 stages:
-  - install
   - quality
   - build
 
 default:
-  image: node:20-bookworm     # embarque déjà Yarn 1.x
+  image: node:20-bookworm
   cache:
     key:
       files:
-        - yarn.lock
+        - pnpm-lock.yaml
     paths:
-      - .yarn-cache/
+      - .pnpm-store/
   before_script:
-    - yarn install --frozen-lockfile --cache-folder .yarn-cache
+    - corepack enable && corepack prepare pnpm@9.12.0 --activate
+    - pnpm config set store-dir .pnpm-store
+    - pnpm install --frozen-lockfile
+    - pnpm db:generate
 
 variables:
-  # Valeurs factices : suffisent au lint/typecheck/build, jamais d'accès réseau réel en CI
-  DATABASE_URL: "mongodb://localhost:27017/crm_ci?replicaSet=rs0"
-  REDIS_URL: "redis://localhost:6379"
-  AUTH_SECRET: "ci-dummy-secret"
+  # Valeurs factices : suffisent au typecheck/lint/build, jamais d'accès réseau réel en CI
+  DATABASE_URL: "mysql://crm:crm@mysql:3306/crm"
+  AUTH_JWT_SECRET: "ci-dummy-secret-ci-dummy-secret-ci-dummy"
   PII_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
   EMAIL_HASH_SECRET: "ci-dummy"
-
-install:
-  stage: install
-  script:
-    - yarn db:generate
-  artifacts:
-    paths:
-      - node_modules/
-      - "**/node_modules/"
-      - packages/db/generated/
-    expire_in: 1 hour
-
-lint:
-  stage: quality
-  needs: ["install"]
-  script:
-    - yarn lint
+  APP_BASE_URL: "http://localhost:3000"
 
 typecheck:
   stage: quality
-  needs: ["install"]
   script:
-    - yarn db:generate
-    - yarn typecheck
+    - pnpm typecheck
+
+lint:
+  stage: quality
+  script:
+    - pnpm lint
 
 test:
   stage: quality
-  needs: ["install"]
   script:
-    - yarn test
-  allow_failure: true   # à passer en bloquant dès que la suite de tests existe (CRM-076)
+    - pnpm test
+  allow_failure: true   # à passer en bloquant dès que la suite de tests est complète (CRM-076)
+
+migrations:
+  stage: quality
+  services:
+    - name: mysql:8.4
+      alias: mysql
+  variables:
+    MYSQL_DATABASE: crm
+    MYSQL_USER: crm
+    MYSQL_PASSWORD: crm
+    MYSQL_ROOT_PASSWORD: root
+  script:
+    - pnpm --filter @crm/db migrate:deploy   # les migrations versionnées s'appliquent sur une base vierge
 
 build:
   stage: build
-  needs: ["lint", "typecheck"]
+  needs: ["typecheck", "lint"]
   script:
-    - yarn db:generate
-    - yarn build
+    - pnpm build
   artifacts:
     paths:
       - apps/web/.next/

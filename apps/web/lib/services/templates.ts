@@ -1,4 +1,4 @@
-import { prisma } from "@crm/db";
+import { asStringArray, prisma } from "@crm/db";
 
 export interface TemplateInput {
   name: string;
@@ -124,7 +124,7 @@ export async function duplicateTemplate(sourceId: string) {
       category: src.category,
       subject: src.subject,
       bodyHtml: src.bodyHtml,
-      variables: [...src.variables],
+      variables: asStringArray(src.variables),
       isPreset: false,
       isPublic: true,
     },

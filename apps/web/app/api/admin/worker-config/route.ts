@@ -1,5 +1,5 @@
 /**
- * GET/PATCH /api/admin/worker-config — fuseau horaire des tâches Agenda / worker.
+ * GET/PATCH /api/admin/worker-config — fuseau horaire des tâches de fond.
  * GET : ADMIN + MANAGER (lecture). PATCH : `settings:manage` (typiquement ADMIN).
  */
 import { z } from "zod";

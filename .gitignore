@@ -1,7 +1,6 @@
 # dependencies
 node_modules/
-.yarn-cache/
-.yarn-integrity
+.turbo/
 
 # next.js
 .next/
@@ -47,3 +46,18 @@ coverage/
 
 # Uploads runtime (imports CSV/XLSX) — ne pas versionner
 apps/web/uploads/
+
+# python (apps/scraper)
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# déploiement : secrets et sauvegardes restent sur le serveur
+deploy/.env
+deploy/backups/
+apps/web/uploads/
+
+# Tests E2E (Playwright)
+apps/web/test-results/
+apps/web/playwright-report/

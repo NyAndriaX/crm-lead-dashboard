@@ -3,18 +3,19 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { Layout, Menu, Dropdown, Avatar, Typography, Drawer, Input, Tooltip } from "antd";
 import {
-  Layout, Menu, Dropdown, Avatar, Space, Typography, theme as antdTheme, Divider, Drawer,
-} from "antd";
-import {
-  DashboardOutlined, TeamOutlined, ImportOutlined, MailOutlined, MessageOutlined,
-  RetweetOutlined, ProjectOutlined, BarChartOutlined, SettingOutlined,
-  UserOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
-  HomeOutlined, RadarChartOutlined,
+  TeamOutlined, ImportOutlined, MailOutlined, MessageOutlined, RetweetOutlined, ProjectOutlined,
+  BarChartOutlined, SettingOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
+  HomeOutlined, RadarChartOutlined, SearchOutlined, MenuOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
-import { useBreakpoint, useIsMobile } from "@/lib/responsive";
+import { useIsMobile } from "@/lib/responsive";
 import { NotificationsBell } from "@/components/NotificationsBell";
+import { useThemeMode } from "@/components/ThemeProvider";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { AIBadge, BrandMark } from "@/components/ui/Brand";
+import { useAiStatus } from "@/lib/hooks/useAiStatus";
 import type { MenuProps } from "antd";
 
 const { Header, Sider, Content } = Layout;
@@ -27,66 +28,108 @@ export interface ShellUser {
 }
 
 const ROLE_COLORS: Record<string, string> = {
-  ADMIN: "#ff4d4f", MANAGER: "#fa8c16", COMMERCIAL: "#1677ff", LECTEUR: "#8c8c8c",
+  ADMIN: "#94a3b8", MANAGER: "#fbbf24", COMMERCIAL: "#a78bfa", LECTEUR: "#94a0bd",
 };
 
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: "Administrateur", MANAGER: "Manager", COMMERCIAL: "Commercial", LECTEUR: "Lecteur",
 };
 
+/** Titre affiché dans l'en-tête selon la section. */
+const SECTION_TITLES: Record<string, string> = {
+  "/dashboard": "Tableau de bord",
+  "/leads": "Leads",
+  "/import": "Import",
+  "/scraping": "Prospection IA",
+  "/campaigns": "Campagnes",
+  "/inbox": "Réponses",
+  "/sequences": "Relances",
+  "/pipeline": "Pipeline",
+  "/analytics": "Analytics",
+  "/settings": "Configuration",
+};
+
+function group(label: string, collapsed: boolean) {
+  return collapsed ? [] : [{ type: "group" as const, label, children: [] }];
+}
+
 function buildNav(role: ShellUser["role"], collapsed: boolean): MenuProps["items"] {
   const isManager = role === "ADMIN" || role === "MANAGER";
-
   return [
+    { key: "/dashboard", icon: <HomeOutlined />, label: <Link href="/dashboard">Tableau de bord</Link> },
+    ...group("Prospection", collapsed),
     {
-      key: "/dashboard",
-      icon: <HomeOutlined />,
-      label: <Link href="/dashboard">Tableau de bord</Link>,
+      key: "/scraping",
+      icon: <RadarChartOutlined />,
+      label: (
+        <Link href="/scraping" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          Prospection IA <span style={{ fontSize: 10, color: "#a78bfa" }}>✦</span>
+        </Link>
+      ),
     },
-    { type: "divider" },
-    ...(collapsed ? [] : [{ type: "group" as const, label: <span style={{ fontSize: 10, letterSpacing: 1, textTransform: "uppercase", opacity: 0.5 }}>Prospection</span>, children: [] }]),
     { key: "/leads", icon: <TeamOutlined />, label: <Link href="/leads">Leads</Link> },
     { key: "/import", icon: <ImportOutlined />, label: <Link href="/import">Import</Link> },
-    { key: "/scraping", icon: <RadarChartOutlined />, label: <Link href="/scraping">Scraping</Link> },
-    { type: "divider" },
-    ...(collapsed ? [] : [{ type: "group" as const, label: <span style={{ fontSize: 10, letterSpacing: 1, textTransform: "uppercase", opacity: 0.5 }}>Communication</span>, children: [] }]),
-    { key: "/campaigns", icon: <MailOutlined />, label: <Link href="/campaigns">Emailing</Link> },
-    { key: "/inbox", icon: <MessageOutlined />, label: <Link href="/inbox">Réponses</Link> },
+    ...group("Engagement", collapsed),
+    { key: "/campaigns", icon: <MailOutlined />, label: <Link href="/campaigns">Campagnes</Link> },
     { key: "/sequences", icon: <RetweetOutlined />, label: <Link href="/sequences">Relances</Link> },
-    { type: "divider" },
-    ...(collapsed ? [] : [{ type: "group" as const, label: <span style={{ fontSize: 10, letterSpacing: 1, textTransform: "uppercase", opacity: 0.5 }}>Gestion</span>, children: [] }]),
+    { key: "/inbox", icon: <MessageOutlined />, label: <Link href="/inbox">Réponses</Link> },
+    ...group("Pilotage", collapsed),
     { key: "/pipeline", icon: <ProjectOutlined />, label: <Link href="/pipeline">Pipeline</Link> },
     { key: "/analytics", icon: <BarChartOutlined />, label: <Link href="/analytics">Analytics</Link> },
-    ...(isManager ? [
-      { type: "divider" as const },
-      ...(collapsed ? [] : [{ type: "group" as const, label: <span style={{ fontSize: 10, letterSpacing: 1, textTransform: "uppercase", opacity: 0.5 }}>Administration</span>, children: [] }]),
-      { key: "/settings", icon: <SettingOutlined />, label: <Link href="/settings">Configuration</Link> },
-    ] : []),
+    ...(isManager
+      ? [...group("Administration", collapsed), { key: "/settings", icon: <SettingOutlined />, label: <Link href="/settings">Configuration</Link> }]
+      : []),
   ];
 }
 
-function ShellUserCard({ user, initials }: { user: ShellUser; initials: string }) {
+function UserAvatar({ user, initials, size = 34 }: { user: ShellUser; initials: string; size?: number }) {
   return (
-    <Space size={8} style={{ width: "100%" }}>
-      <Avatar size={32} style={{ background: ROLE_COLORS[user.role], flexShrink: 0, fontSize: 12, fontWeight: 600 }}>
-        {initials}
-      </Avatar>
-      <div style={{ overflow: "hidden" }}>
-        <Text style={{ color: "#fff", fontSize: 12, fontWeight: 600, display: "block" }} ellipsis>
-          {user.name}
-        </Text>
-        <span
-          style={{
-            fontSize: 10, fontWeight: 500, padding: "1px 6px", borderRadius: 4,
-            background: ROLE_COLORS[user.role] + "33",
-            color: ROLE_COLORS[user.role],
-            letterSpacing: 0.3,
-          }}
-        >
-          {ROLE_LABELS[user.role]}
-        </span>
+    <div style={{ padding: 2, borderRadius: "50%", background: `conic-gradient(${ROLE_COLORS[user.role]}, #8b5cf6, ${ROLE_COLORS[user.role]})`, flexShrink: 0 }}>
+      <Avatar size={size} style={{ background: "var(--nb-bg)", color: "var(--nb-text-strong)", fontSize: 12, fontWeight: 700 }}>{initials}</Avatar>
+    </div>
+  );
+}
+
+function SidebarBrand({ collapsed }: { collapsed: boolean }) {
+  return (
+    <div style={{ height: 72, display: "flex", alignItems: "center", gap: 12, padding: collapsed ? 0 : "0 22px", justifyContent: collapsed ? "center" : "flex-start" }}>
+      <BrandMark size={36} />
+      {!collapsed && (
+        <div style={{ lineHeight: 1.1 }}>
+          <div className="nb-display" style={{ fontWeight: 700, fontSize: 17, color: "var(--nb-text-strong)" }}>CRM Lead</div>
+          <div style={{ fontSize: 10, letterSpacing: "0.22em", color: "var(--nb-text-3)", textTransform: "uppercase" }}>AI Prospecting</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SidebarFooter({ user, initials }: { user: ShellUser; initials: string }) {
+  return (
+    <div style={{ padding: 14 }}>
+      <div className="nb-glass" style={{ borderRadius: 16, padding: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <UserAvatar user={user} initials={initials} size={30} />
+          <div style={{ minWidth: 0 }}>
+            <Text style={{ color: "var(--nb-text-strong)", fontSize: 13, fontWeight: 600, display: "block" }} ellipsis>{user.name}</Text>
+            <span style={{ fontSize: 11, color: ROLE_COLORS[user.role] }}>{ROLE_LABELS[user.role]}</span>
+          </div>
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <AiStatusBadge />
+        </div>
       </div>
-    </Space>
+    </div>
+  );
+}
+
+/** État de l'IA ; le fournisseur choisi par l'administrateur n'apparaît qu'au survol et dans la Configuration. */
+function AiStatusBadge() {
+  const ai = useAiStatus();
+  return (
+    <Tooltip title={ai ? `Fournisseur : ${ai.label} — modifiable dans Configuration › Intelligence artificielle` : undefined}>
+      <span><AIBadge active={ai?.enabled ?? true}>{ai && !ai.enabled ? "IA désactivée" : "IA active"}</AIBadge></span>
+    </Tooltip>
   );
 }
 
@@ -95,30 +138,13 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
   const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
-  const { token } = antdTheme.useToken();
-  const screens = useBreakpoint();
   const isMobile = useIsMobile();
+  const { mode } = useThemeMode();
 
-  const selectedKey = (
-    pathname.startsWith("/settings") ? "/settings" :
-    pathname.startsWith("/leads") ? "/leads" :
-    pathname.startsWith("/import") ? "/import" :
-    pathname.startsWith("/scraping") ? "/scraping" :
-    pathname.startsWith("/campaigns") ? "/campaigns" :
-    pathname.startsWith("/inbox") ? "/inbox" :
-    pathname.startsWith("/sequences") ? "/sequences" :
-    pathname.startsWith("/pipeline") ? "/pipeline" :
-    pathname.startsWith("/analytics") ? "/analytics" :
-    "/dashboard"
-  );
+  const selectedKey = Object.keys(SECTION_TITLES).find((k) => pathname.startsWith(k)) ?? "/dashboard";
 
-  useEffect(() => {
-    setDrawerOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (!isMobile) setDrawerOpen(false);
-  }, [isMobile]);
+  useEffect(() => setDrawerOpen(false), [pathname]);
+  useEffect(() => { if (!isMobile) setDrawerOpen(false); }, [isMobile]);
 
   async function logout() {
     try { await api.post("/auth/logout"); } finally {
@@ -128,80 +154,37 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
   }
 
   const initials = user.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
-  const navItems = buildNav(user.role, isMobile ? false : collapsed);
-  const contentMargin = isMobile ? 12 : 24;
-  const headerPadding = isMobile ? "0 12px" : "0 24px";
-
   const menu = (
     <Menu
-      theme="dark"
+      theme={mode}
       mode="inline"
       selectedKeys={[selectedKey]}
-      items={navItems}
-      style={{ border: "none", paddingTop: 8 }}
+      items={buildNav(user.role, isMobile ? false : collapsed)}
+      style={{ border: "none", background: "transparent" }}
+      className="nb-nav"
       onClick={() => { if (isMobile) setDrawerOpen(false); }}
     />
   );
 
   return (
-    <Layout style={{ minHeight: "100vh" }}>
+    <Layout style={{ minHeight: "100vh", background: "transparent" }}>
       {!isMobile && (
         <Sider
           collapsible
           collapsed={collapsed}
-          onCollapse={setCollapsed}
           trigger={null}
-          width={220}
-          collapsedWidth={72}
-          style={{
-            boxShadow: "2px 0 8px rgba(0,0,0,0.06)",
-            overflow: "auto",
-            position: "sticky",
-            top: 0,
-            height: "100vh",
-          }}
+          width={252}
+          collapsedWidth={84}
+          style={{ position: "sticky", top: 0, height: "100vh", padding: 0 }}
         >
           <div
-            style={{
-              height: 56,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: collapsed ? "center" : "flex-start",
-              padding: collapsed ? "0" : "0 20px",
-              borderBottom: "1px solid rgba(255,255,255,0.08)",
-              overflow: "hidden",
-              whiteSpace: "nowrap",
-            }}
+            className="nb-glass"
+            style={{ position: "absolute", inset: "12px 0 12px 12px", borderRadius: 22, display: "flex", flexDirection: "column", overflow: "hidden" }}
           >
-            <div
-              style={{
-                width: 28, height: 28, borderRadius: 8,
-                background: "linear-gradient(135deg,#1677ff,#0950b3)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              <DashboardOutlined style={{ color: "#fff", fontSize: 14 }} />
-            </div>
-            {!collapsed && (
-              <Text strong style={{ color: "#fff", marginLeft: 10, fontSize: 14, letterSpacing: 0.3 }}>
-                CRM Dashboard
-              </Text>
-            )}
+            <SidebarBrand collapsed={collapsed} />
+            <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>{menu}</div>
+            {!collapsed && <SidebarFooter user={user} initials={initials} />}
           </div>
-          {menu}
-          {!collapsed && (
-            <div
-              style={{
-                position: "absolute", bottom: 48, left: 0, right: 0,
-                padding: "12px 16px",
-                borderTop: "1px solid rgba(255,255,255,0.08)",
-                background: "rgba(0,0,0,0.15)",
-              }}
-            >
-              <ShellUserCard user={user} initials={initials} />
-            </div>
-          )}
         </Sider>
       )}
 
@@ -211,123 +194,102 @@ export default function DashboardShell({ user, children }: { user: ShellUser; ch
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
           width={280}
-          styles={{ body: { padding: 0, background: "#001529" } }}
+          styles={{ body: { padding: 0, display: "flex", flexDirection: "column" } }}
           title={null}
           closeIcon={null}
         >
-          <div
-            style={{
-              height: 56,
-              display: "flex",
-              alignItems: "center",
-              padding: "0 20px",
-              borderBottom: "1px solid rgba(255,255,255,0.08)",
-            }}
-          >
-            <Text strong style={{ color: "#fff", fontSize: 14 }}>CRM Dashboard</Text>
-          </div>
-          {menu}
-          <div
-            style={{
-              padding: "12px 16px",
-              borderTop: "1px solid rgba(255,255,255,0.08)",
-              background: "rgba(0,0,0,0.15)",
-            }}
-          >
-            <ShellUserCard user={user} initials={initials} />
-          </div>
+          <SidebarBrand collapsed={false} />
+          <div style={{ flex: 1 }}>{menu}</div>
+          <SidebarFooter user={user} initials={initials} />
         </Drawer>
       )}
 
-      <Layout>
+      <Layout style={{ background: "transparent" }}>
         <Header
           style={{
-            padding: headerPadding,
-            background: token.colorBgContainer,
-            borderBottom: `1px solid ${token.colorBorderSecondary}`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            position: "sticky",
-            top: 0,
-            zIndex: 100,
-            boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+            position: "sticky", top: 0, zIndex: 100, height: "auto", lineHeight: "normal",
+            padding: isMobile ? "10px 12px 0" : "12px 24px 0", background: "transparent",
           }}
         >
           <div
-            onClick={() => (isMobile ? setDrawerOpen(true) : setCollapsed(!collapsed))}
-            style={{ cursor: "pointer", fontSize: 16, color: token.colorTextSecondary, padding: "4px 8px", borderRadius: 6 }}
+            className="nb-glass"
+            style={{ borderRadius: 18, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}
           >
-            {isMobile || collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+              <button
+                type="button"
+                aria-label="Menu"
+                onClick={() => (isMobile ? setDrawerOpen(true) : setCollapsed(!collapsed))}
+                style={{
+                  width: 38, height: 38, borderRadius: 12, border: "1px solid var(--nb-border)", background: "var(--nb-control)",
+                  color: "var(--nb-text-2)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+              >
+                {isMobile ? <MenuOutlined /> : collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              </button>
+              <div style={{ minWidth: 0 }}>
+                <div className="nb-eyebrow" style={{ fontSize: 10 }}>CRM Lead</div>
+                <div className="nb-display" style={{ fontWeight: 600, fontSize: 16, color: "var(--nb-text-strong)", whiteSpace: "nowrap" }}>
+                  {SECTION_TITLES[selectedKey]}
+                </div>
+              </div>
+            </div>
+
+            {!isMobile && (
+              <Input
+                prefix={<SearchOutlined style={{ color: "var(--nb-text-3)" }} />}
+                placeholder="Rechercher un lead, une entreprise…"
+                allowClear
+                style={{ maxWidth: 380, borderRadius: 12, background: "var(--nb-control)" }}
+                onPressEnter={(e) => {
+                  const q = (e.target as HTMLInputElement).value.trim();
+                  if (q) router.push(`/leads?q=${encodeURIComponent(q)}`);
+                }}
+              />
+            )}
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {!isMobile && (
+                <AiStatusBadge />
+              )}
+              <ThemeToggle />
+              <NotificationsBell borderColor="var(--nb-border)" textColor="var(--nb-text-2)" />
+              <Dropdown
+                menu={{
+                  items: [
+                    {
+                      key: "profile",
+                      label: (
+                        <div style={{ padding: "4px 0" }}>
+                          <Text strong style={{ display: "block" }}>{user.name}</Text>
+                          <Text type="secondary" style={{ fontSize: 12 }}>{user.email}</Text>
+                        </div>
+                      ),
+                      disabled: true,
+                    },
+                    { type: "divider" },
+                    { key: "logout", icon: <LogoutOutlined />, label: "Déconnexion", danger: true, onClick: logout },
+                  ],
+                }}
+                trigger={["click"]}
+                placement="bottomRight"
+              >
+                <div style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
+                  <UserAvatar user={user} initials={initials} />
+                  {!isMobile && (
+                    <div style={{ lineHeight: 1.25 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--nb-text-strong)" }}>{user.name.split(" ")[0]}</div>
+                      <div style={{ fontSize: 11, color: "var(--nb-text-3)" }}>{ROLE_LABELS[user.role]}</div>
+                    </div>
+                  )}
+                </div>
+              </Dropdown>
+            </div>
           </div>
-
-          <Space size={8}>
-            <NotificationsBell
-              borderColor={token.colorBorderSecondary}
-              textColor={token.colorTextSecondary}
-            />
-
-            <Divider type="vertical" style={{ margin: "0 4px" }} />
-
-            <Dropdown
-              menu={{
-                items: [
-                  {
-                    key: "profile",
-                    label: (
-                      <div style={{ padding: "4px 0" }}>
-                        <Text strong style={{ display: "block" }}>{user.name}</Text>
-                        <Text type="secondary" style={{ fontSize: 12 }}>{user.email}</Text>
-                      </div>
-                    ),
-                    disabled: true,
-                  },
-                  {
-                    key: "role",
-                    label: (
-                      <span
-                        style={{
-                          fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 4,
-                          background: ROLE_COLORS[user.role] + "22",
-                          color: ROLE_COLORS[user.role],
-                        }}
-                      >
-                        {ROLE_LABELS[user.role]}
-                      </span>
-                    ),
-                    disabled: true,
-                  },
-                  { type: "divider" },
-                  { key: "logout", icon: <LogoutOutlined />, label: "Déconnexion", danger: true, onClick: logout },
-                ],
-              }}
-              trigger={["click"]}
-              placement="bottomRight"
-            >
-              <Space style={{ cursor: "pointer" }} size={8}>
-                <Avatar size={34} style={{ background: ROLE_COLORS[user.role], fontSize: 12, fontWeight: 600 }}>
-                  {initials}
-                </Avatar>
-                {!screens.xs && (
-                  <div style={{ lineHeight: 1.3 }}>
-                    <Text strong style={{ fontSize: 13, display: "block" }}>{user.name.split(" ")[0]}</Text>
-                    <Text type="secondary" style={{ fontSize: 11 }}>{ROLE_LABELS[user.role]}</Text>
-                  </div>
-                )}
-              </Space>
-            </Dropdown>
-          </Space>
         </Header>
 
-        <Content
-          style={{
-            margin: contentMargin,
-            minHeight: "calc(100vh - 56px - 48px)",
-            maxWidth: "100%",
-            overflowX: "hidden",
-          }}
-        >
-          {children}
+        <Content style={{ padding: isMobile ? "16px 12px 24px" : "24px 24px 40px", maxWidth: "100%", overflowX: "clip" }}>
+          <div key={pathname} className="nb-fade-up">{children}</div>
         </Content>
       </Layout>
     </Layout>

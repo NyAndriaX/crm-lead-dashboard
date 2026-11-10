@@ -1,0 +1,13 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.env
+.pytest_cache/
+*.log
+.DS_Store
+.claude/*
+!.claude/skills/
+*.egg-info/
+dist/
+build/

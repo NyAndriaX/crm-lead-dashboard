@@ -1,0 +1,22 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": { "dependsOn": ["^build"], "outputs": [".next/**", "!.next/cache/**", "node_modules/.prisma/**"] },
+    "typecheck": { "dependsOn": ["^build"] },
+    "lint": {},
+    "test": { "dependsOn": ["^build"] },
+    "dev": { "cache": false, "persistent": true }
+  },
+  "globalEnv": [
+    "NODE_ENV", "DATABASE_URL", "APP_BASE_URL", "AUTH_JWT_SECRET", "JWT_ACCESS_TTL", "JWT_REFRESH_TTL",
+    "PII_ENCRYPTION_KEY", "EMAIL_HASH_SECRET", "INTERNAL_API_TOKEN", "NEXT_PUBLIC_SHOW_DEMO_ACCOUNTS",
+    "ALLOW_INSECURE_PROD", "SCORING_WEIGHTS",
+    "RUN_JOBS", "WORKER_POLL_INTERVAL_MS", "WORKER_CONCURRENCY", "WORKER_TIMEZONE",
+    "IMAP_SYNC_INTERVAL", "SEQUENCE_TICK_INTERVAL", "SCRAPING_SCHEDULER_INTERVAL", "SCRAPING_JOB_LOCK_MS", "SCRAPING_STALE_MS",
+    "SCRAPING_LIVE", "SCRAPER_API_URL", "SCRAPER_API_PATH", "SCRAPER_API_KEY", "SCRAPER_TIMEOUT_MS",
+    "CLAUDE_SKILLS_ENABLED", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_MODEL", "CLAUDE_TIMEOUT_MS",
+    "CLAUDE_MAX_CONCURRENCY", "CLAUDE_SKILLS_ROOT", "CLAUDE_BIN",
+    "AUTO_RESPONDER_MODE", "AUTO_RESPONDER_MEETING_URL",
+    "SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM_NAME", "SMTP_FROM_EMAIL"
+  ]
+}

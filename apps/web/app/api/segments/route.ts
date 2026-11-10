@@ -1,12 +1,14 @@
 import { created, handler, json, parseBody, requirePermission } from "@/lib/api";
 import { createSegmentSchema } from "@/lib/schemas/campaign";
-import { createSegment, listSegments } from "@/lib/services/segments";
+import { createSegment, listSegments, listSegmentsWithCounts } from "@/lib/services/segments";
 
 export const dynamic = "force-dynamic";
 
-export const GET = handler(async () => {
+// GET /api/segments[?counts=1] — avec counts=1 : taille d'audience et nombre de campagnes par segment.
+export const GET = handler(async (req) => {
   await requirePermission("campaigns:read");
-  const data = await listSegments();
+  const withCounts = new URL(req.url).searchParams.get("counts") === "1";
+  const data = withCounts ? await listSegmentsWithCounts() : await listSegments();
   return json({ data });
 });
 

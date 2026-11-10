@@ -9,8 +9,8 @@ import { prisma } from "@crm/db";
  * configure côté sonde externe (cf. docs/ops/monitoring.md).
  *
  * Métriques exposées :
- *  - db : ping Mongo + latence (ms)
- *  - worker : dernier job Agenda terminé (détecte un worker mort)
+ *  - db : ping MySQL (SELECT 1) + latence (ms)
+ *  - worker : dernier job de la file terminé (détecte un worker mort)
  *  - uptime : secondes depuis le démarrage du process web
  */
 export const dynamic = "force-dynamic";
@@ -23,27 +23,22 @@ export async function GET() {
   let db: "ok" | "down" = "ok";
   const t0 = Date.now();
   try {
-    await prisma.$runCommandRaw({ ping: 1 });
+    await prisma.$queryRaw`SELECT 1`;
     checks.db = { status: "ok", latencyMs: Date.now() - t0 };
   } catch {
     db = "down";
     checks.db = { status: "down", latencyMs: Date.now() - t0 };
   }
 
-  // Worker : dernier job Agenda terminé (collection crmAgendaJobs).
+  // Worker : dernier job de la file terminé (les jobs récurrents tournent au moins toutes les 5 min).
   let worker: "ok" | "stale" | "unknown" = "unknown";
   try {
-    const coll = process.env.AGENDA_COLLECTION ?? "crmAgendaJobs";
-    const res = (await prisma.$runCommandRaw({
-      find: coll,
-      filter: { lastFinishedAt: { $exists: true } },
-      sort: { lastFinishedAt: -1 },
-      limit: 1,
-    })) as { cursor?: { firstBatch?: Array<{ lastFinishedAt?: { $date?: string } | string }> } };
-    const last = res?.cursor?.firstBatch?.[0]?.lastFinishedAt;
-    const lastMs = last
-      ? new Date(typeof last === "string" ? last : last.$date ?? 0).getTime()
-      : 0;
+    const last = await prisma.queueJob.findFirst({
+      where: { lastFinishedAt: { not: null } },
+      orderBy: { lastFinishedAt: "desc" },
+      select: { lastFinishedAt: true },
+    });
+    const lastMs = last?.lastFinishedAt?.getTime() ?? 0;
     if (lastMs > 0) {
       const ageMin = (Date.now() - lastMs) / 60000;
       worker = ageMin <= 15 ? "ok" : "stale";

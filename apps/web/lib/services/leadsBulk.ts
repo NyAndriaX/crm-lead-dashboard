@@ -4,7 +4,7 @@
  * Toutes les opérations sont idempotentes et tolérantes (un ID introuvable
  * est silencieusement ignoré, on retourne `succeeded` + `failed` détaillés).
  */
-import { prisma } from "@crm/db";
+import { asStringArray, prisma } from "@crm/db";
 import { syncTags } from "@/lib/services/leads";
 
 const MAX_IDS = 1000;
@@ -101,8 +101,8 @@ export async function bulkAddTags(ids: string[], tags: string[]): Promise<BulkRe
   });
   let succeeded = 0;
   for (const lead of leads) {
-    const next = Array.from(new Set([...(lead.tags ?? []), ...cleaned]));
-    if (next.length === (lead.tags ?? []).length) {
+    const next = Array.from(new Set([...asStringArray(lead.tags), ...cleaned]));
+    if (next.length === asStringArray(lead.tags).length) {
       succeeded++;
       continue;
     }
@@ -135,8 +135,8 @@ export async function bulkRemoveTags(ids: string[], tags: string[]): Promise<Bul
   });
   let succeeded = 0;
   for (const lead of leads) {
-    const next = (lead.tags ?? []).filter((t) => !toRemove.has(t));
-    if (next.length === (lead.tags ?? []).length) {
+    const next = asStringArray(lead.tags).filter((t) => !toRemove.has(t));
+    if (next.length === asStringArray(lead.tags).length) {
       succeeded++;
       continue;
     }

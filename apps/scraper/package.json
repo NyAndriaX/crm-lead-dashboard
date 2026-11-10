@@ -1,0 +1,14 @@
+{
+  "name": "@crm/scraper",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Scraper Google Maps (FastAPI + Playwright, Python 3.12) — appelé par le worker via HTTP (POST /scrape).",
+  "scripts": {
+    "setup": "python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/playwright install chromium",
+    "dev": "bash run.sh",
+    "test": "test -d .venv && .venv/bin/pytest -q || echo \"(venv absent — pnpm --filter @crm/scraper setup)\"",
+    "typecheck": "test -d .venv && .venv/bin/python -m compileall -q app || python3 -m compileall -q app",
+    "lint": "echo \"(no lint for @crm/scraper)\"",
+    "build": "echo \"(image Docker : apps/scraper/Dockerfile)\""
+  }
+}

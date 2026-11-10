@@ -1,0 +1,17 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.log
+.DS_Store
+.env
+.git/
+.gitignore
+.claude/*
+!.claude/skills/
+*.md
+!README.md
+postman/
+tests/
+!.claude/skills/**/SKILL.md

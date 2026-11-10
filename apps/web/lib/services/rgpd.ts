@@ -10,7 +10,7 @@
  *                   par les admins (article 30 — registre des activités de
  *                   traitement).
  */
-import { prisma } from "@crm/db";
+import { asStringArray, prisma } from "@crm/db";
 import { decryptOrNull } from "@/lib/crypto";
 
 // ── Droit à l'oubli ──────────────────────────────────────────────────────────
@@ -123,7 +123,7 @@ export async function exportLead(leadId: string): Promise<LeadExport | null> {
       status: lead.status,
       emailStatus: lead.emailStatus,
       score: lead.score,
-      tags: lead.tags,
+      tags: asStringArray(lead.tags),
       notes: lead.notes,
       assignedToId: lead.assignedToId,
       enrichment: lead.enrichment,
@@ -209,7 +209,7 @@ export const DATA_REGISTRY: DataProcessing[] = [
     categories: ["Email professionnel", "Contenu des messages (corps + sujet)"],
     retention: "12 mois puis archivage",
     recipients: "Équipes commerciales assignées au lead",
-    transfer: "OpenAI (catégorisation IA) si activé — sujet + 2000 premiers caractères du corps. Aucune information directement identifiante n'est demandée mais le corps peut en contenir.",
+    transfer: "Fournisseur d'IA choisi par l'administrateur (Anthropic, OpenAI, DeepSeek, Mistral, Google ou modèle local Ollama) si activé — sujet + 2000 premiers caractères du corps. Aucune information directement identifiante n'est demandée mais le corps peut en contenir.",
     security: "Connexion IMAP chiffrée, credentials AES-256-GCM. Bouton de re-catégorisation manuelle disponible.",
   },
   {

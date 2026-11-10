@@ -2,6 +2,7 @@ import { z } from "zod";
 import { handler, json, created, parseBody, requirePermission, requireSession, ApiError } from "@/lib/api";
 import { can } from "@/lib/rbac";
 import { audit, clientIp } from "@/lib/audit";
+import { missionRateSchema, sectorSitesSchema } from "@/lib/schemas/scraping";
 import { createMission, listMissions } from "@/lib/services/scraping";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,11 @@ const schedulePlanSchema = z.object({
 
 const configSchema = z.object({
   keywords: z.string().trim().min(1).max(200),
+  // Assistant IA (skill crm-scraping-plan) : brief, requêtes Maps, profil cible, seuil d'adéquation.
+  brief: z.string().trim().max(2000).nullable().optional(),
+  queries: z.array(z.string().trim().min(2).max(200)).max(8).optional(),
+  targetProfile: z.string().trim().max(2000).nullable().optional(),
+  minFitScore: z.number().int().min(0).max(100).nullable().optional(),
   location: z.object({
     city: z.string().trim().max(80).nullable().optional(),
     country: z.string().trim().max(80).nullable().optional(),
@@ -32,6 +38,8 @@ const configSchema = z.object({
     })
     .optional(),
   schedulePlan: schedulePlanSchema.optional(),
+  sectorSites: sectorSitesSchema,
+  rate: missionRateSchema,
 });
 
 const createSchema = z.object({

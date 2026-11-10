@@ -2,16 +2,21 @@
  * Engine d'enrichissement de leads (module Enrichissement E-01 → E-09).
  *
  * Principe "dry-run / stub-first" : chaque provider fonctionne SANS clé API
- * (heuristiques + ressources gratuites : DNS MX, RSS Google News, patterns
- * d'URL). Si une clé API est fournie en env (HUNTER_API_KEY, PAPPERS_API_KEY,
- * …), le provider bascule automatiquement sur la source réelle.
+ * (heuristiques + ressources gratuites : DNS MX, RSS Google News, API publique
+ * Recherche d'entreprises, liens publiés sur le site). Les clés des fournisseurs
+ * payants (Hunter.io, Dropcontact, Pappers) se règlent dans Configuration ›
+ * Enrichissement (INT-03, stockées chiffrées), avec repli sur les variables
+ * d'environnement (HUNTER_API_KEY, DROPCONTACT_API_KEY, PAPPERS_API_KEY).
  *
  * Le résultat est fusionné dans `Lead.enrichment` (champ Json) avec, pour
- * chaque bloc, la `source` et la date — exigence E-09 (traçabilité).
+ * chaque bloc, la `source` et la date — exigence E-09 (traçabilité). Le score
+ * du lead est recalculé après chaque enrichissement (E-07).
  */
 import dns from "node:dns/promises";
-import { prisma } from "@crm/db";
+import { prisma, recomputeLeadScore, siteLinkedinLinks, type LeadPrivateContacts, type ScoringWeights } from "@crm/db";
 import { decryptOrNull, encryptOrNull, emailHash } from "@/lib/crypto";
+import { getEnrichmentConfig } from "@/lib/services/enrichmentConfig";
+import { dropcontactFindEmail, hunterFindEmail, pappersSearch, rechercheEntreprisesSearch } from "@/lib/services/enrichmentApis";
 
 export type EnrichProvider = "email" | "emailVerify" | "company" | "linkedin" | "news" | "social";
 
@@ -62,7 +67,7 @@ export type EmailFinderResult = {
   found: string | null;
   candidates: string[];
   confidence: number; // 0-100
-  source: "hunter" | "pattern" | "none";
+  source: "hunter" | "dropcontact" | "pattern" | "none";
   mxValid: boolean;
 };
 
@@ -71,33 +76,22 @@ async function findEmail(args: {
   lastName: string | null;
   company: string | null;
   domain: string | null;
+  website: string | null;
 }): Promise<EmailFinderResult> {
   const { firstName, lastName, domain } = args;
   if (!domain) {
     return { found: null, candidates: [], confidence: 0, source: "none", mxValid: false };
   }
 
-  // Provider réel si clé Hunter présente.
-  const hunterKey = process.env.HUNTER_API_KEY?.trim();
-  if (hunterKey && firstName && lastName) {
-    try {
-      const url = `https://api.hunter.io/v2/email-finder?domain=${encodeURIComponent(domain)}&first_name=${encodeURIComponent(firstName)}&last_name=${encodeURIComponent(lastName)}&api_key=${hunterKey}`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const j = (await res.json()) as { data?: { email?: string; score?: number } };
-        if (j.data?.email) {
-          return {
-            found: j.data.email,
-            candidates: [j.data.email],
-            confidence: j.data.score ?? 70,
-            source: "hunter",
-            mxValid: await hasMx(domain),
-          };
-        }
-      }
-    } catch {
-      /* fallback pattern */
-    }
+  // Fournisseurs réels (INT-03), dans l'ordre : Hunter.io puis Dropcontact.
+  const cfg = await getEnrichmentConfig();
+  if (cfg.hunter.usable && cfg.hunter.apiKey && firstName && lastName) {
+    const hit = await hunterFindEmail(cfg.hunter.apiKey, { domain, firstName, lastName });
+    if (hit) return { found: hit.email, candidates: [hit.email], confidence: hit.confidence, source: "hunter", mxValid: await hasMx(domain) };
+  }
+  if (cfg.dropcontact.usable && cfg.dropcontact.apiKey) {
+    const hit = await dropcontactFindEmail(cfg.dropcontact.apiKey, { firstName, lastName, company: args.company, website: args.website });
+    if (hit) return { found: hit.email, candidates: [hit.email], confidence: hit.confidence, source: "dropcontact", mxValid: await hasMx(domain) };
   }
 
   // Stub : génération de patterns + validation MX du domaine.
@@ -171,13 +165,19 @@ async function verifyEmail(email: string | null): Promise<EmailVerifyResult> {
 // ── E-03 — Enrichissement entreprise (firmographie) ─────────────────────────
 
 export type CompanyEnrichResult = {
-  source: "pappers" | "stub";
+  source: "pappers" | "recherche-entreprises" | "stub";
   legalName?: string | null;
+  siren?: string | null;
+  /** Ancien nom du champ (contenait le SIREN) — conservé pour les fiches déjà enrichies. */
   siret?: string | null;
   nafCode?: string | null;
+  nafLabel?: string | null;
   employees?: number | null;
+  employeesRange?: string | null;
   revenue?: string | null;
   foundedYear?: number | null;
+  address?: string | null;
+  active?: boolean | null;
   note?: string;
 };
 
@@ -185,49 +185,51 @@ async function enrichCompany(args: {
   company: string | null;
   domain: string | null;
   country: string | null;
+  /** SIREN lu dans les mentions légales du site (scraper) : recherche exacte. */
+  siren: string | null;
 }): Promise<CompanyEnrichResult> {
-  const pappersKey = process.env.PAPPERS_API_KEY?.trim();
-  if (pappersKey && args.company && (args.country ?? "France").toLowerCase().includes("france")) {
-    try {
-      const url = `https://api.pappers.fr/v2/recherche?q=${encodeURIComponent(args.company)}&api_token=${pappersKey}&par_page=1`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const j = (await res.json()) as {
-          resultats?: Array<{
-            nom_entreprise?: string; siren?: string; code_naf?: string;
-            tranche_effectif?: string; date_creation?: string;
-          }>;
-        };
-        const r = j.resultats?.[0];
-        if (r) {
-          return {
-            source: "pappers",
-            legalName: r.nom_entreprise ?? null,
-            siret: r.siren ?? null,
-            nafCode: r.code_naf ?? null,
-            employees: null,
-            revenue: null,
-            foundedYear: r.date_creation ? Number(r.date_creation.slice(0, 4)) : null,
-          };
-        }
-      }
-    } catch {
-      /* fallback stub */
-    }
+  const isFrench = (args.country ?? "France").toLowerCase().includes("france");
+  if (!args.company && !args.siren) {
+    return { source: "stub", legalName: null, note: "Aucune entreprise ni SIREN sur la fiche." };
+  }
+  const query = { company: args.company ?? args.siren ?? "", siren: args.siren };
+  // Fournisseurs réels (INT-03), dans l'ordre : Pappers (clé) puis API Recherche d'entreprises (gratuite).
+  const cfg = await getEnrichmentConfig();
+  if (isFrench && cfg.pappers.usable && cfg.pappers.apiKey) {
+    const hit = await pappersSearch(cfg.pappers.apiKey, query);
+    if (hit) return { source: "pappers", ...hit, siret: hit.siren, employees: null, revenue: null };
+  }
+  if (isFrench && cfg["recherche-entreprises"].usable) {
+    const hit = await rechercheEntreprisesSearch(query);
+    if (hit) return { source: "recherche-entreprises", ...hit, siret: hit.siren, employees: null, revenue: null };
   }
   return {
     source: "stub",
     legalName: args.company ?? null,
-    note: "Configurez PAPPERS_API_KEY (entreprises FR) ou CLEARBIT_API_KEY pour des données firmographiques réelles.",
+    note: isFrench
+      ? "Aucune entreprise correspondante trouvée (Pappers / Recherche d'entreprises) — vérifiez les fournisseurs dans Configuration › Enrichissement."
+      : "Entreprise hors de France : pas de registre public interrogé.",
   };
 }
 
 // ── E-04 — Recherche profil LinkedIn ────────────────────────────────────────
+// LinkedIn n'est jamais interrogé ni extrait (CGU). Priorité aux liens réellement publiés sur le site
+// de l'entreprise (relevés par le scraper) : « vérifiés ». À défaut, URL déduite du nom : « suggestion
+// non vérifiée ». Les profils de personnes vérifiés restent dans `contactsEnc` (chiffré) : ce bloc n'en
+// garde que le nombre.
+
+export type LinkedinLink = { url: string; status: "verified" | "unverified"; source: "site" | "pattern" };
 
 export type LinkedinResult = {
+  company: LinkedinLink | null;
+  /** Suggestion de profil (nom + prénom) — uniquement si aucun profil n'a été trouvé sur le site. */
+  profileGuess: LinkedinLink | null;
+  /** Profils de personnes trouvés sur le site (détail chiffré dans contactsEnc.linkedinProfiles). */
+  verifiedProfiles: number;
+  /** Compatibilité avec les fiches enrichies avant E-04 (URL devinées). */
   profileUrlGuess: string | null;
   companyUrlGuess: string | null;
-  source: "pattern";
+  source: "site" | "pattern" | "site+pattern";
   note: string;
 };
 
@@ -235,18 +237,33 @@ function findLinkedin(args: {
   firstName: string | null;
   lastName: string | null;
   company: string | null;
+  enrichment: unknown;
+  contacts: LeadPrivateContacts | null;
 }): LinkedinResult {
+  const site = siteLinkedinLinks(args.enrichment, args.contacts);
   const fn = args.firstName ? slug(args.firstName) : "";
   const ln = args.lastName ? slug(args.lastName) : "";
-  const profileUrlGuess = fn && ln ? `https://www.linkedin.com/in/${fn}-${ln}` : null;
-  const companyUrlGuess = args.company
-    ? `https://www.linkedin.com/company/${slug(args.company)}`
+  const companyGuess = args.company ? `https://www.linkedin.com/company/${slug(args.company)}` : null;
+  const profileGuess = fn && ln ? `https://www.linkedin.com/in/${fn}-${ln}` : null;
+
+  const company: LinkedinLink | null = site.company[0]
+    ? { url: site.company[0], status: "verified", source: "site" }
+    : companyGuess ? { url: companyGuess, status: "unverified", source: "pattern" } : null;
+  const guess: LinkedinLink | null = !site.people.length && profileGuess
+    ? { url: profileGuess, status: "unverified", source: "pattern" }
     : null;
+  const fromSite = site.company.length > 0 || site.people.length > 0;
+  const fromPattern = company?.source === "pattern" || guess !== null;
   return {
-    profileUrlGuess,
-    companyUrlGuess,
-    source: "pattern",
-    note: "URLs déduites par heuristique (non vérifiées). L'API LinkedIn officielle est restreinte ; intégration Sales Navigator hors périmètre.",
+    company,
+    profileGuess: guess,
+    verifiedProfiles: site.people.length,
+    profileUrlGuess: guess?.url ?? null,
+    companyUrlGuess: company?.source === "pattern" ? company.url : null,
+    source: fromSite && fromPattern ? "site+pattern" : fromSite ? "site" : "pattern",
+    note: fromSite
+      ? "Liens publiés sur le site de l'entreprise (vérifiés). LinkedIn n'est pas interrogé."
+      : "Aucun lien LinkedIn sur le site : URL déduites du nom (suggestions non vérifiées).",
   };
 }
 
@@ -329,6 +346,8 @@ export type EnrichLeadResult = {
   ran: EnrichProvider[];
   emailWritten: boolean;
   enrichment: EnrichmentBlock;
+  /** E-07 — score avant / après le recalcul automatique. */
+  score: { before: number; after: number | null };
 };
 
 /**
@@ -339,6 +358,7 @@ export type EnrichLeadResult = {
 export async function enrichLeadById(
   leadId: string,
   providers: EnrichProvider[] = ALL_PROVIDERS,
+  opts: { userId?: string | null; weights?: ScoringWeights } = {},
 ): Promise<EnrichLeadResult> {
   const lead = await prisma.lead.findUnique({ where: { id: leadId } });
   if (!lead || lead.deletedAt) throw new Error("Lead introuvable");
@@ -359,6 +379,7 @@ export async function enrichLeadById(
       lastName: lead.lastName,
       company: lead.company,
       domain,
+      website: lead.website,
     });
     out.email = { ...r, at: now };
     ran.push("email");
@@ -390,11 +411,24 @@ export async function enrichLeadById(
   }
 
   if (providers.includes("company")) {
-    out.company = { ...(await enrichCompany({ company: lead.company, domain, country: lead.country })), at: now };
+    const siren = ((existing as { siteContacts?: { legal?: { siren?: unknown } | null } }).siteContacts?.legal?.siren);
+    out.company = {
+      ...(await enrichCompany({ company: lead.company, domain, country: lead.country, siren: typeof siren === "string" ? siren : null })),
+      at: now,
+    };
     ran.push("company");
   }
   if (providers.includes("linkedin")) {
-    out.linkedin = { ...findLinkedin({ firstName: lead.firstName, lastName: lead.lastName, company: lead.company }), at: now };
+    out.linkedin = {
+      ...findLinkedin({
+        firstName: lead.firstName,
+        lastName: lead.lastName,
+        company: lead.company,
+        enrichment: existing,
+        contacts: parseContacts(decryptOrNull(lead.contactsEnc)),
+      }),
+      at: now,
+    };
     ran.push("linkedin");
   }
   if (providers.includes("news")) {
@@ -416,20 +450,44 @@ export async function enrichLeadById(
   await prisma.leadHistory.create({
     data: {
       leadId,
+      userId: opts.userId ?? null,
       type: "enriched",
       payload: { providers: ran, emailWritten } as object,
     },
   });
 
-  return { leadId, ran, emailWritten, enrichment: out };
+  // E-07 — scoring automatique post-enrichissement (formule partagée @crm/db, poids de l'administration).
+  const after = await recomputeLeadScore(prisma, leadId, opts.weights);
+  await prisma.leadHistory.create({
+    data: {
+      leadId,
+      userId: opts.userId ?? null,
+      type: "recalc_score",
+      payload: { score: after, from: lead.score, trigger: "enrichment", providers: ran } as object,
+    },
+  });
+
+  return { leadId, ran, emailWritten, enrichment: out, score: { before: lead.score, after } };
 }
 
-export function enrichmentProvidersStatus() {
+function parseContacts(json: string | null): LeadPrivateContacts | null {
+  if (!json) return null;
+  try {
+    return JSON.parse(json) as LeadPrivateContacts;
+  } catch {
+    return null;
+  }
+}
+
+export async function enrichmentProvidersStatus() {
+  const cfg = await getEnrichmentConfig();
+  const email = [cfg.hunter.usable && "hunter (API)", cfg.dropcontact.usable && "dropcontact (API)"].filter(Boolean);
+  const company = [cfg.pappers.usable && "pappers (API)", cfg["recherche-entreprises"].usable && "recherche-entreprises (API publique)"].filter(Boolean);
   return {
-    email: process.env.HUNTER_API_KEY ? "hunter (API)" : "pattern + MX (stub)",
+    email: email.length ? `${email.join(" → ")} → pattern + MX` : "pattern + MX (stub)",
     emailVerify: "MX + disposables + heuristique (gratuit)",
-    company: process.env.PAPPERS_API_KEY ? "pappers (API)" : "stub",
-    linkedin: "pattern (heuristique)",
+    company: company.length ? company.join(" → ") : "stub",
+    linkedin: "liens publiés sur le site (vérifiés) → pattern (suggestion)",
     news: "Google News RSS (gratuit)",
     social: "pattern (heuristique)",
   };

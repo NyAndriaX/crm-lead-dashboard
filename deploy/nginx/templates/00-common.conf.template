@@ -1,0 +1,2 @@
+# Paramètres communs (chargé avant default.conf).
+limit_req_zone $binary_remote_addr zone=auth:10m rate=10r/m;

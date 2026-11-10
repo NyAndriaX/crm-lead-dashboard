@@ -299,7 +299,7 @@ export function AuditLogsSection() {
               {detailRow.diff ? (
                 <pre
                   style={{
-                    background: "#f5f5f5", padding: 12, borderRadius: 6,
+                    background: "rgba(2,6,16,0.7)", padding: 12, borderRadius: 10, border: "1px solid var(--nb-border)",
                     fontSize: 12, overflow: "auto", maxHeight: 400,
                   }}
                 >

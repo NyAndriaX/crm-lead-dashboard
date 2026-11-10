@@ -25,7 +25,7 @@ function assertProductionSecrets(e: z.infer<typeof schema>): void {
   if (e.NODE_ENV !== "production") return;
 
   // Trappe d'échappement EXPLICITE pour les tests prod-like en local
-  // (`yarn start:all`) où l'on assume des secrets d'exemple jetables.
+  // (stack docker-compose sur un poste de dev) où l'on assume des secrets d'exemple jetables.
   // ⚠️ NE JAMAIS définir ALLOW_INSECURE_PROD en vrai déploiement.
   if (process.env.ALLOW_INSECURE_PROD === "true") {
     console.warn(

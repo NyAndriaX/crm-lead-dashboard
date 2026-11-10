@@ -112,7 +112,7 @@ export function RgpdSection() {
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
       <Card size="small">
         <Space align="start" size={16}>
-          <SafetyCertificateOutlined style={{ fontSize: 32, color: "#52c41a" }} />
+          <SafetyCertificateOutlined style={{ fontSize: 32, color: "#34d399" }} />
           <div>
             <Title level={5} style={{ margin: 0 }}>Conformité RGPD</Title>
             <Paragraph type="secondary" style={{ margin: 0, fontSize: 13 }}>
@@ -127,7 +127,7 @@ export function RgpdSection() {
         <Col xs={24} md={12}>
           <Card>
             <Space align="start" size={16}>
-              <DownloadOutlined style={{ fontSize: 32, color: "#1677ff" }} />
+              <DownloadOutlined style={{ fontSize: 32, color: "#8b5cf6" }} />
               <div>
                 <Title level={5} style={{ marginTop: 0 }}>Export d'un lead (portabilité)</Title>
                 <Paragraph type="secondary" style={{ fontSize: 13 }}>

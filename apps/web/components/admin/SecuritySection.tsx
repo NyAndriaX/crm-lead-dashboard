@@ -117,16 +117,16 @@ export function SecuritySection() {
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
       <Card loading={loading}>
         <Space align="start" size={16} style={{ width: "100%" }}>
-          <SafetyOutlined style={{ fontSize: 36, color: twoFactorOn ? "#52c41a" : "#fa8c16" }} />
+          <SafetyOutlined style={{ fontSize: 36, color: twoFactorOn ? "#34d399" : "#fbbf24" }} />
           <div style={{ flex: 1 }}>
             <Title level={4} style={{ margin: 0 }}>
               Authentification à deux facteurs (2FA)
               {twoFactorOn ? (
-                <Text style={{ color: "#52c41a", fontSize: 14, marginLeft: 12 }}>
+                <Text style={{ color: "#34d399", fontSize: 14, marginLeft: 12 }}>
                   <CheckCircleOutlined /> Activée
                 </Text>
               ) : (
-                <Text style={{ color: "#fa8c16", fontSize: 14, marginLeft: 12 }}>
+                <Text style={{ color: "#fbbf24", fontSize: 14, marginLeft: 12 }}>
                   <WarningOutlined /> Inactive
                 </Text>
               )}

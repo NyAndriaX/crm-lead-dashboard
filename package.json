@@ -1,39 +1,34 @@
 {
-  "name": "crm-lead-dashboard",
-  "version": "0.1.0",
+  "name": "crm-lead",
+  "version": "1.0.0",
   "private": true,
-  "description": "CRM Lead Dashboard — monorepo (web + worker + db). Stack: Next.js 15 · Ant Design 5 · Prisma 5 · MongoDB 7 · Docker (sans Redis : file Agenda @hokify/agenda sur MongoDB).",
+  "description": "CRM Lead — plateforme de prospection B2B : application Next.js (UI + API + tâches de fond), scraper Google Maps (Python), IA par Claude Skills, MySQL. Monorepo pnpm + Turborepo, déployable sur un seul serveur (Docker Compose).",
   "engines": {
     "node": ">=20.6.0",
-    "yarn": ">=1.22.0"
+    "pnpm": ">=9"
   },
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "packageManager": "pnpm@9.12.0",
   "scripts": {
-    "dev": "dotenv -e .env -- yarn workspace @crm/web dev",
-    "worker": "dotenv -e .env -- yarn workspace @crm/worker dev",
-    "scraper": "bash ../CRM_LEAD_SCRAPER/run.sh",
-    "dev:all": "dotenv -e .env -- node scripts/run-all.mjs dev",
-    "dev:full": "dotenv -e .env -- node scripts/run-all.mjs dev --with-scraper",
-    "build": "yarn workspaces run build",
-    "start": "dotenv -e .env -- yarn workspace @crm/web start",
-    "start:prod": "dotenv -e .env -- node scripts/start-standalone.mjs",
-    "worker:prod": "dotenv -e .env -- yarn workspace @crm/worker start",
-    "start:all": "dotenv -e .env -- node scripts/run-all.mjs prod",
-    "lint": "yarn workspaces run lint",
-    "typecheck": "yarn workspaces run typecheck",
-    "test": "yarn workspaces run test",
-    "db:generate": "yarn workspace @crm/db generate",
-    "db:push": "dotenv -e .env -- yarn workspace @crm/db push",
-    "db:reset": "dotenv -e .env -- yarn workspace @crm/db reset",
-    "db:seed": "dotenv -e .env -- yarn workspace @crm/db seed",
-    "db:init-prod": "dotenv -e .env -- yarn workspace @crm/db init-prod",
-    "db:studio": "dotenv -e .env -- yarn workspace @crm/db studio"
+    "dev": "turbo run dev --filter=@crm/web",
+    "dev:full": "turbo run dev --filter=@crm/web --filter=@crm/scraper",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "db:up": "docker run -d --name crm-mysql -p 3307:3306 -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=crm -e MYSQL_USER=crm -e MYSQL_PASSWORD=crm mysql:8.4",
+    "db:generate": "pnpm --filter @crm/db generate",
+    "db:push": "pnpm --filter @crm/db push",
+    "db:migrate": "pnpm --filter @crm/db migrate:dev",
+    "db:deploy": "pnpm --filter @crm/db migrate:deploy",
+    "db:seed": "pnpm --filter @crm/db seed",
+    "db:init-prod": "pnpm --filter @crm/db init-prod",
+    "db:studio": "pnpm --filter @crm/db studio",
+    "deploy": "bash deploy/scripts/deploy.sh",
+    "jobs": "pnpm --filter @crm/jobs start"
   },
   "devDependencies": {
     "dotenv-cli": "^7.4.4",
+    "turbo": "^2.1.3",
     "typescript": "^5.6.3"
   }
 }

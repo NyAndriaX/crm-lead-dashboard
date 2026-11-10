@@ -5,6 +5,7 @@
  * Tabs : Vue d'ensemble · Utilisateurs · Scoring · Imports
  */
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { EmailHtmlDualEditor } from "@/components/emailing/EmailHtmlDualEditor";
 import { EmailHtmlLivePreview } from "@/components/emailing/EmailHtmlLivePreview";
 import { EmailTemplateAiVariants } from "@/components/emailing/EmailTemplateAiVariants";
@@ -18,18 +19,24 @@ import { PipelineStagesSection } from "@/components/admin/PipelineStagesSection"
 import { WebhooksSection } from "@/components/admin/WebhooksSection";
 import { RgpdSection } from "@/components/admin/RgpdSection";
 import {
-  Tabs, Card, Typography, Table, Button, Tag, Space, Form, InputNumber, Row, Col,
-  Statistic, Badge, Modal, Input, Select, message, Spin, Alert, Popconfirm, List,
-  Progress, Divider, Avatar, Tooltip, Checkbox, Collapse,
+  Tabs, Card, Typography, Table, Button, Tag, Space, Form, InputNumber, Row, Col, Statistic, Badge, Modal, Input, Select, message, Spin, Alert, Popconfirm, List, Divider, Avatar, Tooltip, Checkbox, Collapse,
 } from "antd";
 import {
   UserOutlined, TrophyOutlined, UploadOutlined, PlusOutlined, EditOutlined,
   StopOutlined, CheckOutlined, ReloadOutlined, SafetyOutlined, FireOutlined,
   TeamOutlined, CalendarOutlined, SettingOutlined, LockOutlined, DeleteOutlined,
   MailOutlined, CloudOutlined, CodeOutlined, EyeOutlined, CopyOutlined, BookOutlined,
+  DashboardOutlined, SafetyCertificateOutlined, ProjectOutlined, InboxOutlined, ThunderboltOutlined,
+  ApiOutlined, AuditOutlined, CloudServerOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { AiSettingsSection } from "@/components/admin/AiSettingsSection";
+import { EnrichmentProvidersSection } from "@/components/admin/EnrichmentProvidersSection";
+import { StatCard } from "@/components/ui/StatCard";
+import { Chip, Panel as KitPanel } from "@/components/ui/Kit";
+import { palette, statusColors } from "@/lib/theme";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
 import type { ScoringWeightsInput } from "@/lib/schemas/import";
 import { useIsMobile } from "@/lib/responsive";
@@ -102,15 +109,6 @@ interface TemplateBlockRow {
   createdBy?: { name: string };
 }
 
-interface TemplateFormValues {
-  name: string;
-  category?: string;
-  subject: string;
-  bodyHtml: string;
-  variables: string;
-  isPublic: boolean;
-}
-
 interface TemplateBlockFormValues {
   name: string;
   category: string;
@@ -143,7 +141,7 @@ const ROLE_COLORS: Record<string, string> = {
   ADMIN: "red", MANAGER: "orange", COMMERCIAL: "blue", LECTEUR: "default",
 };
 const ROLE_BG: Record<string, string> = {
-  ADMIN: "#fff1f0", MANAGER: "#fff7e6", COMMERCIAL: "#e6f4ff", LECTEUR: "#fafafa",
+  ADMIN: "rgba(148, 163, 184,0.14)", MANAGER: "rgba(251,191,36,0.14)", COMMERCIAL: "rgba(167, 139, 250,0.14)", LECTEUR: "rgba(148,163,184,0.1)",
 };
 
 /** Guide intégré SPF / DKIM / DMARC ; le vérificateur est branché sur l’API. */
@@ -195,7 +193,7 @@ function DnsSenderAuthGuide(props: {
       <Collapse
         bordered={false}
         expandIconPosition="end"
-        style={{ background: "#fafafa", borderRadius: 8 }}
+        style={{ background: "rgba(148,163,184,0.06)", borderRadius: 12 }}
         items={[
           {
             key: "spf",
@@ -404,13 +402,13 @@ function WorkerAgendaTimezoneCard() {
 
   return (
     <Card
-      title={<Space><CloudOutlined style={{ color: "#1677ff" }} /><span>Worker — fuseau horaire (Agenda)</span></Space>}
+      title={<Space><CloudOutlined style={{ color: "#8b5cf6" }} /><span>Tâches de fond — fuseau horaire</span></Space>}
       style={{ borderRadius: 12, boxShadow: "0 1px 2px rgba(15,23,42,0.06)" }}
     >
       <Space direction="vertical" size={12} style={{ width: "100%" }}>
         <Text type="secondary">
-          Identifiant IANA (ex. Europe/Paris). Appliqué au processus Node du worker via <Text code>TZ</Text> et aux
-          planifications Agenda de type cron qui précisent un fuseau. Redémarrer le worker après changement.
+          Identifiant IANA (ex. Europe/Paris). Appliqué au processeur de tâches de fond via <Text code>TZ</Text>
+          (relances, planification des missions de scraping). Redémarrer l’application après changement.
         </Text>
         <Select
           showSearch
@@ -443,10 +441,6 @@ function OverviewTab() {
   if (loading) return <div style={{ padding: 40, textAlign: "center" }}><Spin size="large" /></div>;
 
   const statusOrder = ["NOUVEAU", "CONTACTE", "QUALIFIE", "EN_DISCUSSION", "CONVERTI", "PERDU"];
-  const STATUS_HEX: Record<string, string> = {
-    NOUVEAU: "#8c8c8c", CONTACTE: "#1677ff", QUALIFIE: "#13c2c2",
-    EN_DISCUSSION: "#faad14", CONVERTI: "#52c41a", PERDU: "#ff4d4f",
-  };
 
   return (
     <Space direction="vertical" size={24} style={{ width: "100%" }}>
@@ -456,93 +450,71 @@ function OverviewTab() {
       {!error && stats ? (
         <>
       {/* ── KPI row ── */}
-      <Row gutter={[16, 16]}>
-        {[
-          { label: "Total leads", value: stats.leads.total, color: "#1677ff", icon: <TeamOutlined />, sub: `${stats.leads.active} actifs` },
-          { label: "Nouveaux aujourd'hui", value: stats.leads.newToday, color: "#13c2c2", icon: <CalendarOutlined />, sub: `${stats.leads.newThisWeek} cette semaine` },
-          { label: "Ce mois", value: stats.leads.newThisMonth, color: "#722ed1", icon: <FireOutlined />, sub: "leads créés" },
-          { label: "Utilisateurs actifs", value: stats.users.active, color: "#52c41a", icon: <UserOutlined />, sub: `/ ${stats.users.total} comptes` },
-        ].map(({ label, value, color, icon, sub }) => (
-          <Col xs={24} sm={12} xl={6} key={label}>
-            <Card bodyStyle={{ padding: "16px 18px" }} style={{ borderTop: `3px solid ${color}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div>
-                  <Text type="secondary" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1 }}>{label}</Text>
-                  <div><span style={{ fontSize: 26, fontWeight: 700, color }}>{value}</span></div>
-                  <Text type="secondary" style={{ fontSize: 12 }}>{sub}</Text>
-                </div>
-                <div style={{ width: 44, height: 44, borderRadius: 10, background: color + "18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, color }}>
-                  {icon}
-                </div>
-              </div>
-            </Card>
-          </Col>
-        ))}
+      <Row gutter={[16, 16]} className="nb-stagger">
+        <Col xs={24} sm={12} xl={6}><StatCard label="Total leads" value={stats.leads.total} icon={<TeamOutlined />} color={palette.violet} hint={`${stats.leads.active} actifs`} /></Col>
+        <Col xs={24} sm={12} xl={6}><StatCard label="Nouveaux aujourd'hui" value={stats.leads.newToday} icon={<CalendarOutlined />} color={palette.cyan} hint={`${stats.leads.newThisWeek} cette semaine`} /></Col>
+        <Col xs={24} sm={12} xl={6}><StatCard label="Ce mois" value={stats.leads.newThisMonth} icon={<FireOutlined />} color={palette.pink} hint="leads créés" /></Col>
+        <Col xs={24} sm={12} xl={6}><StatCard label="Utilisateurs actifs" value={stats.users.active} icon={<UserOutlined />} color={palette.green} hint={`/ ${stats.users.total} comptes`} /></Col>
       </Row>
 
       {/* ── Pipeline + Imports ── */}
       <Row gutter={[16, 16]}>
         <Col xs={24} md={14}>
-          <Card title={<Space><TeamOutlined style={{ color: "#1677ff" }} /><span>Pipeline par statut</span></Space>}>
-            <Space direction="vertical" style={{ width: "100%" }} size={12}>
-              {statusOrder.map((s) => {
-                const count = stats.byStatus[s] ?? 0;
+          <KitPanel icon={<TeamOutlined />} title="Leads par statut" style={{ height: "100%" }}>
+            <div style={{ display: "grid", gap: 14 }}>
+              {statusOrder.map((st) => {
+                const count = stats.byStatus[st] ?? 0;
                 const pct = stats.leads.total > 0 ? Math.round((count / stats.leads.total) * 100) : 0;
+                const c = statusColors[st] ?? palette.violet;
                 return (
-                  <div key={s}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                      <Space size={6}>
-                        <Badge color={STATUS_HEX[s]} />
-                        <Tag color={STATUS_COLORS[s as keyof typeof STATUS_COLORS]} style={{ margin: 0, fontSize: 12 }}>
-                          {STATUS_LABELS[s as keyof typeof STATUS_LABELS]}
-                        </Tag>
-                      </Space>
-                      <Space size={8}>
-                        <Text strong>{count}</Text>
-                        <Text type="secondary" style={{ fontSize: 11 }}>{pct}%</Text>
-                      </Space>
+                  <div key={st}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--nb-text-2)" }}>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: c, boxShadow: `0 0 8px ${c}` }} />
+                        {STATUS_LABELS[st as keyof typeof STATUS_LABELS]}
+                      </span>
+                      <span className="nb-mono" style={{ color: "var(--nb-text-strong)", fontWeight: 600 }}>{count} <span style={{ color: "var(--nb-text-3)", fontWeight: 400 }}>· {pct}%</span></span>
                     </div>
-                    <Progress percent={pct} showInfo={false} strokeColor={STATUS_HEX[s]} size="small" trailColor="#f5f5f5" />
+                    <div style={{ height: 8, borderRadius: 8, background: "rgba(148,163,184,0.12)", overflow: "hidden" }}>
+                      <div style={{ width: `${pct}%`, height: "100%", borderRadius: 8, background: `linear-gradient(90deg, ${c}, ${palette.violet})`, transformOrigin: "left", animation: "nb-grow-x 1s var(--nb-ease) both" }} />
+                    </div>
                   </div>
                 );
               })}
-            </Space>
-          </Card>
+            </div>
+          </KitPanel>
         </Col>
 
         <Col xs={24} md={10}>
-          <Card
-            title={<Space><UploadOutlined style={{ color: "#1677ff" }} /><span>Imports récents</span></Space>}
+          <KitPanel
+            icon={<UploadOutlined />}
+            title="Imports récents"
+            accent={palette.green}
             extra={<Button size="small" type="link" href="/import">Voir tout →</Button>}
             style={{ height: "100%" }}
           >
-            {stats.recentImports.length === 0
-              ? <Text type="secondary">Aucun import pour l&apos;instant.</Text>
-              : <List
-                  size="small"
-                  dataSource={stats.recentImports}
-                  renderItem={(job) => (
-                    <List.Item>
-                      <List.Item.Meta
-                        title={<Text ellipsis style={{ maxWidth: 160 }}>{job.fileName}</Text>}
-                        description={
-                          <Space direction="vertical" size={0}>
-                            <Badge
-                              status={job.status === "done" ? "success" : job.status === "failed" ? "error" : "processing"}
-                              text={<Text style={{ fontSize: 11 }}>{job.status}</Text>}
-                            />
-                            <Text type="secondary" style={{ fontSize: 11 }}>
-                              {job.importedRows}/{job.totalRows} · {new Date(job.createdAt).toLocaleDateString("fr-FR")}
-                            </Text>
-                          </Space>
-                        }
-                      />
-                      {job.user && <Text type="secondary" style={{ fontSize: 11 }}>{job.user.name}</Text>}
-                    </List.Item>
-                  )}
-                />
-            }
-          </Card>
+            {stats.recentImports.length === 0 ? (
+              <Text type="secondary">Aucun import pour l&apos;instant.</Text>
+            ) : (
+              <div style={{ display: "grid", gap: 8 }}>
+                {stats.recentImports.map((job) => {
+                  const c = job.status === "done" ? palette.green : job.status === "failed" ? palette.red : palette.cyan;
+                  return (
+                    <div key={job.fileName + job.createdAt} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 12, background: "var(--nb-control)" }}>
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: c, boxShadow: `0 0 8px ${c}`, flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--nb-text-strong)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{job.fileName}</div>
+                        <div style={{ fontSize: 11, color: "var(--nb-text-3)" }}>
+                          {job.importedRows}/{job.totalRows} lignes · {new Date(job.createdAt).toLocaleDateString("fr-FR")}{job.user ? ` · ${job.user.name}` : ""}
+                        </div>
+                      </div>
+                      <Chip size="sm" color={c}>{job.status === "done" ? "Terminé" : job.status === "failed" ? "Échec" : "En cours"}</Chip>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </KitPanel>
         </Col>
       </Row>
         </>
@@ -712,8 +684,8 @@ function UsersTab() {
             size={36}
             style={{
               background: ROLE_BG[r.role],
-              color: ROLE_COLORS[r.role] === "default" ? "#595959" : `var(--ant-color-${ROLE_COLORS[r.role]})`,
-              border: `1px solid ${ROLE_COLORS[r.role] === "default" ? "#d9d9d9" : "transparent"}`,
+              color: ROLE_COLORS[r.role] === "default" ? "var(--nb-text-2)" : `var(--ant-color-${ROLE_COLORS[r.role]})`,
+              border: `1px solid ${ROLE_COLORS[r.role] === "default" ? "var(--nb-border)" : "transparent"}`,
               fontSize: 12, fontWeight: 600,
             }}
           >
@@ -745,15 +717,15 @@ function UsersTab() {
       title: "Statut", dataIndex: "isActive", key: "isActive", width: 110, responsive: ["md"],
       render: (v: boolean, r) => v
         ? (r.invitedAt && !r.lastLoginAt
-            ? <Badge status="warning" text={<Text style={{ fontSize: 12, color: "#fa8c16" }}>Invité</Text>} />
-            : <Badge status="success" text={<Text style={{ fontSize: 12, color: "#52c41a" }}>Actif</Text>} />)
+            ? <Badge status="warning" text={<Text style={{ fontSize: 12, color: "#fbbf24" }}>Invité</Text>} />
+            : <Badge status="success" text={<Text style={{ fontSize: 12, color: "#34d399" }}>Actif</Text>} />)
         : <Badge status="error" text={<Text style={{ fontSize: 12, color: "#ff4d4f" }}>Inactif</Text>} />,
     },
     {
       title: "2FA", dataIndex: "twoFactorOn", key: "twoFactorOn", width: 80, responsive: ["lg"],
       align: "center",
       render: (v: boolean) => v
-        ? <Tooltip title="2FA activée"><SafetyOutlined style={{ color: "#52c41a", fontSize: 16 }} /></Tooltip>
+        ? <Tooltip title="2FA activée"><SafetyOutlined style={{ color: "#34d399", fontSize: 16 }} /></Tooltip>
         : <Tooltip title="2FA inactive"><SafetyOutlined style={{ color: "#d9d9d9", fontSize: 16 }} /></Tooltip>,
     },
     {
@@ -849,8 +821,8 @@ function UsersTab() {
       {/* Stats rapides */}
       <Row gutter={12}>
         {[
-          { label: "Total", value: users.length, color: "#1677ff" },
-          { label: "Actifs", value: activeCount, color: "#52c41a" },
+          { label: "Total", value: users.length, color: "#8b5cf6" },
+          { label: "Actifs", value: activeCount, color: "#34d399" },
           { label: "Inactifs", value: users.length - activeCount, color: "#ff4d4f" },
         ].map(({ label, value, color }) => (
           <Col key={label}>
@@ -1010,7 +982,6 @@ function EmailingTab() {
   const [templateLoading, setTemplateLoading] = useState(true);
   const [templateBlockLoading, setTemplateBlockLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [templateSaving, setTemplateSaving] = useState(false);
   const [templateBlockSaving, setTemplateBlockSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [smtpTestResult, setSmtpTestResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -1019,15 +990,11 @@ function EmailingTab() {
   const [dnsSelector, setDnsSelector] = useState("");
   const [dnsResult, setDnsResult] = useState<SmtpDnsCheckResult | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [templateBlockModalOpen, setTemplateBlockModalOpen] = useState(false);
   const [editingConfig, setEditingConfig] = useState<SmtpConfigRow | null>(null);
-  const [editingTemplate, setEditingTemplate] = useState<TemplateRow | null>(null);
   const [editingTemplateBlock, setEditingTemplateBlock] = useState<TemplateBlockRow | null>(null);
   const [form] = Form.useForm<SmtpFormValues>();
-  const [templateForm] = Form.useForm<TemplateFormValues>();
   const [templateBlockForm] = Form.useForm<TemplateBlockFormValues>();
-  const templateBodyHtmlWatch = Form.useWatch("bodyHtml", templateForm);
   const blockHtmlContentWatch = Form.useWatch("htmlContent", templateBlockForm);
   const isMobile = useIsMobile();
 
@@ -1159,26 +1126,6 @@ function EmailingTab() {
     }
   }
 
-  async function openTemplateCreate() {
-    setEditingTemplate(null);
-    templateForm.resetFields();
-    templateForm.setFieldsValue({ variables: '', isPublic: true });
-    setTemplateModalOpen(true);
-  }
-
-  async function openTemplateEdit(template: TemplateRow) {
-    setEditingTemplate(template);
-    templateForm.setFieldsValue({
-      name: template.name,
-      category: template.category ?? undefined,
-      subject: template.subject,
-      bodyHtml: template.bodyHtml,
-      variables: template.variables.join(', '),
-      isPublic: template.isPublic ?? true,
-    });
-    setTemplateModalOpen(true);
-  }
-
   async function duplicateTemplateRow(row: TemplateRow) {
     try {
       const { data } = await api.post<{ data: TemplateRow }>(`/templates/${row.id}/duplicate`);
@@ -1198,39 +1145,6 @@ function EmailingTab() {
     } catch (e) {
       const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Impossible de dupliquer le bloc';
       message.error(msg);
-    }
-  }
-
-  async function saveTemplate() {
-    const values = await templateForm.validateFields();
-    const payload = {
-      name: values.name,
-      category: values.category?.trim() || undefined,
-      subject: values.subject,
-      bodyHtml: values.bodyHtml,
-      isPublic: values.isPublic,
-      variables: (values.variables ?? '')
-        .split(',')
-        .map((item: string) => item.trim())
-        .filter(Boolean),
-    };
-
-    setTemplateSaving(true);
-    try {
-      if (editingTemplate) {
-        await api.put(`/templates/${editingTemplate.id}`, payload);
-        message.success('Template mis à jour');
-      } else {
-        await api.post('/templates', payload);
-        message.success('Template créé');
-      }
-      setTemplateModalOpen(false);
-      void fetchTemplates();
-    } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } }).response?.data?.message ?? 'Erreur lors de l’enregistrement du template';
-      message.error(msg);
-    } finally {
-      setTemplateSaving(false);
     }
   }
 
@@ -1391,7 +1305,7 @@ function EmailingTab() {
       width: 220,
       render: (_, row) => (
         <Space wrap>
-          <Button size="small" onClick={() => void openTemplateEdit(row)}>Modifier</Button>
+          <Link href={`/settings/templates/${row.id}`}><Button size="small">Modifier</Button></Link>
           <Tooltip title="Dupliquer en modèle indépendant (préréglé ou non)">
             <Button size="small" icon={<CopyOutlined />} onClick={() => void duplicateTemplateRow(row)} />
           </Tooltip>
@@ -1458,9 +1372,8 @@ function EmailingTab() {
         bordered={false}
         style={{
           borderRadius: 12,
-          background: "linear-gradient(135deg, #f9f0ff 0%, #efdbff 42%, #ffffff 100%)",
-          border: "1px solid #d3adf7",
-          boxShadow: "0 2px 8px rgba(114, 46, 209, 0.08)",
+          background: "linear-gradient(135deg, rgba(139,92,246,0.22) 0%, rgba(167, 139, 250,0.1) 100%)",
+          border: "1px solid rgba(139,92,246,0.4)",
         }}
       >
         <Row align="middle" gutter={[16, 16]}>
@@ -1494,7 +1407,7 @@ function EmailingTab() {
       <Card
         title={
           <Space>
-            <CloudOutlined style={{ color: "#1677ff" }} />
+            <CloudOutlined style={{ color: "#8b5cf6" }} />
             <span>Configuration SMTP</span>
           </Space>
         }
@@ -1521,7 +1434,7 @@ function EmailingTab() {
       <Card
         title={
           <Space>
-            <SafetyOutlined style={{ color: "#52c41a" }} />
+            <SafetyOutlined style={{ color: "#34d399" }} />
             <span>Guide et vérification DNS (SPF / DKIM / DMARC)</span>
           </Space>
         }
@@ -1601,9 +1514,9 @@ function EmailingTab() {
           </Space>
         }
         extra={
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => void openTemplateCreate()}>
+<Link href="/settings/templates/new">          <Button type="primary" icon={<PlusOutlined />}>
             Nouveau template
-          </Button>
+          </Button></Link>
         }
         style={{ borderRadius: 12, boxShadow: "0 1px 2px rgba(15,23,42,0.06)" }}
       >
@@ -1623,7 +1536,7 @@ function EmailingTab() {
           <Text type="secondary">
             Éditeur double onglet (visuel / HTML), variables de fusion <Text code>{"{{prenom}}"}</Text>, aperçu bureau et mobile.
             {" "}
-            Optionnel : dans les modales de création ou d’édition, la section « Suggestions IA » propose des variantes de ton via OpenAI lorsque <Text code>OPENAI_API_KEY</Text> est définie sur le serveur.
+            Optionnel : dans les modales de création ou d’édition, la section « Suggestions IA » propose des variantes de ton via la tâche IA <Text code>crm-email-variants</Text> lorsqu'un fournisseur d'IA est configuré (Configuration › Intelligence artificielle).
           </Text>
         </Space>
         <Table
@@ -1746,105 +1659,6 @@ function EmailingTab() {
       </Modal>
 
       <Modal
-        title={<Space><MailOutlined /><span>{editingTemplate ? 'Modifier' : 'Nouveau'} template email</span></Space>}
-        open={templateModalOpen}
-        onOk={() => void saveTemplate()}
-        onCancel={() => { setTemplateModalOpen(false); templateForm.resetFields(); setEditingTemplate(null); }}
-        confirmLoading={templateSaving}
-        width={isMobile ? "min(100%, 520px)" : 1040}
-        styles={{ body: { maxHeight: "calc(100vh - 200px)", overflowY: "auto" } }}
-        okText={editingTemplate ? 'Enregistrer' : 'Créer'}
-      >
-        <Form form={templateForm} layout="vertical" initialValues={{ variables: '', isPublic: true }}>
-          <Row gutter={16}>
-            <Col xs={24} sm={12}>
-              <Form.Item name="name" label="Nom du template" rules={[{ required: true, message: 'Nom requis' }]}> 
-                <Input placeholder="Ex: Relance 1" />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item name="category" label="Catégorie" rules={[{ max: 100 }]}> 
-                <Input placeholder="Ex: Prospect" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col xs={24}>
-              <Form.Item name="subject" label="Sujet" rules={[{ required: true, message: 'Sujet requis' }]}> 
-                <Input placeholder="Objet de l'email" />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col xs={24}>
-              <Form.Item
-                name="isPublic"
-                valuePropName="checked"
-                help="Si décoché, le modèle reste utilisable par vous mais n’apparaît pas comme « partagé » pour les autres (évolution future : filtrage par équipe)."
-              >
-                <Checkbox>Modèle visible par tous les utilisateurs (bibliothèque partagée)</Checkbox>
-              </Form.Item>
-            </Col>
-          </Row>
-          <Divider orientation="left" plain>
-            <Space size={6}>
-              <CodeOutlined />
-              <span>Corps du message</span>
-            </Space>
-          </Divider>
-          <Row gutter={[16, 16]}>
-            <Col xs={24} lg={14}>
-              <Form.Item
-                name="bodyHtml"
-                label="Éditeur visuel + HTML"
-                rules={[
-                  {
-                    validator: async (_, v) => {
-                      if (typeof v !== "string" || !v.trim()) {
-                        throw new Error("Corps du message requis");
-                      }
-                    },
-                  },
-                ]}
-                extra="Onglet Visuel (Quill) pour le texte riche ; onglet HTML (Monaco) pour le code. Basculez selon vos besoins — le contenu est synchronisé."
-              >
-                <EmailHtmlDualEditor
-                  monacoHeight={isMobile ? "260px" : "420px"}
-                  quillHeight={isMobile ? 220 : 340}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} lg={10}>
-              <Form.Item label={<Space><EyeOutlined /><span>Aperçu en direct</span></Space>}>
-                <EmailHtmlLivePreview
-                  html={typeof templateBodyHtmlWatch === "string" ? templateBodyHtmlWatch : ""}
-                  emptyHtml={previewEmptyHtml}
-                  minHeight={isMobile ? 200 : 300}
-                  maxHeight={isMobile ? 280 : 420}
-                />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col xs={24}>
-              <EmailTemplateAiVariants form={templateForm} mode="template" />
-            </Col>
-          </Row>
-          <Row gutter={16}>
-            <Col xs={24}>
-              <Form.Item
-                name="variables"
-                label="Variables"
-                help="Champs utilisables côté envoi : liste séparée par des virgules (ex: prenom, entreprise). Dans le HTML vous pouvez aussi utiliser {{prenom}}, {{entreprise}}, {{actu}}, {{custom}}."
-              >
-                <Input placeholder="prenom, entreprise, actu" />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Form>
-      </Modal>
-
-      <Modal
         title={<Space><MailOutlined /><span>{editingTemplateBlock ? 'Modifier' : 'Nouveau'} bloc de contenu</span></Space>}
         open={templateBlockModalOpen}
         onOk={() => void saveTemplateBlock()}
@@ -1955,7 +1769,7 @@ const WEIGHT_GROUPS = [
   {
     title: "Complétude du profil",
     icon: <UserOutlined />,
-    color: "#1677ff",
+    color: "#8b5cf6",
     fields: [
       { key: "hasEmail", label: "Email renseigné", max: 30 },
       { key: "hasPhone", label: "Téléphone renseigné", max: 30 },
@@ -1967,9 +1781,17 @@ const WEIGHT_GROUPS = [
     ],
   },
   {
+    title: "Potentiel estimé par l'IA",
+    icon: <ThunderboltOutlined />,
+    color: "#8b5cf6",
+    fields: [
+      { key: "aiPotential", label: "Points max (adéquation à la cible ou brief IA, au prorata)", max: 50 },
+    ],
+  },
+  {
     title: "Signaux email",
     icon: <UploadOutlined />,
-    color: "#13c2c2",
+    color: "#a78bfa",
     fields: [
       { key: "perOpen", label: "Points par email ouvert", max: 20 },
       { key: "maxOpens", label: "Plafond ouvertures", max: 50 },
@@ -1981,7 +1803,7 @@ const WEIGHT_GROUPS = [
   {
     title: "Bonus / malus par statut",
     icon: <TrophyOutlined />,
-    color: "#52c41a",
+    color: "#34d399",
     fields: [
       { key: ["statusBonus", "CONTACTE"] as [string, string], label: "Contacté", max: 30 },
       { key: ["statusBonus", "QUALIFIE"] as [string, string], label: "Qualifié", max: 30 },
@@ -2086,7 +1908,7 @@ function ScoringTab() {
           onClick={() => void save()}
           loading={saving}
           icon={saved ? <CheckOutlined /> : <SafetyOutlined />}
-          style={saved ? { background: "#52c41a", borderColor: "#52c41a" } : {}}
+          style={saved ? { background: "#34d399", borderColor: "#34d399" } : {}}
           size="large"
         >
           {saved ? "Enregistré !" : "Enregistrer les poids"}
@@ -2098,197 +1920,143 @@ function ScoringTab() {
 
 // ── Page principale ───────────────────────────────────────────────────────────
 
+type SectionKey =
+  | "overview" | "users" | "teams" | "permissions" | "security" | "pipeline-stages" | "scoring" | "imports"
+  | "emailing" | "imap" | "ai" | "enrichment" | "webhooks" | "rgpd" | "audit" | "system";
+
+type SectionDef = { key: SectionKey; icon: React.ReactNode; title: string; desc: string; color: string; render: () => React.ReactNode };
+
+const NAV_GROUPS: { label: string; items: SectionKey[] }[] = [
+  { label: "Général", items: ["overview"] },
+  { label: "Équipe & accès", items: ["users", "teams", "permissions", "security"] },
+  { label: "Prospection", items: ["pipeline-stages", "scoring", "imports"] },
+  { label: "Messagerie", items: ["emailing", "imap"] },
+  { label: "Intelligence artificielle", items: ["ai"] },
+  { label: "Intégrations", items: ["enrichment", "webhooks"] },
+  { label: "Données & conformité", items: ["rgpd", "audit"] },
+  { label: "Système", items: ["system"] },
+];
+
+const SECTIONS: Record<SectionKey, SectionDef> = {
+  overview: { key: "overview", icon: <DashboardOutlined />, title: "Vue d'ensemble", desc: "Indicateurs globaux, utilisateurs actifs et fuseau des tâches de fond.", color: "#8b5cf6", render: () => <OverviewTab /> },
+  users: { key: "users", icon: <UserOutlined />, title: "Utilisateurs", desc: "Comptes, rôles, invitations et activation.", color: "#a78bfa", render: () => <UsersTab /> },
+  teams: { key: "teams", icon: <TeamOutlined />, title: "Équipes", desc: "Regroupez les commerciaux et leurs leads.", color: "#a78bfa", render: () => <TeamsSection /> },
+  permissions: { key: "permissions", icon: <SafetyCertificateOutlined />, title: "Rôles & permissions", desc: "Matrice des droits par rôle (RBAC).", color: "#94a3b8", render: () => <PermissionsSection /> },
+  security: { key: "security", icon: <LockOutlined />, title: "Sécurité", desc: "Double authentification, sessions et politique de mots de passe.", color: "#94a3b8", render: () => <SecuritySection /> },
+  "pipeline-stages": { key: "pipeline-stages", icon: <ProjectOutlined />, title: "Étapes du pipeline", desc: "Ordre, noms et couleurs des étapes du Kanban.", color: "#8b5cf6", render: () => <PipelineStagesSection /> },
+  scoring: { key: "scoring", icon: <FireOutlined />, title: "Scoring des leads", desc: "Pondération des critères du score 0-100.", color: "#fbbf24", render: () => <ScoringTab /> },
+  imports: {
+    key: "imports", icon: <UploadOutlined />, title: "Imports", desc: "Import CSV / Excel des leads et historique.", color: "#34d399",
+    render: () => (
+      <div className="nb-glass" style={{ borderRadius: 20, padding: 40, textAlign: "center" }}>
+        <UploadOutlined style={{ fontSize: 44, color: "#34d399" }} />
+        <div className="nb-display" style={{ fontSize: 20, fontWeight: 600, margin: "12px 0 6px", color: "var(--nb-text-strong)" }}>Historique des imports</div>
+        <div style={{ color: "var(--nb-text-3)", marginBottom: 18 }}>L&apos;import guidé (mapping, dédoublonnage, suivi) se trouve sur la page dédiée.</div>
+        <Button type="primary" href="/import" size="large" icon={<UploadOutlined />}>Accéder à la page Import</Button>
+      </div>
+    ),
+  },
+  emailing: { key: "emailing", icon: <MailOutlined />, title: "Emailing", desc: "Comptes SMTP, authentification DNS, templates et blocs (variantes IA).", color: "#8b5cf6", render: () => <EmailingTab /> },
+  imap: { key: "imap", icon: <InboxOutlined />, title: "Réponses (IMAP)", desc: "Boîtes relevées automatiquement pour la boîte de réception.", color: "#a78bfa", render: () => <ImapSection /> },
+  ai: { key: "ai", icon: <ThunderboltOutlined />, title: "Intelligence artificielle", desc: "Fournisseur d'IA (Claude, OpenAI, DeepSeek, Mistral, Gemini, Ollama…), clé d'API et tâches IA.", color: "#8b5cf6", render: () => <AiSettingsSection /> },
+  enrichment: { key: "enrichment", icon: <ApiOutlined />, title: "Enrichissement", desc: "Fournisseurs de données (Hunter.io, Dropcontact, Pappers, Recherche d'entreprises) et leurs clés d'API.", color: "#22d3ee", render: () => <EnrichmentProvidersSection /> },
+  webhooks: { key: "webhooks", icon: <ApiOutlined />, title: "Webhooks", desc: "Notifiez vos outils externes (nouveau lead, réponse, désinscription…).", color: "#94a3b8", render: () => <WebhooksSection /> },
+  rgpd: { key: "rgpd", icon: <SafetyOutlined />, title: "RGPD", desc: "Registre des traitements, export et effacement des données personnelles.", color: "#34d399", render: () => <RgpdSection /> },
+  audit: { key: "audit", icon: <AuditOutlined />, title: "Journal d'audit", desc: "Qui a fait quoi, et quand.", color: "#fbbf24", render: () => <AuditLogsSection /> },
+  system: { key: "system", icon: <CloudServerOutlined />, title: "Système", desc: "Santé, capacité et file des tâches de fond.", color: "#94a3b8", render: () => <SystemSection /> },
+};
+
 export default function SettingsPage() {
   const isMobile = useIsMobile();
+  const [active, setActive] = useState<SectionKey>("overview");
+
+  // Section mémorisée dans l'URL (#users, #emailing…) pour les liens directs.
+  useEffect(() => {
+    const sync = () => {
+      const fromHash = window.location.hash.replace("#", "") as SectionKey;
+      if (fromHash && SECTIONS[fromHash]) setActive(fromHash);
+    };
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
+
+  function select(key: SectionKey) {
+    setActive(key);
+    window.history.replaceState(null, "", `#${key}`);
+    // Seul le menu défile ; la section ouverte s'affiche depuis son début.
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  const current = SECTIONS[active];
+
+  const nav = (
+    <div
+      className="nb-glass nb-settings-nav"
+      style={{
+        borderRadius: 20, padding: 10, position: isMobile ? "static" : "sticky", top: 96,
+        maxHeight: isMobile ? undefined : "calc(100vh - 112px)", overflowY: isMobile ? undefined : "auto", overscrollBehavior: "contain",
+      }}
+    >
+      {NAV_GROUPS.map((g) => (
+        <div key={g.label} style={{ marginBottom: 6 }}>
+          <div className="nb-eyebrow" style={{ fontSize: 10, padding: "10px 12px 6px" }}>{g.label}</div>
+          {g.items.map((k) => {
+            const sec = SECTIONS[k];
+            const on = k === active;
+            return (
+              <button
+                key={k}
+                type="button"
+                onClick={() => select(k)}
+                style={{
+                  width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 12, cursor: "pointer",
+                  border: "none", textAlign: "left", fontSize: 13.5, fontWeight: on ? 600 : 500,
+                  color: on ? "var(--nb-text-strong)" : "var(--nb-text-2)",
+                  background: on ? `linear-gradient(90deg, ${sec.color}2e, transparent)` : "transparent",
+                  boxShadow: on ? `inset 3px 0 0 ${sec.color}` : "none", transition: "all 0.2s",
+                }}
+              >
+                <span style={{ width: 28, height: 28, borderRadius: 9, display: "inline-flex", alignItems: "center", justifyContent: "center", color: sec.color, background: `${sec.color}1f`, flexShrink: 0 }}>
+                  {sec.icon}
+                </span>
+                {sec.title}
+              </button>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
 
   return (
-    <Space direction="vertical" size={24} style={{ width: "100%" }}>
-      <div
-        className="page-hero"
-        style={{
-          background: "linear-gradient(135deg,#722ed1 0%,#531dab 100%)",
-          alignItems: "center",
-        }}
-      >
-        <div
-          style={{
-            width: 52, height: 52, borderRadius: 14,
-            background: "rgba(255,255,255,0.15)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 24, color: "#fff",
-          }}
-        >
-          <SettingOutlined />
-        </div>
-        <div>
-          <Title level={isMobile ? 4 : 3} style={{ color: "#fff", margin: 0 }}>Administration</Title>
-          <Text style={{ color: "rgba(255,255,255,0.75)" }}>
-            Gestion des utilisateurs, configuration du scoring et supervision globale
-          </Text>
+    <div style={{ display: "grid", gap: 20 }}>
+      <PageHeader
+        icon={<SettingOutlined />}
+        title="Configuration"
+        subtitle="Équipe, prospection, messagerie, IA, intégrations, conformité et système."
+      />
+
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "260px minmax(0, 1fr)", gap: 20, alignItems: "start" }}>
+        {nav}
+        <div key={active} className="nb-fade-up" style={{ minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18 }}>
+            <span
+              style={{
+                width: 46, height: 46, borderRadius: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 20,
+                color: "#fff", background: `linear-gradient(135deg, ${current.color}, #8b5cf6)`, boxShadow: `0 10px 26px -10px ${current.color}`,
+              }}
+            >
+              {current.icon}
+            </span>
+            <div>
+              <div className="nb-display" style={{ fontSize: 22, fontWeight: 700, color: "var(--nb-text-strong)" }}>{current.title}</div>
+              <div style={{ fontSize: 13, color: "var(--nb-text-3)" }}>{current.desc}</div>
+            </div>
+          </div>
+          {current.render()}
         </div>
       </div>
-
-      <Tabs
-        defaultActiveKey="overview"
-        size={isMobile ? "small" : "large"}
-        tabBarGutter={isMobile ? 12 : 24}
-        tabBarStyle={{ marginBottom: 0 }}
-        items={[
-          {
-            key: "overview",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#1677ff" }} />
-                Vue d&apos;ensemble
-              </Space>
-            ),
-            children: <OverviewTab />,
-          },
-          {
-            key: "users",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#52c41a" }} />
-                Utilisateurs
-              </Space>
-            ),
-            children: <UsersTab />,
-          },
-          {
-            key: "teams",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#2f54eb" }} />
-                Équipes
-              </Space>
-            ),
-            children: <TeamsSection />,
-          },
-          {
-            key: "pipeline-stages",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#08979c" }} />
-                Pipeline (étapes)
-              </Space>
-            ),
-            children: <PipelineStagesSection />,
-          },
-          {
-            key: "permissions",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#eb2f96" }} />
-                Rôles & permissions
-              </Space>
-            ),
-            children: <PermissionsSection />,
-          },
-          {
-            key: "security",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#f5222d" }} />
-                Sécurité (2FA)
-              </Space>
-            ),
-            children: <SecuritySection />,
-          },
-          {
-            key: "audit",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#595959" }} />
-                Journal d&apos;activité
-              </Space>
-            ),
-            children: <AuditLogsSection />,
-          },
-          {
-            key: "system",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#ff7a45" }} />
-                Système
-              </Space>
-            ),
-            children: <SystemSection />,
-          },
-          {
-            key: "webhooks",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#fa541c" }} />
-                Intégrations
-              </Space>
-            ),
-            children: <WebhooksSection />,
-          },
-          {
-            key: "rgpd",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#389e0d" }} />
-                RGPD
-              </Space>
-            ),
-            children: <RgpdSection />,
-          },
-          {
-            key: "scoring",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#fa8c16" }} />
-                Scoring
-              </Space>
-            ),
-            children: <ScoringTab />,
-          },
-          {
-            key: "emailing",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#722ed1" }} />
-                Emailing
-              </Space>
-            ),
-            children: <EmailingTab />,
-          },
-          {
-            key: "imap",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#13c2c2" }} />
-                IMAP / Réponses
-              </Space>
-            ),
-            children: <ImapSection />,
-          },
-          {
-            key: "imports",
-            label: (
-              <Space>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#722ed1" }} />
-                Imports
-              </Space>
-            ),
-            children: (
-              <Card>
-                <div style={{ textAlign: "center", padding: "40px 0" }}>
-                  <UploadOutlined style={{ fontSize: 48, color: "#722ed1", marginBottom: 16 }} />
-                  <Title level={4}>Historique des imports</Title>
-                  <Paragraph type="secondary">
-                    L&apos;historique complet et la gestion des imports se trouvent sur la page dédiée.
-                  </Paragraph>
-                  <Button type="primary" href="/import" size="large" icon={<UploadOutlined />}>
-                    Accéder à la page Import
-                  </Button>
-                </div>
-              </Card>
-            ),
-          },
-        ]}
-      />
-    </Space>
+    </div>
   );
 }

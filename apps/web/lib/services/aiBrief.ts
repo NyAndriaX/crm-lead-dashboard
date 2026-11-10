@@ -6,9 +6,11 @@
  *  - angle   : l'angle d'approche commercial recommandé
  *  - score   : 0-100 (potentiel estimé)
  *
- * OpenAI si OPENAI_API_KEY, sinon fallback déterministe (toujours testable).
+ * Skill Claude `crm-lead-brief` si CLAUDE_SKILLS_ENABLED (voir @crm/ai),
+ * sinon fallback déterministe (toujours testable).
  * Ne jette jamais : en cas d'échec, retourne le fallback.
  */
+import { leadBriefSchema, runSkill } from "@crm/ai";
 
 export type LeadAiBrief = {
   summary: string;
@@ -58,55 +60,41 @@ export async function generateLeadAiBrief(
 ): Promise<LeadAiBrief> {
   const at = new Date().toISOString();
   const fb = fallbackBrief(lead, enrichment);
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) return { ...fb, source: "fallback", at };
-
   const e = (enrichment ?? {}) as Record<string, unknown>;
   const news = (e.news as { items?: { title: string }[] } | undefined)?.items ?? [];
-  const company = (e.company as Record<string, unknown> | undefined) ?? {};
-  const ctx = [
-    `Contact : ${[lead.firstName, lead.lastName].filter(Boolean).join(" ") || "(inconnu)"}`,
-    `Entreprise : ${lead.company ?? "(inconnue)"}`,
-    `Secteur : ${lead.sector ?? "(inconnu)"} · Ville : ${lead.city ?? "(inconnue)"}`,
-    company.legalName ? `Raison sociale : ${String(company.legalName)}` : "",
-    company.foundedYear ? `Créée en : ${String(company.foundedYear)}` : "",
-    news.length ? `Actu : ${news.slice(0, 3).map((n) => n.title).join(" | ")}` : "",
-  ].filter(Boolean).join("\n");
+  const company = (e.company as { legalName?: string; nafCode?: string; foundedYear?: number } | undefined) ?? {};
+  const site = (e.siteAnalysis as {
+    summary?: string; activity?: string; signals?: string[]; fitScore?: number;
+    decisionMaker?: { name?: string; role?: string | null } | null;
+  } | undefined) ?? {};
 
-  try {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: process.env.OPENAI_AUTOPILOT_MODEL ?? "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content:
-              "Tu es un SDR B2B. À partir des infos d'un lead, renvoie UNIQUEMENT un JSON " +
-              '{"summary": string (2-3 phrases qui qualifient et chauffent le lead, en français), ' +
-              '"angle": string (angle d\'approche commercial concret), "score": number (0-100, potentiel)}. ' +
-              "Pas de markdown.",
-          },
-          { role: "user", content: ctx },
-        ],
-        temperature: 0.5,
-        max_tokens: 300,
-        response_format: { type: "json_object" },
-      }),
-    });
-    if (!res.ok) return { ...fb, source: "fallback", at };
-    const j = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    const parsed = JSON.parse(j.choices?.[0]?.message?.content ?? "{}") as Partial<LeadAiBrief>;
-    if (!parsed.summary) return { ...fb, source: "fallback", at };
-    return {
-      summary: String(parsed.summary).slice(0, 800),
-      angle: String(parsed.angle ?? fb.angle).slice(0, 400),
-      score: Math.max(0, Math.min(100, Number(parsed.score ?? fb.score) || fb.score)),
-      source: "ai",
-      at,
-    };
-  } catch {
-    return { ...fb, source: "fallback", at };
-  }
+  const out = await runSkill<{ summary: string; angle: string; score: number }>({
+    skill: "crm-lead-brief",
+    schema: leadBriefSchema,
+    input: {
+      contact: [lead.firstName, lead.lastName].filter(Boolean).join(" ") || null,
+      company: lead.company,
+      sector: lead.sector,
+      city: lead.city,
+      legalName: company.legalName ?? null,
+      nafCode: company.nafCode ?? null,
+      foundedYear: company.foundedYear ?? null,
+      news: news.slice(0, 3).map((n) => n.title),
+      siteSummary: site.summary ?? null,
+      activity: site.activity ?? null,
+      signals: site.signals ?? [],
+      fitScore: site.fitScore ?? null,
+      decisionMaker: site.decisionMaker?.name
+        ? `${site.decisionMaker.name}${site.decisionMaker.role ? ` (${site.decisionMaker.role})` : ""}`
+        : null,
+    },
+  });
+  if (!out) return { ...fb, source: "fallback", at };
+  return {
+    summary: out.summary.slice(0, 800),
+    angle: out.angle.slice(0, 400),
+    score: Math.max(0, Math.min(100, Math.round(out.score))),
+    source: "ai",
+    at,
+  };
 }

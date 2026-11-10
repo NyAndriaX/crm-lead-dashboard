@@ -118,7 +118,7 @@ export function PermissionsSection() {
       width: 110,
       render: (_, r) =>
         r[role] ? (
-          <CheckCircleFilled style={{ color: "#52c41a", fontSize: 18 }} />
+          <CheckCircleFilled style={{ color: "#34d399", fontSize: 18 }} />
         ) : (
           <MinusOutlined style={{ color: "#bfbfbf", fontSize: 14 }} />
         ),

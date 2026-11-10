@@ -1,0 +1,71 @@
+{
+  "info": {
+    "name": "CRM LEAD SCRAPER API",
+    "_postman_id": "4c8c6447-3514-4d5e-9f01-a229f494d3b8",
+    "description": "API FastAPI — leads normalisés ScrapedLead pour CRM Lead Dashboard.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8000/health",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8000",
+          "path": ["health"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Scrape (CRM)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{SCRAPER_API_KEY}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"keywords\": \"Immobilier\",\n  \"location\": { \"country\": \"France\" },\n  \"limit\": 10,\n  \"detailed\": true,\n  \"locale\": \"fr-FR\",\n  \"filter_country\": true\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "http://localhost:8000/scrape",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8000",
+          "path": ["scrape"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Search (deprecated)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{SCRAPER_API_KEY}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"Immobilier en france\",\n  \"max_results\": 10,\n  \"detailed\": true,\n  \"filter_country\": \"France\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": {
+          "raw": "http://localhost:8000/search",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8000",
+          "path": ["search"]
+        }
+      },
+      "response": []
+    }
+  ]
+}

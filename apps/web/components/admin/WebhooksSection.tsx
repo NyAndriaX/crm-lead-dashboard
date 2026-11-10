@@ -178,7 +178,7 @@ export function WebhooksSection() {
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
       <Card size="small">
         <Space style={{ width: "100%" }}>
-          <ApiOutlined style={{ fontSize: 20, color: "#1677ff" }} />
+          <ApiOutlined style={{ fontSize: 20, color: "#8b5cf6" }} />
           <div style={{ flex: 1 }}>
             <Text strong>Webhooks sortants</Text>
             <Paragraph type="secondary" style={{ margin: 0, fontSize: 12 }}>

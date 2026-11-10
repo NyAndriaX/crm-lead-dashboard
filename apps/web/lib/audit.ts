@@ -1,5 +1,5 @@
 // Journalisation — CRM-020 / SEC-05. Écrit dans `auditLogs` (qui/quoi/quand/IP).
-// TTL 12 mois géré côté Mongo (voir packages/db/prisma/manual-indexes.md).
+// Rétention 12 mois : purge quotidienne par le job `retention-purge` (@crm/jobs).
 import { prisma } from "@crm/db";
 
 export async function audit(params: {

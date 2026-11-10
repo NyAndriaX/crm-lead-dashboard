@@ -131,7 +131,7 @@ export function inviteEmailTemplate(args: {
       <p>${escapeHtml(args.inviterName)} vous a invité(e) à rejoindre le CRM Lead Dashboard
       avec le rôle <strong>${escapeHtml(args.role)}</strong>.</p>
       <p style="margin:24px 0">
-        <a href="${args.acceptUrl}" style="display:inline-block;padding:12px 24px;background:#1677ff;color:#fff;text-decoration:none;border-radius:6px;font-weight:600">
+        <a href="${args.acceptUrl}" style="display:inline-block;padding:12px 24px;background:#8b5cf6;color:#fff;text-decoration:none;border-radius:6px;font-weight:600">
           Activer mon compte
         </a>
       </p>

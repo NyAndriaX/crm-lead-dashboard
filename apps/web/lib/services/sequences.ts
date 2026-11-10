@@ -1,7 +1,7 @@
 /**
  * Service Séquences de relance (RL-01 / RL-02 / RL-04 / RL-06 / RL-07).
  */
-import { prisma } from "@crm/db";
+import { prisma, buildLeadWhereFromSegmentFilters, type LeadSegmentFilters } from "@crm/db";
 
 export type SequenceStepInput = {
   delayDays: number;
@@ -154,6 +154,21 @@ export async function enrollLeadsInSequence(
     })),
   });
   return { enrolled: toCreate.length, skipped: leadIds.length - toCreate.length };
+}
+
+/** Inscrit d'un coup les leads joignables (email connu, non supprimés) d'un segment. */
+export async function enrollSegmentInSequence(sequenceId: string, segmentId: string) {
+  const segment = await prisma.segment.findUnique({ where: { id: segmentId } });
+  if (!segment) throw new Error("Segment introuvable");
+  const leads = await prisma.lead.findMany({
+    where: {
+      ...buildLeadWhereFromSegmentFilters({ ...((segment.filters ?? {}) as LeadSegmentFilters), includeDeleted: false }),
+      emailHash: { not: null },
+    },
+    select: { id: true },
+    take: 5000,
+  });
+  return enrollLeadsInSequence(sequenceId, leads.map((l) => l.id));
 }
 
 /** Retire un lead d'une séquence (RL-07). */

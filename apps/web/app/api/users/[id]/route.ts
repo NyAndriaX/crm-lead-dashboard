@@ -127,7 +127,7 @@ export const DELETE = handler(async (req, ctx: { params: Promise<{ id: string }>
     );
   }
 
-  // Nettoyage des données liées avant la suppression (Mongo n'a pas de cascade).
+  // Nettoyage explicite des données liées avant la suppression (références sans cascade).
   //  - Leads : on les remet dans le pool (assignedToId → null) plutôt que de les perdre.
   //  - TemplateBlock : contenu partagé conservé, on enlève juste l'auteur.
   //  - LeadView / Notification : données perso éphémères → supprimées.

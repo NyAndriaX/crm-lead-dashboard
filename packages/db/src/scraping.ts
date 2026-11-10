@@ -1,7 +1,7 @@
 /**
- * Types et helpers partagés (web + worker) pour les résultats du scraper
- * externe `crm-leads-scraper`.
+ * Types et helpers partagés (web + jobs) pour les résultats du scraper (apps/scraper).
  */
+import { classifyLinkedinUrl } from "./linkedin";
 
 export type ScrapeSource = "google_maps" | "directories" | "linkedin" | "website";
 
@@ -21,9 +21,40 @@ export type ScrapedLeadEmailStatus =
   | "found_legal"
   | "no_email"
   | "no_website"
-  | "invalid_email";
+  | "invalid_email"
+  | "unreachable"
+  | "skipped"
+  /** robots.txt interdit la visite du site (S-05). */
+  | "robots_disallowed";
 
-/** Lead normalisé (contrat crm-leads-scraper). */
+/** Analyse IA d'un établissement (skill crm-lead-analysis, côté scraper). */
+export type ScrapedLeadAI = {
+  summary: string;
+  activity?: string | null;
+  services?: string[];
+  signals?: string[];
+  fit_score: number;
+  fit_reason?: string | null;
+  decision_maker_role?: string | null;
+  decision_maker_email?: string | null;
+  decision_maker_phone?: string | null;
+  best_phone?: string | null;
+};
+
+/** Téléphone lu sur le site (E.164 + affichage FR). */
+export type ScrapedPhone = { number: string; display: string; kind: "fixe" | "mobile" | "special"; source?: string };
+
+/** Contacts complémentaires lus sur le site (scraper : app/contacts.py). */
+export type ScrapedLeadContacts = {
+  phones: ScrapedPhone[];
+  socials: Partial<Record<"linkedin" | "facebook" | "instagram" | "x" | "youtube" | "tiktok", string>>;
+  /** Tous les liens LinkedIn publiés sur le site (page entreprise et profils) — E-04. */
+  linkedin?: { url: string; kind: "company" | "person" }[];
+  contact_url?: string | null;
+  legal?: { siren?: string; siret?: string; legal_form?: string; capital?: string } | null;
+};
+
+/** Lead normalisé (contrat apps/scraper). */
 export type ScrapedLead = {
   source: ScrapeSource;
   company?: string | null;
@@ -43,11 +74,19 @@ export type ScrapedLead = {
   latitude?: number | null;
   longitude?: number | null;
   email_status?: ScrapedLeadEmailStatus | null;
+  /** Rôle du décideur identifié (`name`) — ex. « Gérante ». */
+  contact_role?: string | null;
+  /** Résumé de la page d'accueil (= ai.summary quand l'analyse IA est active). */
+  enrichment?: string | null;
+  ai?: ScrapedLeadAI | null;
+  contacts?: ScrapedLeadContacts | null;
+  /** Page du site sectoriel (annuaire, liste de membres) où l'établissement a été trouvé. */
+  source_url?: string | null;
   query?: string | null;
   scraped_at?: string | null;
 };
 
-/** Enveloppe HTTP renvoyée par crm-leads-scraper. */
+/** Enveloppe HTTP renvoyée par le scraper. */
 export type ScraperApiResponse = {
   ok: boolean;
   query?: string | null;
@@ -55,7 +94,13 @@ export type ScraperApiResponse = {
   source?: string | null;
   scraped_at?: string | null;
   results: ScrapedLead[];
-  meta?: { duration_ms?: number; filters_applied?: string[] };
+  meta?: {
+    duration_ms?: number;
+    filters_applied?: string[];
+    robots?: { enforced?: boolean; domains_checked?: number; pages_allowed?: number; pages_disallowed?: number; disallowed_urls?: string[] } | null;
+    rate?: { delay_ms?: number; rotate_user_agent?: boolean; proxy?: string | null; origin?: string } | null;
+    sources?: Record<string, number>;
+  };
   error?: string | null;
 };
 
@@ -75,13 +120,26 @@ function capitalizePart(s: string): string {
  * Déduit prénom / nom depuis la partie locale de l'email (ex. jean.dupont@…).
  * Best-effort — les boîtes génériques (contact@, info@) ne donnent qu'un prénom.
  */
+/** Parties d'adresse qui désignent un service, pas une personne (contact@, agence@…). */
+const GENERIC_LOCAL_PARTS = new Set([
+  "contact", "contacts", "info", "infos", "information", "hello", "bonjour", "salut", "accueil", "agence", "admin",
+  "administration", "office", "bureau", "commercial", "commerciale", "sales", "vente", "ventes", "location", "gestion",
+  "transaction", "transactions", "immobilier", "immo", "direction", "secretariat", "support", "service", "services",
+  "team", "equipe", "mail", "email", "rh", "recrutement", "compta", "comptabilite", "facturation", "devis", "rdv",
+  "booking", "reservation", "client", "clients", "web", "webmaster", "marketing", "communication", "presse", "news",
+]);
+
 export function namesFromEmail(email: string): { firstName: string | null; lastName: string | null } {
   const local = email.trim().toLowerCase().split("@")[0] ?? "";
   if (!local) return { firstName: null, lastName: null };
 
   const parts = local.split(/[._+-]+/).filter((p) => p.length > 0);
+  // Pas de nom inventé à partir d'une adresse de service ou d'un identifiant (chiffres).
+  if (parts.some((p) => GENERIC_LOCAL_PARTS.has(p) || /\d/.test(p))) return { firstName: null, lastName: null };
   const [first, ...rest] = parts;
   if (!first) return { firstName: null, lastName: null };
+  // « j.martin@ » : l'initiale n'est pas un prénom, mais le nom de famille est fiable.
+  if (first.length < 2) return { firstName: null, lastName: rest.map(capitalizePart).join(" ") || null };
   if (rest.length > 0) {
     return {
       firstName: capitalizePart(first),
@@ -130,20 +188,162 @@ export function scraperEnrichment(raw: ScrapedLead): Record<string, unknown> | u
   if (raw.latitude != null) scraper.latitude = raw.latitude;
   if (raw.longitude != null) scraper.longitude = raw.longitude;
   if (raw.source) scraper.source = raw.source;
-  return Object.keys(scraper).length > 0 ? { scraper } : undefined;
+  if (raw.source_url) scraper.sourceUrl = raw.source_url;
+  const out: Record<string, unknown> = {};
+  if (Object.keys(scraper).length > 0) out.scraper = scraper;
+  if (raw.ai) {
+    out.siteAnalysis = {
+      summary: raw.ai.summary,
+      activity: raw.ai.activity ?? null,
+      services: raw.ai.services ?? [],
+      signals: raw.ai.signals ?? [],
+      fitScore: raw.ai.fit_score,
+      fitReason: raw.ai.fit_reason ?? null,
+      decisionMaker: raw.name ? { name: raw.name, role: raw.contact_role ?? raw.ai.decision_maker_role ?? null } : null,
+    };
+  } else if (raw.enrichment) {
+    out.siteAnalysis = { summary: raw.enrichment };
+  }
+  // Données d'entreprise publiques (non personnelles) : en clair. Téléphones et emails → scrapedPrivateContacts().
+  const c = raw.contacts;
+  // Pages LinkedIn d'entreprise publiées sur le site : publiques. Les profils de personnes → contactsEnc.
+  const linkedinCompany = (c?.linkedin ?? []).filter((l) => l.kind === "company").map((l) => l.url);
+  if (c && (Object.keys(c.socials ?? {}).length || linkedinCompany.length || c.contact_url || c.legal)) {
+    out.siteContacts = {
+      legal: c.legal ?? null,
+      socials: c.socials ?? {},
+      ...(linkedinCompany.length ? { linkedinCompany } : {}),
+      contactUrl: c.contact_url ?? null,
+    };
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+/**
+ * Coordonnées supplémentaires (données personnelles possibles : ligne directe, email nominatif) —
+ * à stocker **chiffrées** (`Lead.contactsEnc`), jamais en clair dans `enrichment`.
+ */
+export type LeadPrivateContacts = {
+  phones: ScrapedPhone[];
+  decisionMaker?: { email?: string | null; phone?: string | null } | null;
+  /** Profils LinkedIn de personnes publiés sur le site de l'entreprise (E-04, « vérifiés »). */
+  linkedinProfiles?: string[];
+};
+
+export function scrapedPrivateContacts(raw: ScrapedLead): LeadPrivateContacts | null {
+  const phones = raw.contacts?.phones ?? [];
+  const dmEmail = raw.ai?.decision_maker_email ?? null;
+  const dmPhone = raw.ai?.decision_maker_phone ?? null;
+  const linkedinProfiles = (raw.contacts?.linkedin ?? []).filter((l) => l.kind === "person").map((l) => l.url);
+  if (!phones.length && !dmEmail && !dmPhone && !linkedinProfiles.length) return null;
+  return {
+    phones,
+    decisionMaker: dmEmail || dmPhone ? { email: dmEmail, phone: dmPhone } : null,
+    ...(linkedinProfiles.length ? { linkedinProfiles } : {}),
+  };
+}
+
+/** Score d'adéquation IA (0-100) ou null si la fiche n'a pas été analysée. */
+export function scrapedFitScore(raw: Pick<ScrapedLead, "ai">): number | null {
+  const s = raw.ai?.fit_score;
+  return typeof s === "number" && Number.isFinite(s) ? s : null;
+}
+
+/** URL de site sans paramètres de suivi (utm_*, gclid, fbclid…) ajoutés par Google Maps. */
+export function cleanWebsiteUrl(url: string | null | undefined): string | null {
+  const raw = url?.trim();
+  if (!raw) return null;
+  try {
+    const u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    for (const k of [...u.searchParams.keys()]) {
+      if (/^(utm_|gclid$|fbclid$|msclkid$|mc_)/i.test(k)) u.searchParams.delete(k);
+    }
+    const out = u.toString();
+    return u.pathname === "/" && !u.search && !u.hash ? out.replace(/\/$/, "") : out;
+  } catch {
+    return raw;
+  }
 }
 
 export function tagsFromScrapedLead(raw: ScrapedLead): string[] {
-  const tags: string[] = ["scraping"];
-  if (raw.place_id?.trim()) tags.push(`place:${raw.place_id.trim()}`);
-  if (raw.email_status === "found_legal") tags.push("email-legal");
-  if (raw.email_status === "no_email") tags.push("sans-email");
-  if (raw.email_status === "no_website") tags.push("sans-site");
+  // L'identifiant Google Maps va dans la colonne `placeId` (dédoublonnage), pas dans les tags visibles.
+  // Libellés lisibles : ces tags s'affichent tels quels sur les fiches et servent de filtres de segment.
+  const tags: string[] = ["Prospection IA"];
+  if (raw.email_status === "no_email") tags.push("Sans email");
+  if (raw.email_status === "no_website") tags.push("Sans site web");
+  if (raw.source === "directories") tags.push("Site sectoriel");
+  if (raw.name?.trim()) tags.push("Décideur identifié");
+  const fit = scrapedFitScore(raw);
+  if (fit != null && fit >= 70) tags.push("Cible IA");
   return tags;
 }
 
-export function placeIdTag(placeId: string): string {
-  return `place:${placeId.trim()}`;
+function parseLeadAI(v: unknown): ScrapedLeadAI | null {
+  if (!v || typeof v !== "object") return null;
+  const a = v as Record<string, unknown>;
+  if (typeof a.summary !== "string" || typeof a.fit_score !== "number") return null;
+  const strings = (x: unknown) => (Array.isArray(x) ? x.filter((s): s is string => typeof s === "string") : []);
+  return {
+    summary: a.summary,
+    activity: typeof a.activity === "string" ? a.activity : null,
+    services: strings(a.services),
+    signals: strings(a.signals),
+    fit_score: Math.max(0, Math.min(100, Math.round(a.fit_score))),
+    fit_reason: typeof a.fit_reason === "string" ? a.fit_reason : null,
+    decision_maker_role: typeof a.decision_maker_role === "string" ? a.decision_maker_role : null,
+    decision_maker_email: typeof a.decision_maker_email === "string" ? a.decision_maker_email : null,
+    decision_maker_phone: typeof a.decision_maker_phone === "string" ? a.decision_maker_phone : null,
+    best_phone: typeof a.best_phone === "string" ? a.best_phone : null,
+  };
+}
+
+function parseContacts(v: unknown): ScrapedLeadContacts | null {
+  if (!v || typeof v !== "object") return null;
+  const c = v as Record<string, unknown>;
+  const phones = (Array.isArray(c.phones) ? c.phones : [])
+    .filter((p): p is Record<string, unknown> => !!p && typeof p === "object" && /^\+\d{8,15}$/.test(String((p as { number?: unknown }).number ?? "")))
+    .map((p) => ({
+      number: String(p.number),
+      display: typeof p.display === "string" ? p.display : String(p.number),
+      kind: (p.kind === "mobile" || p.kind === "special" ? p.kind : "fixe") as ScrapedPhone["kind"],
+      source: typeof p.source === "string" ? p.source : undefined,
+    }))
+    .slice(0, 8);
+  const socials: ScrapedLeadContacts["socials"] = {};
+  if (c.socials && typeof c.socials === "object") {
+    for (const [k, val] of Object.entries(c.socials as Record<string, unknown>)) {
+      if (typeof val === "string" && /^https:\/\//.test(val) && ["linkedin", "facebook", "instagram", "x", "youtube", "tiktok"].includes(k)) {
+        socials[k as keyof ScrapedLeadContacts["socials"]] = val;
+      }
+    }
+  }
+  const legalRaw = c.legal && typeof c.legal === "object" ? (c.legal as Record<string, unknown>) : null;
+  const legal = legalRaw
+    ? Object.fromEntries(Object.entries(legalRaw).filter(([k, val]) => ["siren", "siret", "legal_form", "capital"].includes(k) && typeof val === "string"))
+    : null;
+  const contactUrl = typeof c.contact_url === "string" && /^https?:\/\//.test(c.contact_url) ? c.contact_url : null;
+  // Tous les liens LinkedIn du site : `socials.linkedin_links` (URL séparées par un espace, app/contacts.py)
+  // ou tableau `linkedin: [{ url }]`.
+  const linkedinRaw = [
+    ...(typeof (c.socials as Record<string, unknown> | undefined)?.linkedin_links === "string"
+      ? String((c.socials as Record<string, unknown>).linkedin_links).split(/\s+/)
+      : []),
+    ...(Array.isArray(c.linkedin) ? c.linkedin : []).map((l) => (l && typeof l === "object" ? String((l as { url?: unknown }).url ?? "") : "")),
+  ];
+  const seenLinkedin = new Set<string>();
+  const linkedin = linkedinRaw
+    .filter((url) => url && !seenLinkedin.has(url.toLowerCase()) && seenLinkedin.add(url.toLowerCase()))
+    .map((url) => ({ url, kind: classifyLinkedinUrl(url) }))
+    .filter((l): l is { url: string; kind: "company" | "person" } => l.kind !== null)
+    .slice(0, 10);
+  if (!phones.length && !Object.keys(socials).length && !linkedin.length && !contactUrl && !(legal && Object.keys(legal).length)) return null;
+  return {
+    phones,
+    socials,
+    ...(linkedin.length ? { linkedin } : {}),
+    contact_url: contactUrl,
+    legal: legal && Object.keys(legal).length ? legal : null,
+  };
 }
 
 function normalizeOneLead(item: unknown, fallbackQuery?: string): ScrapedLead | null {
@@ -177,6 +377,11 @@ function normalizeOneLead(item: unknown, fallbackQuery?: string): ScrapedLead | 
     latitude: typeof r.latitude === "number" ? r.latitude : null,
     longitude: typeof r.longitude === "number" ? r.longitude : null,
     email_status: (r.email_status as ScrapedLeadEmailStatus) ?? null,
+    contact_role: typeof r.contact_role === "string" ? r.contact_role.trim() || null : null,
+    enrichment: typeof r.enrichment === "string" ? r.enrichment.trim() || null : null,
+    ai: parseLeadAI(r.ai),
+    contacts: parseContacts(r.contacts),
+    source_url: typeof r.source_url === "string" && /^https?:\/\//.test(r.source_url) ? r.source_url : null,
     query: (typeof r.query === "string" ? r.query : null) || fallbackQuery || null,
     scraped_at: typeof r.scraped_at === "string" ? r.scraped_at : null,
   };

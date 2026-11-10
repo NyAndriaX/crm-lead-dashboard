@@ -8,10 +8,10 @@
  *  - soft delete + restore, écriture d'historique (leadHistory) — CRM-020.
  *
  * Note CRM-013 : recherche implémentée en multi-champs `contains` insensible à la casse
- * (substring) + debounce 300 ms côté client. Le text index Mongo (`@@fulltext`) reste
- * disponible pour un `findRaw({ $text })` ranké si besoin ultérieur.
+ * (substring, LIKE insensible à la casse/accents via la collation MySQL) + debounce 300 ms côté client. Un index FULLTEXT MySQL reste
+ * envisageable pour une recherche classée par pertinence si le volume l'exige.
  */
-import { Prisma, prisma, type Lead, buildLeadWhereFromSegmentFilters, LEAD_NOT_DELETED } from "@crm/db";
+import { Prisma, prisma, type Lead, asStringArray, buildLeadWhereFromSegmentFilters, LEAD_NOT_DELETED, type LeadPrivateContacts } from "@crm/db";
 import { decryptOrNull, emailHash, encryptOrNull, normalizeEmail } from "../crypto";
 import type {
   AssignLeadInput, ChangeStatusInput, CreateLeadInput, LeadFilters, ListLeadsQuery,
@@ -46,11 +46,22 @@ export interface LeadDTO {
   assignedToId: string | null;
   pipelineStageId: string | null;
   enrichment: unknown;
+  /** Coordonnées supplémentaires déchiffrées (téléphones du site, contacts directs du décideur). */
+  contacts: LeadPrivateContacts | null;
   lastActionAt: Date | null;
   lastReplyAt: Date | null;
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+function parsePrivateContacts(json: string | null): LeadPrivateContacts | null {
+  if (!json) return null;
+  try {
+    return JSON.parse(json) as LeadPrivateContacts;
+  } catch {
+    return null;
+  }
 }
 
 export function toDTO(l: Lead): LeadDTO {
@@ -69,11 +80,12 @@ export function toDTO(l: Lead): LeadDTO {
     status: l.status,
     emailStatus: l.emailStatus,
     score: l.score,
-    tags: l.tags,
+    tags: asStringArray(l.tags),
     notes: l.notes,
     assignedToId: l.assignedToId,
     pipelineStageId: l.pipelineStageId,
     enrichment: l.enrichment ?? null,
+    contacts: parsePrivateContacts(decryptOrNull(l.contactsEnc)),
     lastActionAt: l.lastActionAt,
     lastReplyAt: l.lastReplyAt,
     deletedAt: l.deletedAt,

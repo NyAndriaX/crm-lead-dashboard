@@ -32,7 +32,7 @@ type StageRow = {
   createdAt: string;
 };
 
-const DEFAULT_COLORS = ["#1677ff", "#52c41a", "#fa8c16", "#722ed1", "#13c2c2", "#eb2f96", "#f5222d", "#595959"];
+const DEFAULT_COLORS = ["#94a3b8", "#a78bfa", "#8b5cf6", "#94a3b8", "#fbbf24", "#34d399", "#fb7185", "#8b5cf6"];
 
 export function PipelineStagesSection() {
   const [stages, setStages] = useState<StageRow[]>([]);
@@ -143,7 +143,7 @@ export function PipelineStagesSection() {
           <div
             style={{
               width: 14, height: 14, borderRadius: 4,
-              background: r.color ?? "#d9d9d9", border: "1px solid #e8e8e8",
+              background: r.color ?? "#d9d9d9", border: "1px solid var(--nb-border)",
             }}
           />
           <Text strong>{r.name}</Text>
@@ -195,7 +195,7 @@ export function PipelineStagesSection() {
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
       <Card size="small">
         <Space style={{ width: "100%" }}>
-          <ProjectOutlined style={{ fontSize: 20, color: "#1677ff" }} />
+          <ProjectOutlined style={{ fontSize: 20, color: "#8b5cf6" }} />
           <div style={{ flex: 1 }}>
             <Text strong>Étapes du pipeline commercial</Text>
             <Paragraph type="secondary" style={{ margin: 0, fontSize: 12 }}>
@@ -241,7 +241,7 @@ export function PipelineStagesSection() {
                               className={`${props.className ?? ""} ${snapshot.isDragging ? "drag-active" : ""}`}
                               style={{
                                 ...drag.draggableProps.style,
-                                background: snapshot.isDragging ? "#e6f4ff" : undefined,
+                                background: snapshot.isDragging ? "rgba(139,92,246,0.14)" : undefined,
                               }}
                             >
                               {props.children}

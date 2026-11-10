@@ -1,0 +1,31 @@
+Return-Path: <>
+Date: Wed, 28 Oct 2026 16:45:09 +0100
+From: Mail Delivery System <MAILER-DAEMON@smtp.orange-business.fr>
+To: prospection@exemple-crm.fr
+Subject: Mail delivery failed: returning message to sender
+Message-Id: <E1tAbCd-0004Xy-Qz@smtp.orange-business.fr>
+X-Failed-Recipients: sophie.roux@orange.fr
+Auto-Submitted: auto-replied
+MIME-Version: 1.0
+Content-Type: text/plain; charset=us-ascii
+
+This message was created automatically by mail delivery software.
+
+A message that you sent could not be delivered to one or more of its
+recipients. This is a permanent error. The following address(es) failed:
+
+  sophie.roux@orange.fr
+    host smtp-in.orange.fr [192.0.2.80]
+    SMTP error from remote mail server after RCPT TO:<sophie.roux@orange.fr>:
+    552 5.2.2 Mailbox full / Boite pleine
+
+------ This is a copy of the message, including all the headers. ------
+
+Return-path: <prospection@exemple-crm.fr>
+From: "Equipe Commerciale" <prospection@exemple-crm.fr>
+To: sophie.roux@orange.fr
+Subject: Votre prospection, en pilote automatique
+Message-ID: <crm-cmcampaign000000000000001-cmlead00000000000000000005-A@exemple-crm.fr>
+Date: Wed, 28 Oct 2026 16:45:05 +0100
+
+<p>Bonjour Sophie,</p>

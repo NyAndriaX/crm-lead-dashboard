@@ -9,10 +9,11 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 import * as XLSX from "xlsx";
-import { prisma } from "@crm/db";
+import { prisma, type Role } from "@crm/db";
 import { ApiError } from "../api";
 import { enqueue } from "../jobs";
-import type { StartImportInput } from "../schemas/import";
+import { can } from "../rbac";
+import { IMPORTABLE_FIELD_LABELS, defaultRequiredFields, type StartImportInput } from "../schemas/import";
 
 export const ACCEPTED_EXTS = ["csv", "xlsx", "xls"] as const;
 
@@ -82,16 +83,52 @@ export async function createImportJob(
   return { id: job.id, fileName: job.fileName, status: job.status, headers, previewRows, totalRows };
 }
 
+/** Rôles auxquels on peut confier des leads importés (un LECTEUR ne travaille pas les leads). */
+const ASSIGNABLE_ROLES: Role[] = ["ADMIN", "MANAGER", "COMMERCIAL"];
+
+/**
+ * Commerciaux cibles de l'assignation (I-09) : permission `leads:assign` exigée, comptes actifs
+ * et rôle habilité. Renvoie la liste ordonnée (une seule entrée en mode `single`).
+ */
+async function resolveAssignees(input: StartImportInput, role: Role): Promise<string[]> {
+  const a = input.assignment;
+  if (a.mode === "none") return [];
+  if (!can(role, "leads:assign")) throw new ApiError(403, "Permission manquante : leads:assign", "forbidden");
+  const ids = a.mode === "single" ? [a.userId] : Array.from(new Set(a.userIds));
+  if (a.mode === "roundRobin" && ids.length < 2) {
+    throw new ApiError(400, "La répartition à tour de rôle demande au moins deux commerciaux distincts", "invalid_assignees");
+  }
+  const users = await prisma.user.findMany({
+    where: { id: { in: ids }, isActive: true, role: { in: ASSIGNABLE_ROLES } },
+    select: { id: true },
+  });
+  if (users.length !== ids.length) throw new ApiError(400, "Commercial cible invalide ou inactif", "invalid_assignee");
+  return ids;
+}
+
 /** Lance le traitement après confirmation du mapping. */
-export async function startImportJob(jobId: string, userId: string, input: StartImportInput) {
+export async function startImportJob(jobId: string, userId: string, input: StartImportInput, role: Role) {
   const job = await prisma.importJob.findUnique({ where: { id: jobId } });
   if (!job) throw new ApiError(404, "Import introuvable", "not_found");
   if (job.userId !== userId) throw new ApiError(403, "Interdit", "forbidden");
   if (job.status !== "pending") throw new ApiError(409, "Import déjà en cours ou terminé", "conflict");
 
+  // I-03 — colonnes obligatoires : choisies par l'utilisateur, sinon email (ou entreprise sans email).
+  const mapped = Object.keys(input.mapping);
+  const requiredFields = input.requiredFields ?? defaultRequiredFields(mapped);
+  const unmapped = requiredFields.filter((f) => !input.mapping[f]);
+  if (unmapped.length) {
+    throw new ApiError(
+      400,
+      `Colonne obligatoire non mappée : ${unmapped.map((f) => IMPORTABLE_FIELD_LABELS[f]).join(", ")}`,
+      "required_field_unmapped",
+    );
+  }
+  const assigneeIds = await resolveAssignees(input, role);
+
   await prisma.importJob.update({
     where: { id: jobId },
-    data: { mapping: input as object, status: "running" },
+    data: { mapping: { ...input, requiredFields } as object, status: "running" },
   });
 
   await enqueue("import-process", {
@@ -99,6 +136,9 @@ export async function startImportJob(jobId: string, userId: string, input: Start
     skipDuplicates: input.skipDuplicates,
     defaultSource: input.defaultSource,
     defaultTags: input.defaultTags,
+    requiredFields,
+    assignMode: input.assignment.mode,
+    assigneeIds,
   });
 
   return prisma.importJob.findUniqueOrThrow({ where: { id: jobId } });

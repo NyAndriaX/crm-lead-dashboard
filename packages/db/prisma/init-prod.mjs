@@ -12,10 +12,10 @@
  *
  * Usage :
  *   ADMIN_EMAIL=ops@votredomaine.com ADMIN_PASSWORD='MotDePasseFort!' \
- *     yarn db:init-prod
+ *     pnpm db:init-prod
  *
  * ⚠️ Idempotent sur l'admin (upsert) mais NE vide PAS la base : faites
- *    d'abord un reset si nécessaire (cf. README — prisma db push --force-reset).
+ *    d'abord un reset si nécessaire (cf. README — prisma migrate reset).
  */
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
@@ -68,7 +68,7 @@ async function main() {
   const existingWorker = await prisma.workerConfig.findUnique({ where: { id: "default" } });
   if (!existingWorker) {
     await prisma.workerConfig.create({
-      data: { id: "default", agendaTimezone: process.env.AGENDA_TIMEZONE || "Europe/Paris" },
+      data: { id: "default", agendaTimezone: process.env.WORKER_TIMEZONE || "Europe/Paris" },
     });
   }
 

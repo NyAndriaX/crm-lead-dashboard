@@ -28,7 +28,7 @@ _(Optionnels, à arbitrer plus tard : CRM-074 personnalisation IA, CRM-075 webho
 | CRM-001 | `docker-compose.yml` (nextjs, worker, **mongo**, nginx — pas de Redis), réseau `crm-network`, healthcheck `/api/health` | ✅ fait |
 | CRM-002 | Commande VPS (Hetzner CCX23) / MongoDB Atlas — décision infra client | ⏳ action client (J1) |
 | CRM-003 | Schéma Prisma MongoDB (~25 collections, dont `jobs`) — `packages/db/prisma/schema.prisma` | ✅ fait |
-| CRM-004 | Index Mongo : `@@index` + text index `leads` (`@@fulltext`) ; TTL / partiels manuels | ✅ Prisma + `manual-indexes.md` |
+| CRM-004 | Index : `@@index` Prisma (migrations MySQL) ; rétention par job `retention-purge` | ✅ fait |
 | CRM-005 | `apps/web/lib/crypto.ts` : AES-256-GCM + HMAC-SHA256 (`emailHash`) | ✅ fait |
 | CRM-006 | Auth JWT custom + bcrypt cost 12 + TOTP (otplib) — `lib/auth.ts`, `/api/auth/login\|logout\|refresh\|me`, page login branchée | ✅ fait |
 | CRM-007 | RBAC 4 rôles : matrice `lib/rbac.ts` + `middleware.ts` + `requirePermission()`/`requireRole()` | ✅ fait (tests unitaires à compléter) |
@@ -69,7 +69,7 @@ _Table de suivi alignée sur le lot L4 ; le fichier maître Excel est `docs/back
 | CRM-030 | Guide DNS SPF / DKIM / DMARC intégré (réglages) | ✅ fait |
 | CRM-031 | Éditeur de templates : WYSIWYG (Quill) + HTML (Monaco), variables de fusion, aperçu bureau / mobile | ✅ fait |
 | CRM-032 | Bibliothèque templates & blocs : duplication API, partage `isPublic` | ✅ fait |
-| _(IA)_ | Personnalisation IA (optionnel) : variantes de ton — `POST /api/emailing/ai-variants`, UI modales template & bloc, `OPENAI_API_KEY` | ✅ fait |
+| _(IA)_ | Personnalisation IA (optionnel) : variantes de ton — `POST /api/emailing/ai-variants`, UI modales template & bloc — skill Claude `crm-email-variants` | ✅ fait |
 | CRM-033 | Page **Campagnes** (`/campaigns`) : CRUD, planification, job `campaign-send` | ✅ fait |
 | CRM-034 | Segmentation : API `/segments`, filtres alignés sur les leads | ✅ fait |
 | CRM-035 | Worker d’envoi régulé (`campaign-send`, lots + re-queue) | ✅ fait |
@@ -90,3 +90,54 @@ _Table de suivi alignée sur le lot L4 ; le fichier maître Excel est `docs/back
 - `.env.example` + `docs/ENV.md` à jour si nouvelle variable
 - MR référence le ticket, CI verte, revue d'un pair
 - Critères de validation du ticket CDC vérifiés
+
+## Migration IA → Claude Skills
+
+| Ticket | Sujet | État |
+|---|---|---|
+| _(IA)_ | Remplacement d'OpenAI par des **Claude Skills** exécutés par le CLI Claude Code (abonnement, sans clé API) : package `@crm/ai` (`runSkill`, sortie validée par JSON Schema, sémaphore de concurrence), 5 skills `crm-lead-brief`, `crm-email-personalize`, `crm-reply-categorize`, `crm-email-variants`, `crm-auto-reply`, CLI embarqué dans les images Docker | ✅ fait |
+
+## Architecture v2 — monorepo unique, MySQL, serveur unique
+
+| Ticket | Sujet | État |
+|---|---|---|
+| _(archi)_ | Fusion dashboard + scraper en un monorepo **pnpm + Turborepo** (`apps/web`, `apps/scraper`, `packages/*`) | ✅ fait |
+| _(archi)_ | Migration **MongoDB → MySQL 8.4** : schéma Prisma, ids `cuid`, clés étrangères + cascades RGPD, listes JSON, migration initiale versionnée | ✅ fait |
+| _(archi)_ | File de tâches **`@crm/queue` sur MySQL** (`SKIP LOCKED`, jobs récurrents, verrous, retries) — remplace @hokify/agenda | ✅ fait |
+| _(archi)_ | Tâches de fond **`@crm/jobs`** exécutées dans le serveur Next.js (`instrumentation.ts`), séparables via `RUN_JOBS=false` | ✅ fait |
+| _(archi)_ | Rétention RGPD automatique (`retention-purge` : audit/historique 12 mois, imports 90 jours) | ✅ fait |
+| _(archi)_ | **Déploiement serveur unique** : `deploy/docker-compose.yml` (nginx TLS + web + scraper + MySQL + certbot), scripts bootstrap / init-ssl / deploy / backup | ✅ fait |
+
+## Refonte UI « Nebula » et parcours utilisateur
+
+| Ticket | Sujet | État |
+|---|---|---|
+| _(UI)_ | Design system « Nebula » (`lib/theme.ts`, `globals.css`) : verre dépoli, fond aurore, animations, composants `components/ui/*` | ✅ fait |
+| _(UI)_ | **Mode clair** : bascule mémorisée (cookie `crm-theme` lu côté serveur, sans flash), variables CSS `--nb-*` par thème, chips assombries en clair | ✅ fait |
+| _(UI)_ | Robot de prospection animé + radar ; Connexion, Tableau de bord, Prospection IA, Pipeline, Réponses, Analytics, Configuration refaits | ✅ fait |
+| _(UX)_ | Principe : **pas de modale pour un parcours** — modales réservées aux formulaires courts et aux confirmations ; liens profonds (`?tab=`, `?category=`, `?leadId=`, `?scoreMin=`) | ✅ fait |
+| _(UX)_ | Campagnes : onglets Campagnes / Segments / Performance, liste paginée filtrable (statut, segment, tri), assistant 4 étapes `campaigns/new` (audience → message → envoi → lancement) avec aperçu email et projection d'envoi, page détail `campaigns/[id]`, duplication | ✅ fait |
+| _(UX)_ | Segments : constructeur pleine page `campaigns/segments/*` alimenté par `GET /api/leads/facets`, aperçu d'audience en direct `POST /api/segments/preview` (joignables, sans email, blacklist, échantillon) | ✅ fait |
+| _(UX)_ | Relances : constructeur de parcours `sequences/new`, page détail `sequences/[id]` (position des leads par étape, inscription inline d'un **segment entier** ou de leads recherchés) | ✅ fait |
+| _(UX)_ | Fiche lead 360° : étape commerciale cliquable, « Ce que Claude a compris », activité unifiée (historique lisible + suivi email + échanges, `GET /api/leads/:id/engagement`), séquences du lead | ✅ fait |
+| _(UX)_ | Tableau de bord : centre « À traiter maintenant » (`GET /api/dashboard/actions`) | ✅ fait |
+| _(fix)_ | Variables de fusion : objet jamais personnalisé + alias `{{firstName}}`/`{{company}}` non remplacés → helper partagé `packages/jobs/src/mergeVars.ts` | ✅ fait |
+| _(fix)_ | Taux campagnes > 100 % (ouvertures multiples) → comptage par contact unique ; segment de démo « Leads VIP » au filtre ignoré (`tags` → `tag`) ; inscription séquence limitée à `pageSize=500` (refusé par l'API) | ✅ fait |
+| _(scraper)_ | Emails de conformité (`dpo@`, `rgpd@`…) exclus, adresses « métier » en dernier recours ; analyse IA sur la fiche Maps seule quand il n'y a pas de site ; délai skill 120 s | ✅ fait |
+| _(fix)_ | Missions > 5 min coupées puis relancées en boucle : l'Agent undici était importé mais pas utilisé → `undiciFetch` + `dispatcher` (vérifié sur un serveur répondant après 330 s) | ✅ fait |
+| _(fix)_ | Scraper : un timeout de skill pouvait faire échouer toute la mission (`ProcessLookupError` au kill) → kill toléré, analyse IA jamais fatale, message d'erreur explicite | ✅ fait |
+| _(scoring)_ | Formule de score unique dans `@crm/db` (`computeLeadScore`, 3 copies supprimées), **potentiel IA** pondéré (adéquation cible / brief, 30 pts par défaut, réglable), score calculé dès l'injection des leads scrapés, poids admin appliqués aussi par les tâches de fond | ✅ fait |
+| _(données)_ | Migration `20261022190000_lead_place_id` : colonne indexée `leads.placeId` (dédoublonnage Google Maps) au lieu du tag technique `place:…` ; URL des sites nettoyées des paramètres `utm_*` | ✅ fait |
+| _(tests)_ | Tests unitaires TypeScript (`node --test` + tsx) : score, filtres de segment, tags scraping, URL, variables de fusion ; scraper : 27 tests pytest | ✅ fait |
+| _(UI)_ | Carte des leads réécrite (Leaflet direct, plus de crash « Map container is already initialized », thème sombre/clair, liste des villes) ; page d'invitation au style Nebula ; polices auto-hébergées (`next/font`) | ✅ fait |
+| _(UI)_ | Éditeur Quill : barre d'outils au thème, zone d'édition blanche (rendu fidèle de l'email) ; éditeur de template en pleine page `settings/templates/*` avec aperçu sur un vrai lead | ✅ fait |
+| _(UI)_ | **Charte sobre** : une seule couleur d'accent (violet), neutres ardoise, couleurs sémantiques réservées aux statuts ; dégradés arc-en-ciel et aurore supprimés ; étapes du pipeline recolorées ; badge Next.js masqué en dev | ✅ fait |
+| _(scraper)_ | **Contacts enrichis** : téléphones du site (fixe/mobile, E.164), réseaux sociaux, page contact, SIREN/SIRET, forme juridique, capital ; email / ligne directe du décideur si Claude peut les attribuer (valeurs du site uniquement). Données personnelles chiffrées (`leads.contactsEnc`, migration `20261023080000_lead_contacts_enc`), données d'entreprise dans `enrichment.siteContacts` | ✅ fait |
+| _(fix)_ | Rendu serveur : `createPortal(document.body)` sur les pages « nouveau » (HTTP 500) → hook `useMounted` | ✅ fait |
+| _(fix)_ | Prospection : plus de prénom déduit d'une adresse générique (`contact@` → « Contact ») ; tags générés lisibles (« Prospection IA », « Cible IA », « Décideur identifié »…, migration `20261023093000_readable_scraping_tags`) ; carte pipeline sans doublon entreprise | ✅ fait |
+| _(fix)_ | Prospection : la mission mise en avant est la plus récemment active (colonne `scrapingMissions.updatedAt`, migration `20261023090000_mission_updated_at`), ou celle dont des résultats attendent une validation ; titres explicites (« aucune dans la cible », « N ajoutés au CRM ») | ✅ fait |
+| _(IA)_ | **Fournisseur d'IA au choix de l'administrateur** : Claude Skills (CLI, sans choix de modèle), OpenAI, DeepSeek, Mistral, Gemini, Ollama, service compatible OpenAI ; clé chiffrée, modèle de rédaction + modèle rapide, bouton « Tester la connexion » ; mêmes SKILL.md pour tous les fournisseurs ; scraper aligné via `ScrapeRequest.ai` (table `aiConfig`, migration `20261023100000_ai_config`) | ✅ fait |
+| _(UI)_ | Mentions « Claude » retirées de l'interface (« l'IA ») ; badge du fournisseur actif dans l'en-tête et la barre latérale | ✅ fait |
+| _(fix)_ | `position: sticky` inopérant partout (conteneur principal en `overflow-x: hidden`) → `overflow-x: clip` ; menu de la Configuration à défilement propre | ✅ fait |
+| _(tests)_ | **Tests de bout en bout** Playwright (`apps/web/e2e`, `pnpm --filter @crm/web test:e2e`) : connexion, assistant de campagne + duplication, segment créé depuis l'assistant, constructeur de séquence, configuration IA, fiche lead, carte — 9 parcours, données nettoyées | ✅ fait |
+| _(fix)_ | Brouillon de campagne perdu au retour de la création d'un segment (lecture du `sessionStorage` dans un effet exécuté deux fois) → lecture unique à l'initialisation ; trouvé par l'E2E | ✅ fait |
