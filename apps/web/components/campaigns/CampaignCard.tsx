@@ -6,7 +6,7 @@ import {
   BarChartOutlined, DeleteOutlined, EditOutlined, EllipsisOutlined, FileTextOutlined, PauseCircleOutlined, RocketOutlined, TeamOutlined, CalendarOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
-import { palette } from "@/lib/theme";
+import { palette, alpha } from "@/lib/theme";
 import { AIBadge } from "@/components/ui/Brand";
 import { Chip, ScoreRing } from "@/components/ui/Kit";
 
@@ -85,11 +85,11 @@ export function CampaignCard({
       style={{
         borderRadius: 20, padding: 20, height: "100%", display: "flex", flexDirection: "column", gap: 14, cursor: "pointer",
         position: "relative", overflow: "hidden",
-        borderColor: sending ? `${palette.cyan}88` : undefined,
-        boxShadow: sending ? `0 0 0 1px ${palette.cyan}55, 0 0 40px -12px ${palette.cyan}` : undefined,
+        borderColor: sending ? `${alpha(palette.cyan, "88")}` : undefined,
+        boxShadow: sending ? `0 0 0 1px ${alpha(palette.cyan, "55")}, 0 0 40px -12px ${palette.cyan}` : undefined,
       }}
     >
-      <div aria-hidden style={{ position: "absolute", top: -60, right: -60, width: 160, height: 160, borderRadius: "50%", background: `radial-gradient(circle, ${st.color}30, transparent 70%)` }} />
+      <div aria-hidden style={{ position: "absolute", top: -60, right: -60, width: 160, height: 160, borderRadius: "50%", background: `radial-gradient(circle, ${alpha(st.color, "30")}, transparent 70%)` }} />
       {sending && <div className="nb-scanline" style={{ opacity: 0.5 }} />}
 
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", position: "relative" }}>
@@ -134,7 +134,7 @@ export function CampaignCard({
           <div
             style={{
               width: `${progress}%`, height: "100%", borderRadius: 8, background: `linear-gradient(90deg, ${palette.violet}, ${palette.cyan})`,
-              boxShadow: `0 0 14px ${palette.cyan}88`, transformOrigin: "left", animation: "nb-grow-x 1s var(--nb-ease) both",
+              boxShadow: `0 0 14px ${alpha(palette.cyan, "88")}`, transformOrigin: "left", animation: "nb-grow-x 1s var(--nb-ease) both",
             }}
           />
         </div>

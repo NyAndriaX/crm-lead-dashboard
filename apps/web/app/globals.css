@@ -2,7 +2,8 @@
    Design system « Nebula » — fond animé, verre dépoli, animations.
    Les couleurs de base sont des tokens Ant Design (lib/theme.ts) ; ce fichier
    ajoute ce que les tokens ne savent pas faire (flou, dégradés, mouvement).
-   Deux modes : sombre (défaut, :root) et clair ([data-theme="light"]).
+   Deux modes : clair (défaut, data-theme="light" posé par le layout) et sombre
+   (:root / data-theme="dark"). Les accents ont une valeur par mode (miroir de ACCENTS, lib/theme.ts).
    ══════════════════════════════════════════════════════════════════════ */
 
 :root {
@@ -33,6 +34,15 @@
   --nb-gradient: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
   --nb-blur: blur(18px) saturate(140%);
   --nb-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --rb-shell-1: #2a3358;
+  --rb-shell-2: #141a31;
+  --rb-limb: #1b2240;
+  --rb-visor: #05070f;
+  --rb-rim-1: #a78bfa;
+  --rb-rim-2: #8b5cf6;
+  --rb-rim-3: #94a3b8;
+  --rb-shadow: rgba(0, 0, 0, 0.45);
+  --rb-glint: rgba(255, 255, 255, 0.18);
   color-scheme: dark;
 }
 
@@ -45,8 +55,8 @@
   --nb-border-strong: rgba(15, 23, 42, 0.16);
   --nb-text: #1e2538;
   --nb-text-strong: #0b1020;
-  --nb-text-2: #5b6478;
-  --nb-text-3: #8c94a8;
+  --nb-text-2: #4b5468;
+  --nb-text-3: #6b7489;
   --nb-grid-line: rgba(15, 23, 42, 0.045);
   --nb-aurora-1: #c4b5fd;
   --nb-aurora-2: #e2e8f0;
@@ -55,6 +65,24 @@
   --nb-card-shadow-hover: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 28px 56px -24px rgba(124, 58, 237, 0.28);
   --nb-scrollbar: rgba(15, 23, 42, 0.16);
   --nb-shimmer: rgba(255, 255, 255, 0.6);
+  /* Accents foncés : lisibles sur fond blanc (contraste ≥ 4,5:1 pour les textes) */
+  --nb-violet: #7c3aed;
+  --nb-cyan: #8b5cf6;
+  --nb-pink: #64748b;
+  --nb-green: #047857;
+  --nb-amber: #b45309;
+  --nb-red: #e11d48;
+  --nb-gradient: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+  /* Robot (ProspectorRobot) : coque claire, visière sombre */
+  --rb-shell-1: #ffffff;
+  --rb-shell-2: #e9e3ff;
+  --rb-limb: #ece7ff;
+  --rb-visor: #1e1b4b;
+  --rb-rim-1: #a78bfa;
+  --rb-rim-2: #7c3aed;
+  --rb-rim-3: #c4b5fd;
+  --rb-shadow: rgba(76, 29, 149, 0.22);
+  --rb-glint: rgba(255, 255, 255, 0.28);
   color-scheme: light;
 }
 
@@ -693,3 +721,17 @@ body {
 /* Menu de la Configuration : défilement interne discret. */
 .nb-settings-nav { scrollbar-width: thin; }
 .nb-settings-nav::-webkit-scrollbar { width: 6px; }
+
+/* Logo (BrandMark) : clignement discret des yeux du robot */
+.nb-brand-eyes {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: nb-brand-blink 6s infinite;
+}
+@keyframes nb-brand-blink {
+  0%, 94%, 100% { transform: scaleY(1); }
+  97% { transform: scaleY(0.15); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nb-brand-eyes { animation: none; }
+}

@@ -11,7 +11,7 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "@/lib/client";
-import { palette, statusColors } from "@/lib/theme";
+import { palette, statusColors, alpha } from "@/lib/theme";
 import { STATUS_LABELS } from "@/lib/leadStatus";
 import type { Facet, LeadFacets, SegmentFilters } from "./types";
 
@@ -36,7 +36,7 @@ function Criterion({ icon, label, color, children }: { icon: ReactNode; label: s
   return (
     <div style={{ display: "grid", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 600, color: "var(--nb-text-2)" }}>
-        <span style={{ width: 24, height: 24, borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", color, background: `${color}1f` }}>{icon}</span>
+        <span style={{ width: 24, height: 24, borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", color, background: `${alpha(color, "1f")}` }}>{icon}</span>
         {label}
       </div>
       {children}
@@ -94,7 +94,7 @@ export function SegmentFilterBuilder({ value, onChange }: { value: SegmentFilter
                 style={{
                   cursor: "pointer", borderRadius: 999, padding: "6px 14px", fontSize: 13, fontWeight: 600, transition: "all .2s var(--nb-ease)",
                   border: `1px solid ${active ? color : "var(--nb-border)"}`,
-                  background: active ? `${color}24` : "var(--nb-control)",
+                  background: active ? `${alpha(color, "24")}` : "var(--nb-control)",
                   color: active ? color : "var(--nb-text-2)",
                   boxShadow: active ? `0 0 16px -6px ${color}` : "none",
                 }}

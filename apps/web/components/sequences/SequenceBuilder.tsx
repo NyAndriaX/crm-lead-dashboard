@@ -15,7 +15,7 @@ import {
   MailOutlined, PlusOutlined, SaveOutlined, StopOutlined, ThunderboltOutlined, UserAddOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
-import { palette } from "@/lib/theme";
+import { palette, alpha } from "@/lib/theme";
 import { AIBadge } from "@/components/ui/Brand";
 import { Chip, Panel } from "@/components/ui/Kit";
 import { EmailPreview } from "@/components/campaigns/EmailPreview";
@@ -190,9 +190,9 @@ export function SequenceBuilder({ sequenceId }: { sequenceId?: string }) {
                     onKeyDown={(e) => { if (e.key === "Enter") setSelected(i); }}
                     style={{
                       borderRadius: 18, padding: 16, cursor: "pointer", transition: "all .2s var(--nb-ease)",
-                      border: `1.5px solid ${!ok ? `${palette.amber}99` : active ? palette.violet : "var(--nb-border)"}`,
-                      background: active ? `${palette.violet}12` : "var(--nb-control)",
-                      boxShadow: active ? `0 0 0 3px ${palette.violet}22` : "none",
+                      border: `1.5px solid ${!ok ? `${alpha(palette.amber, "99")}` : active ? palette.violet : "var(--nb-border)"}`,
+                      background: active ? `${alpha(palette.violet, "12")}` : "var(--nb-control)",
+                      boxShadow: active ? `0 0 0 3px ${alpha(palette.violet, "22")}` : "none",
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>

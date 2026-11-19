@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { Alert, Button, Input, Skeleton, Switch, message } from "antd";
 import { BankOutlined, LinkOutlined, LockOutlined, MailOutlined, SaveOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { api } from "@/lib/client";
-import { palette } from "@/lib/theme";
+import { palette, alpha } from "@/lib/theme";
 import { Chip, Panel } from "@/components/ui/Kit";
 import { ENRICHMENT_PROVIDERS, type EnrichmentProviderDef, type EnrichmentProviderId } from "@/lib/enrichmentProviders";
 
@@ -55,7 +55,7 @@ function ProviderCard({ def, view, onSaved }: { def: EnrichmentProviderDef; view
   return (
     <div data-testid={`enrichment-provider-${def.id}`} style={{ borderRadius: 16, padding: 16, border: "1px solid var(--nb-border)", background: "var(--nb-control)", display: "grid", gap: 12 }}>
       <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
-        <span style={{ width: 36, height: 36, borderRadius: 12, display: "inline-flex", alignItems: "center", justifyContent: "center", color: palette.violet, background: `${palette.violet}1f` }}>
+        <span style={{ width: 36, height: 36, borderRadius: 12, display: "inline-flex", alignItems: "center", justifyContent: "center", color: palette.violet, background: `${alpha(palette.violet, "1f")}` }}>
           {def.usedFor === "email" ? <MailOutlined /> : <BankOutlined />}
         </span>
         <div style={{ flex: 1, minWidth: 200 }}>

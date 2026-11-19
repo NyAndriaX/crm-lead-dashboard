@@ -23,7 +23,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { palette } from "@/lib/theme";
+import { palette, accentHex } from "@/lib/theme";
 import { useThemeMode } from "@/components/ThemeProvider";
 import { StatCard } from "@/components/ui/StatCard";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
@@ -49,9 +49,11 @@ function RateBar({ value, color }: { value: number | null; color: string }) {
 /** Thème G2 (sombre ou clair selon le mode) + palette Nebula, partagé par les graphiques. */
 function useChartTheme() {
   const { mode } = useThemeMode();
+  // G2 dessine sur un canvas : il lui faut des couleurs concrètes, pas des variables CSS.
+  const a = accentHex(mode);
   return {
     theme: mode === "dark" ? "classicDark" : "classic",
-    scale: { color: { range: [palette.cyan, palette.violet, palette.pink, palette.green, palette.amber, palette.blue] } },
+    scale: { color: { range: [a.cyan, a.violet, a.pink, a.green, a.amber, a.blue] } },
   } as const;
 }
 
@@ -406,7 +408,7 @@ function TimelineView({ period }: { period: Period }) {
                 xField="period"
                 yField="total"
                 height={200}
-                style={{ fill: palette.violet, radiusTopLeft: 6, radiusTopRight: 6 }}
+                style={{ fill: chartTheme.scale.color.range[1], radiusTopLeft: 6, radiusTopRight: 6 }}
               />
             </Card>
           </Col>

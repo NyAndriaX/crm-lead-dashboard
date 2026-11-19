@@ -7,7 +7,7 @@
  */
 import type { CSSProperties, ReactNode } from "react";
 import { Progress } from "antd";
-import { palette } from "@/lib/theme";
+import { palette, alpha } from "@/lib/theme";
 import { ProspectorRobot } from "./ProspectorRobot";
 
 /** Panneau en verre avec en-tête (icône lumineuse, titre, sous-titre, actions). */
@@ -41,7 +41,7 @@ export function Panel({
               <span
                 style={{
                   width: 36, height: 36, borderRadius: 11, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center",
-                  color: accent, background: `${accent}1f`, boxShadow: `0 0 0 1px ${accent}33`, fontSize: 16,
+                  color: accent, background: `${alpha(accent, "1f")}`, boxShadow: `0 0 0 1px ${alpha(accent, "33")}`, fontSize: 16,
                 }}
               >
                 {icon}
@@ -82,7 +82,7 @@ export function Chip({
       style={{
         display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap", fontWeight: 600,
         fontSize: size === "sm" ? 11 : 12, padding: size === "sm" ? "2px 8px" : "4px 10px", borderRadius: 999,
-        ["--chip" as string]: color, background: `${color}1a`, border: `1px solid ${color}40`, ...style,
+        ["--chip" as string]: color, background: `${alpha(color, "1a")}`, border: `1px solid ${alpha(color, "40")}`, ...style,
       }}
     >
       {dot && (
@@ -141,7 +141,7 @@ export function Funnel({ steps, height = 46 }: { steps: FunnelStep[]; height?: n
               <div
                 style={{
                   width: `${pct}%`, height: "100%", borderRadius: 12,
-                  background: `linear-gradient(90deg, ${s.color}, ${s.color}aa)`, boxShadow: `0 0 24px -6px ${s.color}`,
+                  background: `linear-gradient(90deg, ${s.color}, ${alpha(s.color, "aa")})`, boxShadow: `0 0 24px -6px ${s.color}`,
                   transformOrigin: "left", animation: `nb-grow-x 1s var(--nb-ease) ${i * 0.1}s both`,
                   display: "flex", alignItems: "center", paddingLeft: 14,
                 }}

@@ -20,7 +20,7 @@ import {
 } from "@ant-design/icons";
 import dayjs, { type Dayjs } from "dayjs";
 import { api } from "@/lib/client";
-import { palette } from "@/lib/theme";
+import { palette, alpha } from "@/lib/theme";
 import { AIBadge } from "@/components/ui/Brand";
 import { Chip, Panel } from "@/components/ui/Kit";
 import { AudiencePreview, useSegmentPreview } from "./AudiencePreview";
@@ -108,8 +108,8 @@ function SelectCard({ selected, onClick, color = palette.violet, children }: { s
       style={{
         position: "relative", cursor: "pointer", borderRadius: 16, padding: 16, transition: "all .2s var(--nb-ease)",
         border: `1.5px solid ${selected ? color : "var(--nb-border)"}`,
-        background: selected ? `${color}14` : "var(--nb-control)",
-        boxShadow: selected ? `0 0 0 3px ${color}22, 0 12px 30px -18px ${color}` : "none",
+        background: selected ? `${alpha(color, "14")}` : "var(--nb-control)",
+        boxShadow: selected ? `0 0 0 3px ${alpha(color, "22")}, 0 12px 30px -18px ${color}` : "none",
       }}
     >
       {selected && <CheckCircleFilled style={{ position: "absolute", top: 12, right: 12, color, fontSize: 18 }} />}
@@ -122,9 +122,9 @@ function ToggleCard({ icon, title, description, checked, onChange, color, badge,
   icon: ReactNode; title: string; description: ReactNode; checked: boolean; onChange: (v: boolean) => void; color: string; badge?: ReactNode; children?: ReactNode;
 }) {
   return (
-    <div style={{ borderRadius: 16, padding: 16, border: `1px solid ${checked ? `${color}66` : "var(--nb-border)"}`, background: checked ? `${color}0f` : "var(--nb-control)", transition: "all .2s" }}>
+    <div style={{ borderRadius: 16, padding: 16, border: `1px solid ${checked ? `${alpha(color, "66")}` : "var(--nb-border)"}`, background: checked ? `${alpha(color, "0f")}` : "var(--nb-control)", transition: "all .2s" }}>
       <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-        <span style={{ width: 36, height: 36, borderRadius: 11, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", color, background: `${color}1f`, fontSize: 16 }}>{icon}</span>
+        <span style={{ width: 36, height: 36, borderRadius: 11, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", color, background: `${alpha(color, "1f")}`, fontSize: 16 }}>{icon}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ fontWeight: 650, color: "var(--nb-text-strong)" }}>{title}</span>
@@ -371,7 +371,7 @@ export function CampaignWizard({ campaignId }: { campaignId?: string }) {
                 display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 14, border: "none", textAlign: "left",
                 cursor: reachableStep ? "pointer" : "not-allowed", opacity: reachableStep ? 1 : 0.45, transition: "all .25s var(--nb-ease)",
                 background: active ? palette.gradientSoft : "transparent",
-                boxShadow: active ? `inset 0 0 0 1px ${palette.violet}55` : "none",
+                boxShadow: active ? `inset 0 0 0 1px ${alpha(palette.violet, "55")}` : "none",
               }}
             >
               <span

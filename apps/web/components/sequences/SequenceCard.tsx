@@ -4,7 +4,7 @@ import { Button, Dropdown, Tooltip } from "antd";
 import {
   DeleteOutlined, EditOutlined, EllipsisOutlined, MailOutlined, PauseOutlined, PlayCircleOutlined, StopOutlined, TeamOutlined, ClockCircleOutlined,
 } from "@ant-design/icons";
-import { palette } from "@/lib/theme";
+import { palette, alpha } from "@/lib/theme";
 import { Chip, SegmentBar } from "@/components/ui/Kit";
 
 export type SequenceStep = { delayDays: number; stopOnReply?: boolean; aiPersonalize?: boolean; subject?: string | null };
@@ -116,7 +116,7 @@ export function SequenceCard({
 
   return (
     <div className="nb-glass nb-lift" onClick={onOpen} style={{ cursor: "pointer", borderRadius: 20, padding: 20, display: "flex", flexDirection: "column", gap: 16, height: "100%", position: "relative", overflow: "hidden" }}>
-      <div aria-hidden style={{ position: "absolute", top: -70, left: -50, width: 180, height: 180, borderRadius: "50%", background: `radial-gradient(circle, ${palette.violet}26, transparent 70%)` }} />
+      <div aria-hidden style={{ position: "absolute", top: -70, left: -50, width: 180, height: 180, borderRadius: "50%", background: `radial-gradient(circle, ${alpha(palette.violet, "26")}, transparent 70%)` }} />
       <div style={{ display: "flex", justifyContent: "space-between", gap: 10, position: "relative" }}>
         <div style={{ minWidth: 0 }}>
           <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>

@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
 import { AnimatedNumber } from "./AnimatedNumber";
+import { alpha } from "@/lib/theme";
 
 /**
  * Carte KPI « Nebula » : verre dépoli, icône lumineuse, compteur animé,
@@ -35,7 +36,7 @@ export function StatCard({
         aria-hidden
         style={{
           position: "absolute", top: -40, right: -40, width: 140, height: 140, borderRadius: "50%",
-          background: `radial-gradient(circle, ${color}33 0%, transparent 70%)`,
+          background: `radial-gradient(circle, ${alpha(color, "33")} 0%, transparent 70%)`,
         }}
       />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
@@ -56,7 +57,7 @@ export function StatCard({
           style={{
             width: 46, height: 46, borderRadius: 14, flexShrink: 0,
             display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, color,
-            background: `${color}1f`, boxShadow: `0 0 0 1px ${color}40, 0 0 24px -4px ${color}80`,
+            background: `${alpha(color, "1f")}`, boxShadow: `0 0 0 1px ${alpha(color, "40")}, 0 0 24px -4px ${alpha(color, "80")}`,
           }}
         >
           {icon}

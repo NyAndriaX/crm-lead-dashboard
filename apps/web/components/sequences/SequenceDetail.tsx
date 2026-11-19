@@ -13,7 +13,7 @@ import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import "dayjs/locale/fr";
 import { api } from "@/lib/client";
-import { palette } from "@/lib/theme";
+import { palette, alpha } from "@/lib/theme";
 import { AIBadge } from "@/components/ui/Brand";
 import { StatCard } from "@/components/ui/StatCard";
 import { Chip, EmptyState, Panel } from "@/components/ui/Kit";
@@ -96,7 +96,7 @@ function EnrollPanel({ sequenceId, onDone }: { sequenceId: string; onDone: () =>
                     onKeyDown={(e) => { if (e.key === "Enter") setSegmentId(s.id); }}
                     style={{
                       display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 14, cursor: "pointer",
-                      border: `1.5px solid ${active ? palette.cyan : "var(--nb-border)"}`, background: active ? `${palette.cyan}12` : "var(--nb-control)",
+                      border: `1.5px solid ${active ? palette.cyan : "var(--nb-border)"}`, background: active ? `${alpha(palette.cyan, "12")}` : "var(--nb-control)",
                     }}
                   >
                     {active ? <CheckCircleFilled style={{ color: palette.cyan, fontSize: 18 }} /> : <TeamOutlined style={{ color: "var(--nb-text-3)", fontSize: 16 }} />}
@@ -331,7 +331,7 @@ export function SequenceDetail({ sequenceId }: { sequenceId: string }) {
                     <div style={{ display: "flex", gap: 3 }}>
                       {seq.steps.map((_s, i) => (
                         <Tooltip key={i} title={`${i === 0 ? "Premier email" : `Relance ${i}`}${i < r.sentCount ? " — envoyé" : ""}`}>
-                          <span style={{ flex: 1, height: 6, borderRadius: 4, background: i < r.sentCount ? palette.violet : i === r.currentStep && r.status === "active" ? `${palette.cyan}88` : "var(--nb-border-strong)" }} />
+                          <span style={{ flex: 1, height: 6, borderRadius: 4, background: i < r.sentCount ? palette.violet : i === r.currentStep && r.status === "active" ? `${alpha(palette.cyan, "88")}` : "var(--nb-border-strong)" }} />
                         </Tooltip>
                       ))}
                     </div>

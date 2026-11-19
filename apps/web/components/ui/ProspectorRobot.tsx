@@ -7,6 +7,8 @@
  *  - scanning : faisceau de scan, yeux qui balaient, antenne et cœur qui pulsent, particules
  *  - success  : yeux « heureux », halo vert
  *  - error    : halo rouge, antenne clignotante
+ *
+ * Coque, visière et membres suivent le mode (variables --rb-* de globals.css) : coque claire en mode clair.
  */
 export type RobotState = "idle" | "scanning" | "success" | "error";
 
@@ -24,13 +26,13 @@ export function ProspectorRobot({ state = "idle", size = 220 }: { state?: RobotS
       <svg viewBox="0 0 220 242" width="100%" height="100%">
         <defs>
           <linearGradient id="rb-shell" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#2a3358" />
-            <stop offset="100%" stopColor="#141a31" />
+            <stop offset="0%" stopColor="var(--rb-shell-1)" />
+            <stop offset="100%" stopColor="var(--rb-shell-2)" />
           </linearGradient>
           <linearGradient id="rb-rim" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#a78bfa" />
-            <stop offset="55%" stopColor="#8b5cf6" />
-            <stop offset="100%" stopColor="#94a3b8" />
+            <stop offset="0%" stopColor="var(--rb-rim-1)" />
+            <stop offset="55%" stopColor="var(--rb-rim-2)" />
+            <stop offset="100%" stopColor="var(--rb-rim-3)" />
           </linearGradient>
           <linearGradient id="rb-beam" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.55" />
@@ -55,7 +57,7 @@ export function ProspectorRobot({ state = "idle", size = 220 }: { state?: RobotS
         <circle className="rb-halo rb-halo-2" cx="110" cy="112" r="96" fill="none" stroke={eye} strokeOpacity="0.18" strokeWidth="1" />
 
         {/* Ombre au sol */}
-        <ellipse className="rb-shadow" cx="110" cy="228" rx="46" ry="7" fill="#000" opacity="0.45" />
+        <ellipse className="rb-shadow" cx="110" cy="228" rx="46" ry="7" fill="var(--rb-shadow)" />
 
         <g className="rb-body">
           {/* Faisceau de scan */}
@@ -67,9 +69,9 @@ export function ProspectorRobot({ state = "idle", size = 220 }: { state?: RobotS
 
           {/* Tête */}
           <rect x="52" y="44" width="116" height="84" rx="30" fill="url(#rb-shell)" stroke="url(#rb-rim)" strokeWidth="2" />
-          <rect x="64" y="58" width="92" height="52" rx="20" fill="#05070f" stroke="rgba(148,163,184,0.25)" />
+          <rect x="64" y="58" width="92" height="52" rx="20" fill="var(--rb-visor)" stroke="rgba(148,163,184,0.25)" />
           {/* Reflet visière */}
-          <path d="M72 66 Q90 60 108 62" stroke="rgba(255,255,255,0.18)" strokeWidth="3" strokeLinecap="round" fill="none" />
+          <path d="M72 66 Q90 60 108 62" stroke="var(--rb-glint)" strokeWidth="3" strokeLinecap="round" fill="none" />
 
           {/* Yeux */}
           <g className="rb-eyes" filter="url(#rb-glow)">
@@ -87,11 +89,11 @@ export function ProspectorRobot({ state = "idle", size = 220 }: { state?: RobotS
           </g>
 
           {/* Oreilles */}
-          <rect x="40" y="72" width="12" height="28" rx="6" fill="#1b2240" stroke="url(#rb-rim)" strokeWidth="1.5" />
-          <rect x="168" y="72" width="12" height="28" rx="6" fill="#1b2240" stroke="url(#rb-rim)" strokeWidth="1.5" />
+          <rect x="40" y="72" width="12" height="28" rx="6" fill="var(--rb-limb)" stroke="url(#rb-rim)" strokeWidth="1.5" />
+          <rect x="168" y="72" width="12" height="28" rx="6" fill="var(--rb-limb)" stroke="url(#rb-rim)" strokeWidth="1.5" />
 
           {/* Cou + corps */}
-          <rect x="98" y="128" width="24" height="10" rx="4" fill="#1b2240" />
+          <rect x="98" y="128" width="24" height="10" rx="4" fill="var(--rb-limb)" />
           <rect x="66" y="136" width="88" height="66" rx="24" fill="url(#rb-shell)" stroke="url(#rb-rim)" strokeWidth="2" />
 
           {/* Cœur énergétique */}
@@ -100,10 +102,10 @@ export function ProspectorRobot({ state = "idle", size = 220 }: { state?: RobotS
 
           {/* Bras */}
           <g className="rb-arm-l">
-            <rect x="44" y="144" width="18" height="44" rx="9" fill="#1b2240" stroke="url(#rb-rim)" strokeWidth="1.5" />
+            <rect x="44" y="144" width="18" height="44" rx="9" fill="var(--rb-limb)" stroke="url(#rb-rim)" strokeWidth="1.5" />
           </g>
           <g className="rb-arm-r">
-            <rect x="158" y="144" width="18" height="44" rx="9" fill="#1b2240" stroke="url(#rb-rim)" strokeWidth="1.5" />
+            <rect x="158" y="144" width="18" height="44" rx="9" fill="var(--rb-limb)" stroke="url(#rb-rim)" strokeWidth="1.5" />
           </g>
 
           {/* Propulseur */}

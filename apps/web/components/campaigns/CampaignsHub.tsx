@@ -16,7 +16,7 @@ import {
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { api } from "@/lib/client";
-import { palette } from "@/lib/theme";
+import { palette, alpha } from "@/lib/theme";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { AIBadge } from "@/components/ui/Brand";
@@ -58,7 +58,7 @@ function CampaignListRow({ row, target, actions }: { row: Row; target: number; a
       className="nb-glass nb-lift nb-camp-row"
       style={{
         padding: "14px 18px 14px 22px", borderRadius: 16, cursor: "pointer",
-        position: "relative", overflow: "hidden", borderColor: sending ? `${palette.cyan}66` : undefined,
+        position: "relative", overflow: "hidden", borderColor: sending ? `${alpha(palette.cyan, "66")}` : undefined,
       }}
     >
       <span aria-hidden style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4, background: st.color, boxShadow: `0 0 14px ${st.color}` }} />
@@ -281,7 +281,7 @@ export function CampaignsHub() {
               <span style={{ color: active ? palette.violet : undefined }}>{t.icon}</span>
               {t.label}
               {t.count !== undefined && (
-                <span className="nb-mono" style={{ fontSize: 11.5, padding: "1px 8px", borderRadius: 999, background: active ? `${palette.violet}24` : "var(--nb-control)", color: active ? palette.violet : "var(--nb-text-3)" }}>{t.count}</span>
+                <span className="nb-mono" style={{ fontSize: 11.5, padding: "1px 8px", borderRadius: 999, background: active ? `${alpha(palette.violet, "24")}` : "var(--nb-control)", color: active ? palette.violet : "var(--nb-text-3)" }}>{t.count}</span>
               )}
             </button>
           );
@@ -405,7 +405,7 @@ export function CampaignsHub() {
                 const pct = s.leadCount ? Math.round(((s.reachable ?? 0) / s.leadCount) * 100) : 0;
                 return (
                   <div key={s.id} className="nb-glass nb-lift" onClick={() => router.push(`/campaigns/segments/${s.id}`)} style={{ borderRadius: 20, padding: 18, cursor: "pointer", display: "flex", flexDirection: "column", gap: 12, position: "relative", overflow: "hidden" }}>
-                    <div aria-hidden style={{ position: "absolute", top: -60, right: -60, width: 150, height: 150, borderRadius: "50%", background: `radial-gradient(circle, ${palette.cyan}22, transparent 70%)` }} />
+                    <div aria-hidden style={{ position: "absolute", top: -60, right: -60, width: 150, height: 150, borderRadius: "50%", background: `radial-gradient(circle, ${alpha(palette.cyan, "22")}, transparent 70%)` }} />
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
                       <div style={{ minWidth: 0 }}>
                         <div className="nb-display" style={{ fontWeight: 650, fontSize: 15.5, color: "var(--nb-text-strong)" }}>{s.name}</div>

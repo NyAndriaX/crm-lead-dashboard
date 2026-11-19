@@ -14,7 +14,7 @@ import "@/lib/antdReact19";
 
 type ThemeContextValue = { mode: ThemeMode; toggle: () => void; setMode: (m: ThemeMode) => void };
 
-const ThemeContext = createContext<ThemeContextValue>({ mode: "dark", toggle: () => {}, setMode: () => {} });
+const ThemeContext = createContext<ThemeContextValue>({ mode: "light", toggle: () => {}, setMode: () => {} });
 
 export function useThemeMode(): ThemeContextValue {
   return useContext(ThemeContext);

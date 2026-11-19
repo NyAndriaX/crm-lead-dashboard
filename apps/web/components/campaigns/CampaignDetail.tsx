@@ -14,7 +14,7 @@ import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import "dayjs/locale/fr";
 import { api } from "@/lib/client";
-import { palette } from "@/lib/theme";
+import { palette, alpha } from "@/lib/theme";
 import { AIBadge } from "@/components/ui/Brand";
 import { StatCard } from "@/components/ui/StatCard";
 import { Chip, EmptyState, Funnel, Panel } from "@/components/ui/Kit";
@@ -45,7 +45,7 @@ const EVENT: Record<string, { label: string; color: string; icon: ReactNode }> =
 function InfoRow({ icon, label, children, color = palette.violet }: { icon: ReactNode; label: string; children: ReactNode; color?: string }) {
   return (
     <div style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "10px 0", borderBottom: "1px solid var(--nb-border)" }}>
-      <span style={{ width: 30, height: 30, borderRadius: 9, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", color, background: `${color}1c` }}>{icon}</span>
+      <span style={{ width: 30, height: 30, borderRadius: 9, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", color, background: `${alpha(color, "1c")}` }}>{icon}</span>
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ fontSize: 11.5, color: "var(--nb-text-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{label}</div>
         <div style={{ color: "var(--nb-text-strong)", fontSize: 13.5, marginTop: 2 }}>{children}</div>
@@ -208,7 +208,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
         </div>
       </div>
 
-      <div className="nb-glass" style={{ borderRadius: 20, padding: 22, position: "relative", overflow: "hidden", borderColor: sending ? `${palette.cyan}66` : undefined }}>
+      <div className="nb-glass" style={{ borderRadius: 20, padding: 22, position: "relative", overflow: "hidden", borderColor: sending ? `${alpha(palette.cyan, "66")}` : undefined }}>
         {sending && <div className="nb-scanline" style={{ opacity: 0.4 }} />}
         <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "baseline", marginBottom: 12 }}>
           <div>
@@ -226,7 +226,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
           </div>
         </div>
         <div style={{ height: 12, borderRadius: 12, background: "var(--nb-control)", overflow: "hidden" }}>
-          <div style={{ width: `${progress}%`, height: "100%", borderRadius: 12, background: `linear-gradient(90deg, ${palette.violet}, ${palette.cyan})`, boxShadow: `0 0 18px ${palette.cyan}88`, transformOrigin: "left", animation: "nb-grow-x 1.1s var(--nb-ease) both" }} />
+          <div style={{ width: `${progress}%`, height: "100%", borderRadius: 12, background: `linear-gradient(90deg, ${palette.violet}, ${palette.cyan})`, boxShadow: `0 0 18px ${alpha(palette.cyan, "88")}`, transformOrigin: "left", animation: "nb-grow-x 1.1s var(--nb-ease) both" }} />
         </div>
       </div>
 
@@ -304,7 +304,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
                   const who = e.lead ? [e.lead.firstName, e.lead.lastName].filter(Boolean).join(" ") || e.lead.company || "Lead" : "Lead supprimé";
                   return (
                     <div key={e.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "8px 6px", borderRadius: 10 }}>
-                      <span style={{ width: 28, height: 28, borderRadius: 9, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", color: ev.color, background: `${ev.color}1c` }}>{ev.icon}</span>
+                      <span style={{ width: 28, height: 28, borderRadius: 9, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", color: ev.color, background: `${alpha(ev.color, "1c")}` }}>{ev.icon}</span>
                       <div style={{ flex: 1, minWidth: 0, fontSize: 13 }}>
                         <div style={{ color: "var(--nb-text-strong)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           {e.lead ? <Link href={`/leads/${e.lead.id}`}>{who}</Link> : who}

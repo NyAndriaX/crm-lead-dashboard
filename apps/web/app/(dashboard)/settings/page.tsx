@@ -36,7 +36,7 @@ import { AiSettingsSection } from "@/components/admin/AiSettingsSection";
 import { EnrichmentProvidersSection } from "@/components/admin/EnrichmentProvidersSection";
 import { StatCard } from "@/components/ui/StatCard";
 import { Chip, Panel as KitPanel } from "@/components/ui/Kit";
-import { palette, statusColors } from "@/lib/theme";
+import { palette, statusColors, alpha } from "@/lib/theme";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/leadStatus";
 import type { ScoringWeightsInput } from "@/lib/schemas/import";
 import { useIsMobile } from "@/lib/responsive";
@@ -1865,7 +1865,7 @@ function ScoringTab() {
                 <div
                   style={{
                     width: 28, height: 28, borderRadius: 6,
-                    background: group.color + "18",
+                    background: alpha(group.color, "18"),
                     display: "flex", alignItems: "center", justifyContent: "center",
                     color: group.color, fontSize: 14,
                   }}
@@ -2013,11 +2013,11 @@ export default function SettingsPage() {
                   width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 12, cursor: "pointer",
                   border: "none", textAlign: "left", fontSize: 13.5, fontWeight: on ? 600 : 500,
                   color: on ? "var(--nb-text-strong)" : "var(--nb-text-2)",
-                  background: on ? `linear-gradient(90deg, ${sec.color}2e, transparent)` : "transparent",
+                  background: on ? `linear-gradient(90deg, ${alpha(sec.color, "2e")}, transparent)` : "transparent",
                   boxShadow: on ? `inset 3px 0 0 ${sec.color}` : "none", transition: "all 0.2s",
                 }}
               >
-                <span style={{ width: 28, height: 28, borderRadius: 9, display: "inline-flex", alignItems: "center", justifyContent: "center", color: sec.color, background: `${sec.color}1f`, flexShrink: 0 }}>
+                <span style={{ width: 28, height: 28, borderRadius: 9, display: "inline-flex", alignItems: "center", justifyContent: "center", color: sec.color, background: `${alpha(sec.color, "1f")}`, flexShrink: 0 }}>
                   {sec.icon}
                 </span>
                 {sec.title}

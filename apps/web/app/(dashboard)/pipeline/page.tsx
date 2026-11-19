@@ -21,7 +21,7 @@ import Link from "next/link";
 import { DragDropContext, Droppable, Draggable, type DropResult } from "@hello-pangea/dnd";
 import { api } from "@/lib/client";
 import { STATUS_LABELS } from "@/lib/leadStatus";
-import { palette, statusColors } from "@/lib/theme";
+import { palette, statusColors, alpha } from "@/lib/theme";
 import { stageColor } from "@/lib/stageColor";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
@@ -270,7 +270,7 @@ export default function PipelinePage() {
                     className="nb-fade-up"
                     style={{
                       flex: 1, minWidth: 0, borderRadius: 16, padding: "12px 14px", position: "relative", overflow: "hidden",
-                      background: `linear-gradient(135deg, ${c}2e, ${c}0d)`, border: `1px solid ${c}55`,
+                      background: `linear-gradient(135deg, ${alpha(c, "2e")}, ${alpha(c, "0d")})`, border: `1px solid ${alpha(c, "55")}`,
                       animationDelay: `${i * 0.06}s`,
                     }}
                   >
@@ -358,16 +358,16 @@ export default function PipelinePage() {
                   className="nb-fade-up"
                   style={{
                     flex: "0 0 300px", minWidth: 300, display: "flex", flexDirection: "column", borderRadius: 20, overflow: "hidden",
-                    background: `linear-gradient(180deg, ${c}1f 0%, ${c}08 30%, var(--nb-surface) 100%)`,
-                    border: `1px solid ${c}40`, backdropFilter: "blur(14px)", animationDelay: `${si * 0.05}s`,
+                    background: `linear-gradient(180deg, ${alpha(c, "1f")} 0%, ${alpha(c, "08")} 30%, var(--nb-surface) 100%)`,
+                    border: `1px solid ${alpha(c, "40")}`, backdropFilter: "blur(14px)", animationDelay: `${si * 0.05}s`,
                   }}
                 >
-                  <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, borderBottom: `1px solid ${c}33` }}>
+                  <div style={{ padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, borderBottom: `1px solid ${alpha(c, "33")}` }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                       <span style={{ width: 10, height: 10, borderRadius: "50%", background: c, boxShadow: `0 0 12px ${c}`, flexShrink: 0 }} />
                       <span className="nb-display" style={{ fontWeight: 600, color: "var(--nb-text-strong)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{stage.name}</span>
                     </div>
-                    <span className="nb-mono" style={{ fontSize: 12, fontWeight: 700, color: c, background: `${c}1f`, padding: "2px 10px", borderRadius: 999 }}>
+                    <span className="nb-mono" style={{ fontSize: 12, fontWeight: 700, color: c, background: `${alpha(c, "1f")}`, padding: "2px 10px", borderRadius: 999 }}>
                       {stageLeads.length}
                     </span>
                   </div>
@@ -379,8 +379,8 @@ export default function PipelinePage() {
                         {...provided.droppableProps}
                         style={{
                           flex: 1, padding: 10, minHeight: 120, maxHeight: "calc(100vh - 260px)", overflowY: "auto",
-                          background: snapshot.isDraggingOver ? `${c}1a` : "transparent", transition: "background-color 0.2s",
-                          outline: snapshot.isDraggingOver ? `2px dashed ${c}80` : "none", outlineOffset: -6, borderRadius: 16,
+                          background: snapshot.isDraggingOver ? `${alpha(c, "1a")}` : "transparent", transition: "background-color 0.2s",
+                          outline: snapshot.isDraggingOver ? `2px dashed ${alpha(c, "80")}` : "none", outlineOffset: -6, borderRadius: 16,
                         }}
                       >
                         {stageLeads.length === 0 && !snapshot.isDraggingOver && (

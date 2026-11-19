@@ -18,7 +18,7 @@ export const metadata: Metadata = {
 };
 
 export async function generateViewport(): Promise<Viewport> {
-  const mode = (await cookies()).get(THEME_COOKIE)?.value === "light" ? "light" : "dark";
+  const mode = (await cookies()).get(THEME_COOKIE)?.value === "dark" ? "dark" : "light";
   return { themeColor: mode === "dark" ? "#060913" : "#f3f5fb" };
 }
 
@@ -27,8 +27,8 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Mode mémorisé dans un cookie : rendu serveur directement dans le bon thème (pas de flash).
-  const mode: ThemeMode = (await cookies()).get(THEME_COOKIE)?.value === "light" ? "light" : "dark";
+  // Mode mémorisé dans un cookie (clair par défaut) : rendu serveur directement dans le bon thème (pas de flash).
+  const mode: ThemeMode = (await cookies()).get(THEME_COOKIE)?.value === "dark" ? "dark" : "light";
 
   return (
     <html lang="fr" data-theme={mode} className={`${inter.variable} ${grotesk.variable} ${mono.variable}`}>

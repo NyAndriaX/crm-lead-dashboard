@@ -13,7 +13,7 @@ import {
 } from "@ant-design/icons";
 import { AI_PROVIDERS, getProvider, type AiProviderId } from "@crm/ai/providers";
 import { api } from "@/lib/client";
-import { palette } from "@/lib/theme";
+import { palette, alpha } from "@/lib/theme";
 import { Chip, Panel } from "@/components/ui/Kit";
 
 type AiConfigView = {
@@ -140,7 +140,7 @@ export function AiSettingsSection() {
   return (
     <div style={{ display: "grid", gap: 16, gridTemplateColumns: "minmax(0, 1fr)" }}>
       <div className="nb-glass" style={{ borderRadius: 20, padding: 20, display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-        <span style={{ width: 46, height: 46, borderRadius: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 20, color: palette.violet, background: `${palette.violet}1f` }}>
+        <span style={{ width: 46, height: 46, borderRadius: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 20, color: palette.violet, background: `${alpha(palette.violet, "1f")}` }}>
           <ThunderboltOutlined />
         </span>
         <div style={{ flex: 1, minWidth: 240 }}>
@@ -187,7 +187,7 @@ export function AiSettingsSection() {
                 className="nb-lift"
                 style={{
                   position: "relative", cursor: "pointer", borderRadius: 16, padding: 14, transition: "all .2s",
-                  border: `1.5px solid ${on ? palette.violet : "var(--nb-border)"}`, background: on ? `${palette.violet}12` : "var(--nb-control)",
+                  border: `1.5px solid ${on ? palette.violet : "var(--nb-border)"}`, background: on ? `${alpha(palette.violet, "12")}` : "var(--nb-control)",
                 }}
               >
                 {on && <CheckCircleFilled style={{ position: "absolute", top: 12, right: 12, color: palette.violet }} />}

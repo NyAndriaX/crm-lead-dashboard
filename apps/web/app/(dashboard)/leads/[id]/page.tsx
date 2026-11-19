@@ -11,7 +11,7 @@ import {
 import dayjs from "dayjs";
 import type { LeadStatus } from "@crm/db";
 import { api } from "@/lib/client";
-import { palette, statusColors } from "@/lib/theme";
+import { palette, statusColors, alpha } from "@/lib/theme";
 import { STATUS_LABELS, allowedTransitions } from "@/lib/leadStatus";
 import { AIBadge } from "@/components/ui/Brand";
 import { Chip, EmptyState, Panel, ScoreRing } from "@/components/ui/Kit";
@@ -97,8 +97,8 @@ function StatusFlow({ status, onChange }: { status: LeadStatus; onChange: (s: Le
               style={{
                 flex: "1 1 110px", padding: "9px 12px", borderRadius: 12, fontSize: 12.5, fontWeight: 650, transition: "all .2s var(--nb-ease)",
                 cursor: can ? "pointer" : current ? "default" : "not-allowed",
-                border: `1.5px solid ${current ? color : can ? `${color}66` : "var(--nb-border)"}`,
-                background: current ? `${color}26` : passed ? `${color}12` : "var(--nb-control)",
+                border: `1.5px solid ${current ? color : can ? `${alpha(color, "66")}` : "var(--nb-border)"}`,
+                background: current ? `${alpha(color, "26")}` : passed ? `${alpha(color, "12")}` : "var(--nb-control)",
                 color: current || passed ? color : can ? "var(--nb-text-2)" : "var(--nb-text-3)",
                 boxShadow: current ? `0 0 18px -6px ${color}` : "none",
               }}
@@ -115,7 +115,7 @@ function StatusFlow({ status, onChange }: { status: LeadStatus; onChange: (s: Le
           onClick={() => !lost && onChange("PERDU")}
           style={{
             padding: "9px 14px", borderRadius: 12, fontSize: 12.5, fontWeight: 650, cursor: allowed.has("PERDU") ? "pointer" : "default",
-            border: `1.5px solid ${lost ? palette.red : `${palette.red}55`}`, background: lost ? `${palette.red}22` : "transparent", color: palette.red,
+            border: `1.5px solid ${lost ? palette.red : `${alpha(palette.red, "55")}`}`, background: lost ? `${alpha(palette.red, "22")}` : "transparent", color: palette.red,
           }}
         >
           Perdu
@@ -225,7 +225,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
       {modalHolder}
 
       <div className="nb-glass" style={{ borderRadius: 22, padding: 22, position: "relative", overflow: "hidden" }}>
-        <div aria-hidden style={{ position: "absolute", top: -120, right: -80, width: 320, height: 320, borderRadius: "50%", background: `radial-gradient(circle, ${statusColors[lead.status] ?? palette.violet}26, transparent 70%)` }} />
+        <div aria-hidden style={{ position: "absolute", top: -120, right: -80, width: 320, height: 320, borderRadius: "50%", background: `radial-gradient(circle, ${alpha(statusColors[lead.status] ?? palette.violet, "26")}, transparent 70%)` }} />
         <div style={{ display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap", position: "relative" }}>
           <Link href="/leads"><Button shape="circle" icon={<ArrowLeftOutlined />} aria-label="Retour aux leads" /></Link>
           <span style={{ width: 64, height: 64, borderRadius: 20, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 22, fontWeight: 800, color: "#fff", background: palette.gradient, boxShadow: `0 12px 30px -12px ${palette.violet}` }}>{initials}</span>
@@ -288,7 +288,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
                 </div>
                 {(ai.brief?.summary || ai.site?.summary) && <div style={{ fontSize: 14, color: "var(--nb-text)", lineHeight: 1.65 }}>{ai.brief?.summary ?? ai.site?.summary}</div>}
                 {ai.brief?.angle && (
-                  <div style={{ padding: "12px 14px", borderRadius: 14, background: `${palette.violet}14`, border: `1px solid ${palette.violet}40`, fontSize: 13.5, color: "var(--nb-text)" }}>
+                  <div style={{ padding: "12px 14px", borderRadius: 14, background: `${alpha(palette.violet, "14")}`, border: `1px solid ${alpha(palette.violet, "40")}`, fontSize: 13.5, color: "var(--nb-text)" }}>
                     <b style={{ color: palette.violet }}>Angle d&apos;approche · </b>{ai.brief.angle}
                   </div>
                 )}

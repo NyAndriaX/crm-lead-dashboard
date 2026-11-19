@@ -12,7 +12,7 @@ import {
   CheckOutlined, MailOutlined, ReloadOutlined, SendOutlined, ThunderboltOutlined, UserOutlined, InboxOutlined, ArrowLeftOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
-import { palette, statusColors } from "@/lib/theme";
+import { palette, statusColors, alpha } from "@/lib/theme";
 import { useIsMobile } from "@/lib/responsive";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { AIBadge } from "@/components/ui/Brand";
@@ -238,7 +238,7 @@ function Inbox() {
                 style={{
                   display: "flex", gap: 12, padding: "14px 16px", cursor: "pointer", position: "relative",
                   borderBottom: "1px solid var(--nb-border)",
-                  background: active ? `linear-gradient(90deg, ${c}26, transparent)` : it.isRead ? "transparent" : "rgba(139,92,246,0.06)",
+                  background: active ? `linear-gradient(90deg, ${alpha(c, "26")}, transparent)` : it.isRead ? "transparent" : "rgba(139,92,246,0.06)",
                   boxShadow: active ? `inset 3px 0 0 ${c}` : undefined,
                   animation: `nb-slide-in 0.4s var(--nb-ease) ${Math.min(i, 12) * 0.03}s both`,
                   transition: "background 0.2s",
@@ -375,7 +375,7 @@ function CategoryButton({ active, color, label, count, onClick }: { active: bool
       style={{
         display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 12px", borderRadius: 999, cursor: "pointer",
         fontSize: 12.5, fontWeight: 600, border: `1px solid ${active ? color : "var(--nb-border)"}`,
-        background: active ? `${color}22` : "var(--nb-control)", color: active ? color : "var(--nb-text-2)",
+        background: active ? `${alpha(color, "22")}` : "var(--nb-control)", color: active ? color : "var(--nb-text-2)",
         boxShadow: active ? `0 0 18px -6px ${color}` : "none", transition: "all 0.2s",
       }}
     >
@@ -446,7 +446,7 @@ function ReadingPane({
           <div
             style={{
               marginTop: 14, padding: "10px 14px", borderRadius: 14, display: "flex", gap: 12, alignItems: "center",
-              background: `linear-gradient(90deg, ${cat.color}22, transparent)`, border: `1px solid ${cat.color}44`,
+              background: `linear-gradient(90deg, ${alpha(cat.color, "22")}, transparent)`, border: `1px solid ${alpha(cat.color, "44")}`,
             }}
           >
             <span style={{ fontSize: 18, color: cat.color }}>✦</span>
@@ -474,7 +474,7 @@ function ReadingPane({
                     borderTopRightRadius: out ? 6 : 18, borderTopLeftRadius: out ? 18 : 6,
                     background: out ? "linear-gradient(135deg, rgba(139,92,246,0.22), rgba(99,102,241,0.14))" : "var(--nb-control)",
                     border: `1px solid ${out ? "rgba(139,92,246,0.4)" : "var(--nb-border)"}`,
-                    boxShadow: m.id === opened.id ? `0 0 0 2px ${palette.cyan}66` : undefined,
+                    boxShadow: m.id === opened.id ? `0 0 0 2px ${alpha(palette.cyan, "66")}` : undefined,
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 16, fontSize: 11, color: "var(--nb-text-3)", marginBottom: 6 }}>

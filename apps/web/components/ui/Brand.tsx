@@ -1,36 +1,37 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 
-/** Logo : orbe en dégradé avec anneau en rotation. */
+/** Logo : tête du robot de prospection (même dessin que le favicon app/icon.svg). */
 export function BrandMark({ size = 34 }: { size?: number }) {
+  const id = useId().replace(/:/g, "");
   return (
-    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }} aria-hidden>
-      <div
-        style={{
-          position: "absolute", inset: 0, borderRadius: "50%",
-          background: "conic-gradient(from 0deg, #a78bfa, #8b5cf6, #94a3b8, #a78bfa)",
-          animation: "nb-spin 6s linear infinite",
-          boxShadow: "0 0 24px -2px rgba(139,92,246,0.8)",
-        }}
-      />
-      <div
-        style={{
-          position: "absolute", inset: 3, borderRadius: "50%", background: "#0a0f1e",
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }}
-      >
-        <svg viewBox="0 0 24 24" width={size * 0.5} height={size * 0.5}>
-          <path d="M12 3l2.4 5.6L20 11l-5.6 2.4L12 19l-2.4-5.6L4 11l5.6-2.4z" fill="url(#bm-g)" />
-          <defs>
-            <linearGradient id="bm-g" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#a78bfa" />
-              <stop offset="100%" stopColor="#94a3b8" />
-            </linearGradient>
-          </defs>
-        </svg>
-      </div>
-    </div>
+    <svg
+      viewBox="0 0 64 64" width={size} height={size} aria-hidden
+      style={{ flexShrink: 0, display: "block", filter: "drop-shadow(0 6px 14px rgba(124, 58, 237, 0.35))" }}
+    >
+      <defs>
+        <linearGradient id={`${id}bg`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#8b5cf6" />
+          <stop offset="1" stopColor="#5b21b6" />
+        </linearGradient>
+        <linearGradient id={`${id}sh`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#ffffff" />
+          <stop offset="1" stopColor="#e4dcff" />
+        </linearGradient>
+      </defs>
+      <rect width="64" height="64" rx="16" fill={`url(#${id}bg)`} />
+      <rect x="30.5" y="9" width="3" height="9" rx="1.5" fill="#ffffff" />
+      <circle className="nb-brand-antenna" cx="32" cy="9" r="4" fill="#c4b5fd" stroke="#ffffff" strokeWidth="2" />
+      <rect x="7" y="27" width="6" height="14" rx="3" fill="#e4dcff" />
+      <rect x="51" y="27" width="6" height="14" rx="3" fill="#e4dcff" />
+      <rect x="11" y="17" width="42" height="35" rx="13" fill={`url(#${id}sh)`} />
+      <rect x="16" y="23.5" width="32" height="20" rx="9" fill="#1e1b4b" />
+      <g className="nb-brand-eyes">
+        <rect x="22" y="29.5" width="7" height="8" rx="3.5" fill="#a78bfa" />
+        <rect x="35" y="29.5" width="7" height="8" rx="3.5" fill="#a78bfa" />
+      </g>
+    </svg>
   );
 }
 

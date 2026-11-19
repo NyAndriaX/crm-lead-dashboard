@@ -9,7 +9,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button, Space } from "antd";
 import { FileSearchOutlined, PlusOutlined, RadarChartOutlined, UserOutlined } from "@ant-design/icons";
-import { palette } from "@/lib/theme";
+import { palette, alpha } from "@/lib/theme";
 import { ProspectorRobot, type RobotState } from "@/components/ui/ProspectorRobot";
 import { RadarScanner } from "@/components/ui/RadarScanner";
 import { fitColor, isActive, type BufferItem, type Mission } from "./types";
@@ -140,7 +140,7 @@ export function CommandCenter({
                         width: 26, height: 26, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
                         border: `2px solid ${color}`, color, fontSize: 12, fontWeight: 700,
                         boxShadow: active ? `0 0 16px ${palette.cyan}` : "none",
-                        background: done ? `${palette.green}22` : "transparent",
+                        background: done ? `${alpha(palette.green, "22")}` : "transparent",
                       }}
                     >
                       {done ? "✓" : active ? <span style={{ width: 10, height: 10, borderRadius: "50%", border: `2px solid ${palette.cyan}`, borderTopColor: "transparent", animation: "nb-spin 0.8s linear infinite", display: "block" }} /> : i + 1}

@@ -5,6 +5,7 @@
  * Pour les analyses avancées, la page Analytics utilise @ant-design/charts (thème sombre).
  */
 import { useState } from "react";
+import { alpha } from "@/lib/theme";
 
 export type DonutSlice = { key: string; label: string; value: number; color: string };
 
@@ -37,7 +38,7 @@ export function DonutChart({ data, size = 220, centerLabel = "Total" }: { data: 
                 transform="rotate(-90 100 100)"
                 style={{
                   transition: "stroke-width 0.25s",
-                  filter: `drop-shadow(0 0 6px ${d.color}66)`,
+                  filter: `drop-shadow(0 0 6px ${alpha(d.color, "66")})`,
                   cursor: "pointer",
                   animation: `nb-donut 1.2s var(--nb-ease) ${i * 0.08}s both`,
                 }}

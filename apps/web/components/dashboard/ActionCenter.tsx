@@ -9,7 +9,7 @@ import {
   RetweetOutlined, UserAddOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
-import { palette } from "@/lib/theme";
+import { palette, alpha } from "@/lib/theme";
 
 type Actions = { hotReplies: number; toValidate: number; hotIdle: number; unassignedHot: number; sendsToday: number; drafts: number; paused: number };
 type Card = { key: keyof Actions; icon: ReactNode; color: string; title: (n: number) => string; hint: string; href: string; urgent?: boolean };
@@ -55,10 +55,10 @@ export function ActionCenter() {
               className="nb-lift"
               style={{
                 display: "flex", gap: 12, alignItems: "center", padding: "14px 16px", borderRadius: 16, color: "inherit",
-                border: `1px solid ${c.urgent ? `${c.color}66` : "var(--nb-border)"}`, background: c.urgent ? `${c.color}10` : "var(--nb-control)",
+                border: `1px solid ${c.urgent ? `${alpha(c.color, "66")}` : "var(--nb-border)"}`, background: c.urgent ? `${alpha(c.color, "10")}` : "var(--nb-control)",
               }}
             >
-              <span style={{ position: "relative", width: 40, height: 40, borderRadius: 12, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", color: c.color, background: `${c.color}1f`, fontSize: 17 }}>
+              <span style={{ position: "relative", width: 40, height: 40, borderRadius: 12, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", color: c.color, background: `${alpha(c.color, "1f")}`, fontSize: 17 }}>
                 {c.icon}
                 {c.urgent && <span className="nb-pulse-dot" style={{ position: "absolute", top: -3, right: -3, width: 9, height: 9, borderRadius: "50%", background: c.color, color: c.color }} />}
               </span>

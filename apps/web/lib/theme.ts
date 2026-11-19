@@ -4,11 +4,13 @@ import { theme } from "antd";
 /**
  * Design system « Nebula » — source de vérité unique des couleurs, rayons et typographies.
  *
- * Deux modes : sombre (défaut) et clair. Les couleurs NEUTRES (fond, surfaces, bordures,
- * textes) sont des variables CSS `--nb-*` redéfinies par mode dans globals.css : utilisées
- * dans les styles inline, elles basculent sans re-rendu. Les couleurs d'ACCENT restent des
- * hex identiques dans les deux modes (elles servent aussi aux SVG et aux transparences
- * `${hex}33`). Ant Design reçoit des valeurs concrètes par mode via `buildTheme()`.
+ * Deux modes : clair (défaut) et sombre. Toutes les couleurs — neutres (fond, surfaces, bordures,
+ * textes) ET accents (violet, vert, ambre, rouge…) — sont des variables CSS `--nb-*` redéfinies par
+ * mode dans globals.css : utilisées dans les styles inline et les SVG, elles basculent sans re-rendu.
+ * En clair, les accents sont plus foncés pour rester lisibles sur fond blanc.
+ *  - transparence d'un accent : `alpha(palette.green, "22")` (jamais `${palette.green}22`) ;
+ *  - graphiques G2 (canvas, sans variables CSS) : `accentHex(mode)` ;
+ *  - Ant Design reçoit des valeurs concrètes par mode via `buildTheme()`.
  */
 export type ThemeMode = "dark" | "light";
 
@@ -23,21 +25,43 @@ export const palette = {
   textStrong: "var(--nb-text-strong)",
   textSecondary: "var(--nb-text-2)",
   textTertiary: "var(--nb-text-3)",
-  // Accents — identiques dans les deux modes. Charte sobre : UNE couleur d'accent (violet),
-  // des neutres, et les couleurs sémantiques (vert / ambre / rouge) seulement quand elles portent un sens.
+  // Accents — variables CSS, valeur par mode (ACCENTS ci-dessous, globals.css). Charte sobre : UNE couleur
+  // d'accent (violet), des neutres, et les couleurs sémantiques (vert / ambre / rouge) quand elles portent un sens.
   // Les anciens noms (cyan, pink, indigo, blue) sont conservés comme alias pour ne rien casser.
-  violet: "#8b5cf6",
-  indigo: "#8b5cf6",
-  cyan: "#a78bfa", // teinte claire de l'accent
-  pink: "#94a3b8", // neutre ardoise
-  blue: "#94a3b8", // neutre ardoise
-  green: "#34d399",
-  amber: "#fbbf24",
-  red: "#fb7185",
+  violet: "var(--nb-violet)",
+  indigo: "var(--nb-violet)",
+  cyan: "var(--nb-cyan)", // teinte claire de l'accent
+  pink: "var(--nb-pink)", // neutre ardoise
+  blue: "var(--nb-pink)", // neutre ardoise
+  green: "var(--nb-green)",
+  amber: "var(--nb-amber)",
+  red: "var(--nb-red)",
   /** Dégradé de marque, monochrome (boutons primaires, avatars). */
   gradient: "linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)",
   gradientSoft: "linear-gradient(135deg, rgba(139,92,246,0.16), rgba(139,92,246,0.06))",
 } as const;
+
+/** Valeurs concrètes des accents par mode (miroir des variables CSS de globals.css). */
+export const ACCENTS = {
+  dark: { violet: "#8b5cf6", cyan: "#a78bfa", pink: "#94a3b8", green: "#34d399", amber: "#fbbf24", red: "#fb7185" },
+  light: { violet: "#7c3aed", cyan: "#8b5cf6", pink: "#64748b", green: "#047857", amber: "#b45309", red: "#e11d48" },
+} as const;
+
+/** Accents en hexadécimal pour un mode (graphiques canvas, calculs de couleur). */
+export function accentHex(mode: ThemeMode) {
+  const a = ACCENTS[mode];
+  return { ...a, indigo: a.violet, blue: a.pink };
+}
+
+/**
+ * Couleur avec transparence. `a` = opacité en hexadécimal sur 2 chiffres (« 22 », « 80 »…), comme
+ * l'ancien suffixe `${hex}22`. Fonctionne avec un hex (#rrggbb) comme avec une variable CSS.
+ */
+export function alpha(color: string, a: string): string {
+  if (/^#[0-9a-f]{6}$/i.test(color)) return `${color}${a}`;
+  const pct = Math.round((parseInt(a, 16) / 255) * 1000) / 10;
+  return `color-mix(in srgb, ${color} ${pct}%, transparent)`;
+}
 
 /** Couleurs des statuts de lead (pipeline, graphiques, tags). */
 export const statusColors: Record<string, string> = {
@@ -85,15 +109,16 @@ const NEUTRALS = {
 
 export function buildTheme(mode: ThemeMode): ThemeConfig {
   const n = NEUTRALS[mode];
+  const a = ACCENTS[mode];
   const dark = mode === "dark";
   return {
     algorithm: dark ? theme.darkAlgorithm : theme.defaultAlgorithm,
     token: {
-      colorPrimary: palette.violet,
-      colorInfo: dark ? palette.violet : "#7c3aed",
-      colorSuccess: dark ? palette.green : "#10b981",
-      colorWarning: dark ? palette.amber : "#f59e0b",
-      colorError: dark ? palette.red : "#f43f5e",
+      colorPrimary: a.violet,
+      colorInfo: a.violet,
+      colorSuccess: dark ? a.green : "#059669",
+      colorWarning: dark ? a.amber : "#d97706",
+      colorError: a.red,
       colorLink: dark ? "#a78bfa" : "#7c3aed",
       colorBgBase: n.bg,
       colorBgLayout: "transparent",
