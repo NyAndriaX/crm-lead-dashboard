@@ -45,6 +45,12 @@ export function startQueueWorker(opts: QueueWorkerOptions): QueueWorker {
   const lockMs = (name: string) => opts.lockMsPerJob?.[name] ?? DEFAULT_LOCK_MS;
   const limit = (name: string) => opts.concurrencyPerJob?.[name] ?? 3;
 
+  // SKIP LOCKED (MySQL 8) laisse plusieurs workers se partager la file. Les bases compatibles MySQL qui ne le
+  // gèrent pas (TiDB Cloud) tournent avec un seul worker : QUEUE_SKIP_LOCKED=false repasse en simple FOR UPDATE.
+  const LOCK_CLAUSE = process.env.QUEUE_SKIP_LOCKED?.trim().toLowerCase() === "false"
+    ? Prisma.sql`FOR UPDATE`
+    : Prisma.sql`FOR UPDATE SKIP LOCKED`;
+
   async function claim(): Promise<{ id: string; name: string; payload: unknown; attempts: number; maxAttempts: number; repeatEveryMs: number | null } | null> {
     const eligible = names.filter((n) => (running.get(n) ?? 0) < limit(n));
     if (eligible.length === 0) return null;
@@ -57,7 +63,7 @@ export function startQueueWorker(opts: QueueWorkerOptions): QueueWorker {
             OR (status = 'RUNNING' AND lockedUntil < ${now}))
         ORDER BY priority DESC, runAt ASC
         LIMIT 1
-        FOR UPDATE SKIP LOCKED`;
+        ${LOCK_CLAUSE}`;
       const row = rows[0];
       if (!row) return null;
       const job = await tx.queueJob.update({

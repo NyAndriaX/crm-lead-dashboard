@@ -1,0 +1,43 @@
+# Blueprint Render — démo gratuite de CRM Lead (application + tâches de fond, base TiDB Cloud).
+# Voir deploy/render/README.md. Les valeurs « sync: false » se saisissent dans le tableau de bord Render.
+services:
+  - type: web
+    name: crm-lead
+    runtime: image
+    plan: free
+    image:
+      url: ghcr.io/nyandriax/crm-lead-web:render
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=384
+      - key: RUN_JOBS
+        value: "true"
+      - key: WORKER_CONCURRENCY
+        value: "1"
+      - key: QUEUE_SKIP_LOCKED
+        value: "false"
+      - key: SCRAPING_LIVE
+        value: "false"
+      - key: WORKER_TIMEZONE
+        value: Europe/Paris
+      - key: AUTH_JWT_SECRET
+        generateValue: true
+      - key: EMAIL_HASH_SECRET
+        generateValue: true
+      - key: INTERNAL_API_TOKEN
+        generateValue: true
+      - key: DATABASE_URL # chaîne de connexion TiDB Cloud (mysql://…?sslaccept=strict)
+        sync: false
+      - key: PII_ENCRYPTION_KEY # 64 caractères hexadécimaux (openssl rand -hex 32)
+        sync: false
+      - key: APP_BASE_URL # https://<nom-du-service>.onrender.com
+        sync: false
+      - key: SEED_ADMIN_EMAIL
+        sync: false
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
+      - key: SEED_PASSWORD # mot de passe des comptes de démonstration
+        sync: false

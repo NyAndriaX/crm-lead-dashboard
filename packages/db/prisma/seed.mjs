@@ -57,10 +57,12 @@ async function hashPassword(plain) {
   return bcrypt.hash(plain, 12);
 }
 
-async function seedUsers(passwordHash) {
+async function seedUsers(passwordHash, adminPasswordHash) {
   const users = new Map();
   for (const fixture of USER_FIXTURES) {
-    const email = fixture.email.toLowerCase();
+    // Le compte administrateur prend SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD (les autres : SEED_PASSWORD).
+    const isAdmin = fixture.role === "ADMIN";
+    const email = isAdmin ? adminEmail : fixture.email.toLowerCase();
     const user = await prisma.user.upsert({
     where: { email },
       update: {
@@ -70,7 +72,7 @@ async function seedUsers(passwordHash) {
       },
       create: {
         email,
-        passwordHash,
+        passwordHash: isAdmin ? adminPasswordHash : passwordHash,
         name: fixture.name,
         role: fixture.role,
         isActive: true,
@@ -78,6 +80,7 @@ async function seedUsers(passwordHash) {
       },
     });
     users.set(email, user);
+    if (isAdmin) users.set(fixture.email.toLowerCase(), user); // les fixtures désignent l'admin par son email de démo
   }
   return users;
 }
@@ -773,7 +776,7 @@ async function seedCampaigns(leadRows) {
 
 async function main() {
   const passwordHash = await hashPassword(demoPassword);
-  const users = await seedUsers(passwordHash);
+  const users = await seedUsers(passwordHash, adminPassword === demoPassword ? passwordHash : await hashPassword(adminPassword));
   const admin = users.get(adminEmail) ?? users.get("admin@crm.local");
 
   await seedTeam(users);
