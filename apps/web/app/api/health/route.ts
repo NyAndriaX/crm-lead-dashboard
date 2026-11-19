@@ -41,7 +41,10 @@ export async function GET() {
     const lastMs = last?.lastFinishedAt?.getTime() ?? 0;
     if (lastMs > 0) {
       const ageMin = (Date.now() - lastMs) / 60000;
-      worker = ageMin <= 15 ? "ok" : "stale";
+      // Un process qui vient de (re)démarrer — réveil d'une veille, nouveau déploiement — n'a pas encore
+      // eu le temps de terminer un job : on ne le déclare pas « stale » pendant ses 15 premières minutes.
+      const uptimeMin = (Date.now() - startedAt) / 60000;
+      worker = ageMin <= 15 || uptimeMin <= 15 ? "ok" : "stale";
       checks.worker = { status: worker, lastJobAgeMin: Math.round(ageMin * 10) / 10 };
     } else {
       checks.worker = { status: "unknown", note: "Aucun job terminé (worker jamais lancé ?)" };
