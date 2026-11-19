@@ -29,8 +29,18 @@ if [ -z "${RENDER_API_KEY:-}" ]; then
   read -rs RENDER_API_KEY; echo
 fi
 if [ -z "${DATABASE_URL:-}" ]; then
-  echo "Chaîne de connexion TiDB Cloud (mysql://utilisateur:motdepasse@hôte:4000/crm) :"
+  echo "Chaîne de connexion TiDB Cloud (mysql://utilisateur:motdepasse@hôte:4000/crm)"
+  echo "(Entrée sans rien taper : reprendre celle du service Render déjà déployé) :"
   read -rs DATABASE_URL; echo
+fi
+if [ -z "$DATABASE_URL" ]; then
+  auth=(-H "Authorization: Bearer $RENDER_API_KEY" -H "Accept: application/json")
+  sid=$(curl -fsS "${auth[@]}" "$API/services?name=$NAME&limit=20" \
+        | jq -r --arg n "$NAME" '[.[] | select(.service.name==$n)][0].service.id // empty') || sid=""
+  [ -n "$sid" ] && DATABASE_URL=$(curl -fsS "${auth[@]}" "$API/services/$sid/env-vars?limit=100" \
+        | jq -r '[.[] | (.envVar // .) | select(.key=="DATABASE_URL")][0].value // empty') || true
+  [ -n "$DATABASE_URL" ] || { echo "❌ Aucune chaîne trouvée sur Render (service $NAME) : saisis-la."; exit 1; }
+  echo "ℹ️  Chaîne de connexion reprise du service Render $NAME."
 fi
 case "$DATABASE_URL" in
   mysql://*) ;;
