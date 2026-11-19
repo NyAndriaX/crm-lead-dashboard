@@ -1,4 +1,5 @@
-# Construit l'image de démonstration (deploy/render/Dockerfile) et la publie sur GitHub Container Registry.
+# Construit les images de démonstration (application : deploy/render/Dockerfile ; scraper : apps/scraper/Dockerfile)
+# et les publie sur GitHub Container Registry.
 # Render (offre gratuite) déploie ensuite cette image : la construction se fait ici, pas chez Render.
 name: render-image
 
@@ -30,5 +31,14 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: ghcr.io/nyandriax/crm-lead-web:render
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/scraper/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/nyandriax/crm-lead-scraper:render
+          cache-from: type=gha,scope=scraper
+          cache-to: type=gha,mode=max,scope=scraper

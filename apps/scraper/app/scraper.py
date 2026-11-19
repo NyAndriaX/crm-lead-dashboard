@@ -67,6 +67,7 @@ class GoogleMapsScraper:
                 claude_bin=settings.claude_bin,
                 max_concurrency=settings.claude_max_concurrency,
                 env_enabled=settings.claude_skills_enabled,
+                allow_cli=not settings.low_memory,
             )
         # robots.txt : un seul garde (cache par domaine) pour toutes les missions.
         self._robots = RobotsGuard(

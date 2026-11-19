@@ -1,11 +1,19 @@
 # Démo gratuite : Render + TiDB Cloud
 
-Démonstration en ligne de CRM Lead sans carte bancaire : l'application (interface, API, tâches de fond) sur
-l'offre gratuite de Render, la base sur TiDB Cloud Starter (compatible MySQL).
+Démonstration en ligne de CRM Lead sans carte bancaire, sur l'offre gratuite de Render : l'application
+(interface, API, tâches de fond) et le scraper (FastAPI + Chromium, mode économe) en deux services ;
+la base sur TiDB Cloud Starter (compatible MySQL).
+
+Le plus simple : `bash deploy/render/deploy.sh` (crée ou met à jour les deux services, les relie et vérifie
+leur santé ; `SCRAPER=false` pour ne déployer que l'application).
 
 **Limites de cette démo** (le déploiement complet reste `deploy/README.md`, Docker Compose sur un serveur) :
-- le service se met en veille après 15 min sans visite ; le réveil prend environ une minute ;
-- pas de prospection réelle (le scraper Chromium ne tient pas dans l'offre gratuite) : `SCRAPING_LIVE=false` ;
+- les services se mettent en veille après 15 min sans visite ; le réveil prend environ une minute ;
+- le scraper tient dans 512 Mo grâce au mode économe (`LOW_MEMORY=true`, `EMAIL_CONCURRENCY=1` : un seul
+  processus de rendu Chromium, images, médias et polices bloqués), sans marge : missions de 10 à 20 fiches ;
+- pendant la prospection, l'analyse IA des fiches passe par un fournisseur à clé d'API (DeepSeek, Mistral,
+  Gemini…) ; le CLI Claude n'est pas lancé dans le scraper (mémoire), les fiches sont alors collectées sans analyse ;
+- les 750 h mensuelles gratuites sont partagées entre les deux services ;
 - les tâches de fond ne tournent que lorsque le service est éveillé ;
 - fichiers importés non conservés (disque éphémère).
 
@@ -14,10 +22,11 @@ l'offre gratuite de Render, la base sur TiDB Cloud Starter (compatible MySQL).
 2. *Connect* → *General* → copier la chaîne de connexion **Prisma** / MySQL et créer une base `crm` :
    `mysql://<user>:<mot_de_passe>@<hôte>:4000/crm?sslaccept=strict`
 
-## 2. Image
-L'image est construite par GitHub Actions (`.github/workflows/render-image.yml`) et publiée sur
-`ghcr.io/nyandriax/crm-lead-web:render`. Après la première construction, rendre le paquet **public**
-(GitHub → Packages → crm-lead-web → Package settings → Change visibility → Public).
+## 2. Images
+Les images sont construites par GitHub Actions (`.github/workflows/render-image.yml`) et publiées sur
+`ghcr.io/nyandriax/crm-lead-web:render` et `ghcr.io/nyandriax/crm-lead-scraper:render`. Après la première
+construction, rendre chaque paquet **public** (GitHub → Packages → crm-lead-web / crm-lead-scraper →
+Package settings → Change visibility → Public).
 
 ## 3. Render
 1. Compte sur https://render.com (connexion avec GitHub).
@@ -26,6 +35,7 @@ L'image est construite par GitHub Actions (`.github/workflows/render-image.yml`)
    - `DATABASE_URL` : chaîne TiDB de l'étape 1 ;
    - `PII_ENCRYPTION_KEY` : `openssl rand -hex 32` ;
    - `APP_BASE_URL` : `https://crm-lead.onrender.com` (adresse affichée par Render) ;
+   - `SCRAPER_API_URL` : adresse du service `crm-lead-scraper` (`https://crm-lead-scraper.onrender.com`) ;
    - `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_PASSWORD` : comptes de la démo.
 4. Au premier démarrage : migrations, puis données de démonstration (base vide uniquement).
 

@@ -4,8 +4,9 @@
 #   bash deploy/render/deploy.sh
 #
 # Demande (saisie masquée) : la clé d'API Render et la chaîne de connexion TiDB.
-# Crée ou met à jour le service « crm-lead », lance le déploiement, attend qu'il soit en ligne
-# et vérifie /api/health. Les secrets de l'application sont générés une fois et gardés dans
+# Crée ou met à jour deux services gratuits : « crm-lead-scraper » (FastAPI + Chromium, mode économe)
+# puis « crm-lead » (application), les relie, lance les déploiements, attend qu'ils soient en ligne
+# et vérifie leur santé. SCRAPER=false pour ne déployer que l'application, sans prospection réelle. Les secrets de l'application sont générés une fois et gardés dans
 # deploy/render/.secrets (ignoré par git).
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -14,6 +15,9 @@ API="https://api.render.com/v1"
 NAME="${RENDER_SERVICE_NAME:-crm-lead}"
 REGION="${RENDER_REGION:-frankfurt}"
 IMAGE="ghcr.io/nyandriax/crm-lead-web:render"
+SCRAPER="${SCRAPER:-true}"
+SCRAPER_NAME="${RENDER_SCRAPER_NAME:-crm-lead-scraper}"
+SCRAPER_IMAGE="ghcr.io/nyandriax/crm-lead-scraper:render"
 SECRETS=".secrets"
 
 need() { command -v "$1" >/dev/null || { echo "❌ « $1 » est requis."; exit 1; }; }
@@ -57,6 +61,8 @@ if [ ! -f "$SECRETS" ]; then
   } > "$SECRETS"
   echo "🔐 Secrets générés dans deploy/render/$SECRETS (à conserver : la clé PII déchiffre les données)."
 fi
+# Ajouté après coup : complété dans un fichier .secrets existant.
+grep -q '^SCRAPER_API_KEY=' "$SECRETS" || echo "SCRAPER_API_KEY=$(openssl rand -hex 24)" >> "$SECRETS"
 # shellcheck disable=SC1090
 set -a; . "./$SECRETS"; set +a
 
@@ -69,70 +75,111 @@ api() { # api MÉTHODE CHEMIN [CORPS]
   printf '%s' "$out"
 }
 
-# --- 3. Image publique sur ghcr.io ---------------------------------------------------------------
-echo "🔎 Vérification de l'image $IMAGE…"
-until token=$(curl -fsS "https://ghcr.io/token?scope=repository:nyandriax/crm-lead-web:pull" | jq -r .token) \
-   && curl -fsS -o /dev/null -H "Authorization: Bearer $token" \
-        -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
-        "https://ghcr.io/v2/nyandriax/crm-lead-web/manifests/render"; do
-  echo "⏳ Image introuvable ou privée. Si GitHub Actions a fini de la construire, rends-la publique :"
-  echo "   https://github.com/users/NyAndriaX/packages/container/crm-lead-web/settings → Change visibility → Public"
-  echo "   Nouvelle vérification dans 30 s (Ctrl+C pour arrêter)…"; sleep 30
-done
-echo "✅ Image disponible."
+# --- 3. Images publiques sur ghcr.io ---------------------------------------------------------------
+wait_image() { # wait_image NOM_DU_PAQUET (ex. crm-lead-web)
+  local pkg="$1" token
+  echo "🔎 Vérification de l'image ghcr.io/nyandriax/$pkg:render…"
+  until token=$(curl -fsS "https://ghcr.io/token?scope=repository:nyandriax/$pkg:pull" | jq -r .token) \
+     && curl -fsS -o /dev/null -H "Authorization: Bearer $token" \
+          -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+          "https://ghcr.io/v2/nyandriax/$pkg/manifests/render"; do
+    echo "⏳ Image introuvable ou privée. Si GitHub Actions a fini de la construire, rends-la publique :"
+    echo "   https://github.com/users/NyAndriaX/packages/container/$pkg/settings → Change visibility → Public"
+    echo "   Nouvelle vérification dans 30 s (Ctrl+C pour arrêter)…"; sleep 30
+  done
+  echo "✅ Image $pkg disponible."
+}
+wait_image crm-lead-web
+[ "$SCRAPER" = true ] && wait_image crm-lead-scraper
 
 # --- 4. Création ou mise à jour du service --------------------------------------------------------
 OWNER=$(api GET "/owners?limit=20" | jq -r '.[0].owner.id')
 [ -n "$OWNER" ] && [ "$OWNER" != null ] || { echo "❌ Espace de travail Render introuvable."; exit 1; }
 
-env_json() { # $1 = APP_BASE_URL
-  jq -n --arg db "$DATABASE_URL" --arg url "$1" \
+env_json() { # $1 = APP_BASE_URL, $2 = adresse du scraper (vide : pas de prospection réelle)
+  jq -n --arg db "$DATABASE_URL" --arg url "$1" --arg scr "$2" --arg sk "$SCRAPER_API_KEY" \
     --arg pii "$PII_ENCRYPTION_KEY" --arg jwt "$AUTH_JWT_SECRET" --arg hash "$EMAIL_HASH_SECRET" \
     --arg tok "$INTERNAL_API_TOKEN" --arg ae "$SEED_ADMIN_EMAIL" --arg ap "$SEED_ADMIN_PASSWORD" --arg sp "$SEED_PASSWORD" '[
     {key:"NODE_ENV",value:"production"}, {key:"NODE_OPTIONS",value:"--max-old-space-size=384"},
     {key:"RUN_JOBS",value:"true"}, {key:"WORKER_CONCURRENCY",value:"1"}, {key:"QUEUE_SKIP_LOCKED",value:"false"},
-    {key:"SCRAPING_LIVE",value:"false"}, {key:"WORKER_TIMEZONE",value:"Europe/Paris"},
+    {key:"WORKER_TIMEZONE",value:"Europe/Paris"},
     {key:"DATABASE_URL",value:$db}, {key:"APP_BASE_URL",value:$url},
     {key:"PII_ENCRYPTION_KEY",value:$pii}, {key:"AUTH_JWT_SECRET",value:$jwt},
     {key:"EMAIL_HASH_SECRET",value:$hash}, {key:"INTERNAL_API_TOKEN",value:$tok},
     {key:"SEED_ADMIN_EMAIL",value:$ae}, {key:"SEED_ADMIN_PASSWORD",value:$ap}, {key:"SEED_PASSWORD",value:$sp}
+  ] + (if $scr == "" then [{key:"SCRAPING_LIVE",value:"false"}] else [
+    {key:"SCRAPING_LIVE",value:"true"}, {key:"SCRAPER_API_URL",value:$scr}, {key:"SCRAPER_API_KEY",value:$sk},
+    # Le scraper endormi met environ une minute à se réveiller : la vérification de santé l’attend.
+    {key:"SCRAPER_HEALTH_TIMEOUT_MS",value:"120000"}
+  ] end)'
+}
+
+scraper_env_json() { # mode économe : tient dans les 512 Mo de l'offre gratuite
+  jq -n --arg sk "$SCRAPER_API_KEY" '[
+    {key:"PORT",value:"8000"}, {key:"SCRAPER_API_KEY",value:$sk},
+    {key:"LOW_MEMORY",value:"true"}, {key:"EMAIL_CONCURRENCY",value:"1"},
+    {key:"HEADLESS",value:"true"}, {key:"LOG_LEVEL",value:"INFO"}
   ]'
 }
 
-SID=$(api GET "/services?name=$NAME&limit=20" | jq -r --arg n "$NAME" '[.[] | select(.service.name==$n)][0].service.id // empty')
-if [ -z "$SID" ]; then
-  echo "🆕 Création du service $NAME (offre gratuite, région $REGION)…"
-  body=$(jq -n --arg n "$NAME" --arg o "$OWNER" --arg img "$IMAGE" --arg r "$REGION" \
-    --argjson env "$(env_json "https://$NAME.onrender.com")" '{
-      type:"web_service", name:$n, ownerId:$o, image:{ownerId:$o, imagePath:$img}, envVars:$env,
-      serviceDetails:{runtime:"image", plan:"free", region:$r, healthCheckPath:"/api/health", numInstances:1}
-    }')
-  SID=$(api POST "/services" "$body" | jq -r '.service.id // .id')
-else
-  echo "♻️  Service existant ($SID) : mise à jour des variables."
+ensure_service() { # ensure_service NOM IMAGE CHEMIN_SANTÉ ENV_JSON → affiche l'identifiant
+  local name="$1" image="$2" health="$3" env="$4" sid body
+  sid=$(api GET "/services?name=$name&limit=20" | jq -r --arg n "$name" '[.[] | select(.service.name==$n)][0].service.id // empty')
+  if [ -z "$sid" ]; then
+    echo "🆕 Création du service $name (offre gratuite, région $REGION)…" >&2
+    body=$(jq -n --arg n "$name" --arg o "$OWNER" --arg img "$image" --arg r "$REGION" --arg h "$health" \
+      --argjson env "$env" '{
+        type:"web_service", name:$n, ownerId:$o, image:{ownerId:$o, imagePath:$img}, envVars:$env,
+        serviceDetails:{runtime:"image", plan:"free", region:$r, healthCheckPath:$h, numInstances:1}
+      }')
+    sid=$(api POST "/services" "$body" | jq -r '.service.id // .id')
+  else
+    echo "♻️  Service $name existant ($sid) : mise à jour des variables." >&2
+  fi
+  printf '%s' "$sid"
+}
+
+deploy_and_wait() { # deploy_and_wait IDENTIFIANT NOM
+  local sid="$1" name="$2" dep status=""
+  dep=$(api POST "/services/$sid/deploys" '{"clearCache":"do_not_clear"}' | jq -r '.id')
+  echo "🚀 Déploiement de $name lancé ($dep)."
+  for _ in $(seq 1 90); do
+    status=$(api GET "/services/$sid/deploys/$dep" | jq -r '.status')
+    case "$status" in
+      live) echo "✅ $name en ligne."; return 0 ;;
+      *failed|canceled|deactivated) echo "❌ $name : $status. Journaux : https://dashboard.render.com/web/$sid/logs"; exit 1 ;;
+      *) echo "   … $name : $status"; sleep 20 ;;
+    esac
+  done
+  echo "❌ Délai dépassé pour $name. Journaux : https://dashboard.render.com/web/$sid/logs"; exit 1
+}
+
+# 4a. Scraper (créé d'abord : l'application a besoin de son adresse).
+SCRAPER_URL=""
+if [ "$SCRAPER" = true ]; then
+  SCRAPER_SID=$(ensure_service "$SCRAPER_NAME" "$SCRAPER_IMAGE" "/health" "$(scraper_env_json)")
+  SCRAPER_URL=$(api GET "/services/$SCRAPER_SID" | jq -r '.serviceDetails.url')
+  api PUT "/services/$SCRAPER_SID/env-vars" "$(scraper_env_json)" >/dev/null
 fi
 
+# 4b. Application.
+SID=$(ensure_service "$NAME" "$IMAGE" "/api/health" "$(env_json "https://$NAME.onrender.com" "$SCRAPER_URL")")
 URL=$(api GET "/services/$SID" | jq -r '.serviceDetails.url')
-api PUT "/services/$SID/env-vars" "$(env_json "$URL")" >/dev/null
-DEPLOY=$(api POST "/services/$SID/deploys" '{"clearCache":"do_not_clear"}' | jq -r '.id')
-echo "🚀 Déploiement lancé ($DEPLOY) → $URL"
+api PUT "/services/$SID/env-vars" "$(env_json "$URL" "$SCRAPER_URL")" >/dev/null
 
-# --- 5. Attente et vérification -------------------------------------------------------------------
-for _ in $(seq 1 90); do
-  status=$(api GET "/services/$SID/deploys/$DEPLOY" | jq -r '.status')
-  case "$status" in
-    live) break ;;
-    *failed|canceled|deactivated) echo "❌ Déploiement : $status. Journaux : https://dashboard.render.com/web/$SID/logs"; exit 1 ;;
-    *) echo "   … $status"; sleep 20 ;;
-  esac
-done
-[ "$status" = live ] || { echo "❌ Délai dépassé. Journaux : https://dashboard.render.com/web/$SID/logs"; exit 1; }
+# --- 5. Déploiements, attente et vérification -------------------------------------------------------
+[ "$SCRAPER" = true ] && deploy_and_wait "$SCRAPER_SID" "$SCRAPER_NAME"
+deploy_and_wait "$SID" "$NAME"
 
 echo "🩺 Santé : $(curl -fsS "$URL/api/health" | jq -c '{status, db: .checks.db.status, worker: .checks.worker.status}')"
+[ "$SCRAPER" = true ] && echo "🩺 Scraper : $(curl -fsS --max-time 120 "$SCRAPER_URL/health" | jq -c .)"
 cat <<EOF
 
 ✅ CRM Lead est en ligne : $URL
    Administrateur : $SEED_ADMIN_EMAIL  (mot de passe dans deploy/render/$SECRETS)
-   L'IA se configure dans Configuration › Intelligence artificielle (jeton Claude ou clé d'API).
-   Rappel : le service s'endort après 15 min sans visite ; le réveil prend environ une minute.
+   Scraper : ${SCRAPER_URL:-désactivé (SCRAPER=false)}
+   L'IA se configure dans Configuration › Intelligence artificielle. Pendant la prospection, le scraper
+   (512 Mo) n'exécute pas le CLI Claude : choisir un fournisseur à clé d'API (DeepSeek, Mistral, Gemini…)
+   pour l'analyse des fiches ; avec Claude Skills, les fiches sont collectées sans analyse IA.
+   Rappel : les services s'endorment après 15 min sans visite ; le réveil prend environ une minute.
 EOF

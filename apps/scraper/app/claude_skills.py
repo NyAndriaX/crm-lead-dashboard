@@ -261,9 +261,12 @@ class LeadAnalyzer:
         claude_bin: str = "claude",
         max_concurrency: int = 2,
         env_enabled: bool = True,
+        allow_cli: bool = True,
     ) -> None:
         # Sans fournisseur transmis par le CRM, on suit le réglage du serveur (CLAUDE_SKILLS_ENABLED).
         self._env_enabled = env_enabled
+        # Hébergement à 512 Mo (LOW_MEMORY) : le process `claude` à côté de Chromium dépasserait la mémoire.
+        self._allow_cli = allow_cli
         self._model = model
         self._timeout_ms = timeout_ms
         self._bin = claude_bin
@@ -304,6 +307,10 @@ class LeadAnalyzer:
                     out = await run_chat_completion(
                         cfg, "crm-lead-analysis", payload, ANALYSIS_SCHEMA, fast=True, timeout_ms=self._timeout_ms
                     )
+                elif not self._allow_cli:
+                    logger.warning("Analyse IA ignorée pour %s : CLI Claude désactivé en mode économe "
+                                   "(choisir un fournisseur à clé d'API)", place.get("name"))
+                    return None
                 else:
                     out = await run_skill(
                         "crm-lead-analysis",

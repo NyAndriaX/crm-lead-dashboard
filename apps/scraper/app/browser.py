@@ -22,6 +22,16 @@ _LAUNCH_ARGS = [
     "--disable-dev-shm-usage",
     "--disable-gpu",
 ]
+# Mode économe (LOW_MEMORY=true) : limite le nombre de processus et la mémoire JavaScript de Chromium.
+_LOW_MEMORY_ARGS = [
+    "--renderer-process-limit=1",
+    "--disable-extensions",
+    "--disable-background-networking",
+    "--disable-component-update",
+    "--disable-features=Translate,BackForwardCache,MediaRouter,OptimizationHints",
+    "--js-flags=--max-old-space-size=192",
+]
+_BLOCKED_RESOURCES = {"image", "media", "font"}
 
 
 class BrowserManager:
@@ -49,7 +59,7 @@ class BrowserManager:
             headless=self._settings.headless,
             # Optionnel : navigateur du système (ex. /usr/bin/google-chrome) au lieu du Chromium Playwright.
             executable_path=self._settings.browser_executable_path or None,
-            args=_LAUNCH_ARGS,
+            args=_LAUNCH_ARGS + (_LOW_MEMORY_ARGS if self._settings.low_memory else []),
             # Pas de proxy global : il est appliqué par contexte (mission, sinon PROXY du serveur),
             # voir new_page() et app/rate.py.
         )
@@ -77,10 +87,17 @@ class BrowserManager:
         context = await self._browser.new_context(
             locale=locale or self._settings.locale,
             user_agent=user_agent or USER_AGENTS[0],
-            viewport={"width": 1366, "height": 900},
+            viewport={"width": 1024, "height": 720} if self._settings.low_memory else {"width": 1366, "height": 900},
             timezone_id="Indian/Antananarivo",
             proxy=proxy,  # type: ignore[arg-type]
         )
+        if self._settings.low_memory:
+            async def _block(route):  # images, médias et polices inutiles à l'extraction
+                if route.request.resource_type in _BLOCKED_RESOURCES:
+                    await route.abort()
+                else:
+                    await route.continue_()
+            await context.route("**/*", _block)
         page = await context.new_page()
         page.set_default_timeout(self._settings.nav_timeout_ms)
         # Applique les patchs anti-detection (navigator.webdriver, etc.).

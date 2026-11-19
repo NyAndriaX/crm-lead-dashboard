@@ -1,4 +1,5 @@
-# Blueprint Render — démo gratuite de CRM Lead (application + tâches de fond, base TiDB Cloud).
+# Blueprint Render — démo gratuite de CRM Lead : application + tâches de fond, scraper en mode économe,
+# base TiDB Cloud.
 # Voir deploy/render/README.md. Les valeurs « sync: false » se saisissent dans le tableau de bord Render.
 services:
   - type: web
@@ -20,7 +21,16 @@ services:
       - key: QUEUE_SKIP_LOCKED
         value: "false"
       - key: SCRAPING_LIVE
-        value: "false"
+        value: "true"
+      - key: SCRAPER_API_URL # https://<nom-du-service-scraper>.onrender.com
+        sync: false
+      - key: SCRAPER_API_KEY
+        fromService:
+          type: web
+          name: crm-lead-scraper
+          envVarKey: SCRAPER_API_KEY
+      - key: SCRAPER_HEALTH_TIMEOUT_MS # le scraper endormi met environ une minute à se réveiller
+        value: "120000"
       - key: WORKER_TIMEZONE
         value: Europe/Paris
       - key: AUTH_JWT_SECRET
@@ -41,3 +51,22 @@ services:
         sync: false
       - key: SEED_PASSWORD # mot de passe des comptes de démonstration
         sync: false
+
+  - type: web
+    name: crm-lead-scraper
+    runtime: image
+    plan: free
+    image:
+      url: ghcr.io/nyandriax/crm-lead-scraper:render
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: SCRAPER_API_KEY
+        generateValue: true
+      - key: LOW_MEMORY # 512 Mo : un seul processus de rendu, images/médias/polices bloqués, pas de CLI Claude
+        value: "true"
+      - key: EMAIL_CONCURRENCY
+        value: "1"
+      - key: HEADLESS
+        value: "true"

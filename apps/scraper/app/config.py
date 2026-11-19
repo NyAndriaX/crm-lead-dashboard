@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     robots_timeout_ms: int = 8000
     # Sites sectoriels (annuaires de branche, listes de membres) : pages suivies par URL de départ.
     sector_max_pages: int = 3
+    # Mode économe (hébergement à 512 Mo) : un seul processus de rendu Chromium, images, médias et
+    # polices bloqués, fenêtre réduite. À combiner avec EMAIL_CONCURRENCY=1.
+    low_memory: bool = False
 
 
 @lru_cache
