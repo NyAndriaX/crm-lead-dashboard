@@ -46,3 +46,13 @@ L'IA se règle ensuite dans Configuration › Intelligence artificielle (jeton C
 vendredi de 7 h à 21 h (heure de Madagascar) : environ 650 h/mois, sous le quota gratuit de 750 h du compte.
 Pour une démonstration en dehors de ces heures : GitHub → Actions → render-keep-awake → *Run workflow*
 (durée en heures, 5 au maximum).
+
+## Base propre (comme en production)
+Avec `SEED_MODE=prod` dans `deploy/render/.secrets`, aucune donnée de démonstration n'est créée. Pour repartir
+d'une base vide avec un vrai compte administrateur (`SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `ADMIN_NAME`) :
+
+    RESET_DB=true bash deploy/render/deploy.sh
+
+Le script demande de taper `EFFACER`, vide la base TiDB depuis ce poste (`prisma migrate reset`), lance
+`init-prod.mjs` (compte administrateur, étapes du pipeline, configuration des tâches de fond) puis redéploie.
+Le mot de passe de l'administrateur n'est pas envoyé à Render.

@@ -1,12 +1,12 @@
 #!/bin/sh
-# Démarrage sur Render : migrations, données de démo au premier lancement, puis serveur Next.js.
+# Démarrage sur Render : migrations, initialisation d’une base vide (démo ou SEED_MODE=prod), puis serveur Next.js.
 set -e
 cd /app
 
 echo "[render] migrations Prisma"
 pnpm --filter @crm/db exec prisma migrate deploy
 
-echo "[render] données de démonstration (seulement si la base est vide)"
+echo "[render] initialisation de la base (seulement si elle est vide ; SEED_MODE=prod : sans données de démo)"
 node packages/db/prisma/seed-if-empty.mjs
 
 mkdir -p "${UPLOAD_DIR:-/tmp/uploads}"

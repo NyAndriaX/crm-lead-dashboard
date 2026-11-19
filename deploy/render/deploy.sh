@@ -6,7 +6,12 @@
 # Demande (saisie masquée) : la clé d'API Render et la chaîne de connexion TiDB.
 # Crée ou met à jour deux services gratuits : « crm-lead-scraper » (FastAPI + Chromium, mode économe)
 # puis « crm-lead » (application), les relie, lance les déploiements, attend qu'ils soient en ligne
-# et vérifie leur santé. SCRAPER=false pour ne déployer que l'application, sans prospection réelle. Les secrets de l'application sont générés une fois et gardés dans
+# et vérifie leur santé. SCRAPER=false pour ne déployer que l'application, sans prospection réelle.
+#
+# Données : SEED_MODE=prod dans .secrets → base propre (compte administrateur, étapes du pipeline ; aucune
+# donnée de démonstration), sinon données de démo au premier démarrage.
+#   RESET_DB=true bash deploy/render/deploy.sh   → VIDE la base TiDB (confirmation demandée) puis crée le
+#   compte administrateur de .secrets (SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD / ADMIN_NAME) depuis ce poste. Les secrets de l'application sont générés une fois et gardés dans
 # deploy/render/.secrets (ignoré par git).
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -71,6 +76,7 @@ if [ ! -f "$SECRETS" ]; then
   } > "$SECRETS"
   echo "🔐 Secrets générés dans deploy/render/$SECRETS (à conserver : la clé PII déchiffre les données)."
 fi
+SEED_MODE=""; ADMIN_NAME=""
 # Ajouté après coup : complété dans un fichier .secrets existant.
 grep -q '^SCRAPER_API_KEY=' "$SECRETS" || echo "SCRAPER_API_KEY=$(openssl rand -hex 24)" >> "$SECRETS"
 # shellcheck disable=SC1090
@@ -109,15 +115,21 @@ OWNER=$(api GET "/owners?limit=20" | jq -r '.[0].owner.id')
 env_json() { # $1 = APP_BASE_URL, $2 = adresse du scraper (vide : pas de prospection réelle)
   jq -n --arg db "$DATABASE_URL" --arg url "$1" --arg scr "$2" --arg sk "$SCRAPER_API_KEY" \
     --arg pii "$PII_ENCRYPTION_KEY" --arg jwt "$AUTH_JWT_SECRET" --arg hash "$EMAIL_HASH_SECRET" \
-    --arg tok "$INTERNAL_API_TOKEN" --arg ae "$SEED_ADMIN_EMAIL" --arg ap "$SEED_ADMIN_PASSWORD" --arg sp "$SEED_PASSWORD" '[
+    --arg tok "$INTERNAL_API_TOKEN" --arg mode "$SEED_MODE" \
+    --arg ae "$SEED_ADMIN_EMAIL" --arg ap "$SEED_ADMIN_PASSWORD" --arg sp "$SEED_PASSWORD" '[
     {key:"NODE_ENV",value:"production"}, {key:"NODE_OPTIONS",value:"--max-old-space-size=384"},
     {key:"RUN_JOBS",value:"true"}, {key:"WORKER_CONCURRENCY",value:"1"}, {key:"QUEUE_SKIP_LOCKED",value:"false"},
     {key:"WORKER_TIMEZONE",value:"Europe/Paris"},
     {key:"DATABASE_URL",value:$db}, {key:"APP_BASE_URL",value:$url},
     {key:"PII_ENCRYPTION_KEY",value:$pii}, {key:"AUTH_JWT_SECRET",value:$jwt},
-    {key:"EMAIL_HASH_SECRET",value:$hash}, {key:"INTERNAL_API_TOKEN",value:$tok},
+    {key:"EMAIL_HASH_SECRET",value:$hash}, {key:"INTERNAL_API_TOKEN",value:$tok}
+  ]
+  # Production : le compte administrateur est créé depuis ce poste (RESET_DB=true), son mot de passe
+  # n’est pas confié à Render. Démo : comptes créés au premier démarrage.
+  + (if $mode == "prod" then [{key:"SEED_MODE",value:"prod"}] else [
     {key:"SEED_ADMIN_EMAIL",value:$ae}, {key:"SEED_ADMIN_PASSWORD",value:$ap}, {key:"SEED_PASSWORD",value:$sp}
-  ] + (if $scr == "" then [{key:"SCRAPING_LIVE",value:"false"}] else [
+  ] end)
+  + (if $scr == "" then [{key:"SCRAPING_LIVE",value:"false"}] else [
     {key:"SCRAPING_LIVE",value:"true"}, {key:"SCRAPER_API_URL",value:$scr}, {key:"SCRAPER_API_KEY",value:$sk},
     # Le scraper endormi met environ une minute à se réveiller : la vérification de santé l’attend.
     {key:"SCRAPER_HEALTH_TIMEOUT_MS",value:"120000"}
@@ -176,6 +188,21 @@ fi
 SID=$(ensure_service "$NAME" "$IMAGE" "/api/health" "$(env_json "https://$NAME.onrender.com" "$SCRAPER_URL")")
 URL=$(api GET "/services/$SID" | jq -r '.serviceDetails.url')
 api PUT "/services/$SID/env-vars" "$(env_json "$URL" "$SCRAPER_URL")" >/dev/null
+
+# --- 4c. Remise à zéro de la base (optionnelle, depuis ce poste) ------------------------------------
+if [ "${RESET_DB:-false}" = true ]; then
+  ROOT="$(cd ../.. && pwd)"
+  [ -x "$ROOT/packages/db/node_modules/.bin/prisma" ] || { echo "❌ Dépendances absentes : lance « pnpm install » à la racine."; exit 1; }
+  echo "⚠️  RESET_DB : TOUTES les données de la base TiDB vont être effacées (leads, comptes, campagnes…)."
+  echo "   Compte administrateur recréé ensuite : $SEED_ADMIN_EMAIL"
+  read -rp "   Tape EFFACER pour confirmer : " ok
+  [ "$ok" = EFFACER ] || { echo "Annulé."; exit 1; }
+  (cd "$ROOT/packages/db" && DATABASE_URL="$DATABASE_URL" ./node_modules/.bin/prisma migrate reset --force --skip-seed --skip-generate)
+  (cd "$ROOT/packages/db" && DATABASE_URL="$DATABASE_URL" WORKER_TIMEZONE=Europe/Paris \
+     ADMIN_EMAIL="$SEED_ADMIN_EMAIL" ADMIN_PASSWORD="$SEED_ADMIN_PASSWORD" ADMIN_NAME="${ADMIN_NAME:-Administrateur}" \
+     node prisma/init-prod.mjs)
+  # Le redéploiement qui suit relance les tâches de fond (tâches récurrentes recréées dans la base vide).
+fi
 
 # --- 5. Déploiements, attente et vérification -------------------------------------------------------
 [ "$SCRAPER" = true ] && deploy_and_wait "$SCRAPER_SID" "$SCRAPER_NAME"

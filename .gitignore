@@ -61,4 +61,4 @@ apps/web/uploads/
 # Tests E2E (Playwright)
 apps/web/test-results/
 apps/web/playwright-report/
-deploy/render/.secrets
+deploy/render/.secrets*
