@@ -40,3 +40,9 @@ Package settings → Change visibility → Public).
 4. Au premier démarrage : migrations, puis données de démonstration (base vide uniquement).
 
 L'IA se règle ensuite dans Configuration › Intelligence artificielle (jeton Claude ou clé d'API d'un autre fournisseur).
+
+## Réveil automatique
+`.github/workflows/render-keep-awake.yml` appelle les deux adresses de santé toutes les 10 min, du lundi au
+vendredi de 7 h à 21 h (heure de Madagascar) : environ 650 h/mois, sous le quota gratuit de 750 h du compte.
+Pour une démonstration en dehors de ces heures : GitHub → Actions → render-keep-awake → *Run workflow*
+(durée en heures, 5 au maximum).
