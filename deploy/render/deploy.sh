@@ -32,6 +32,14 @@ case "$DATABASE_URL" in
   mysql://*) ;;
   *) echo "❌ La chaîne doit commencer par mysql://"; exit 1 ;;
 esac
+# Base applicative : TiDB propose « sys » ou « test » par défaut ; Prisma refuse les bases système.
+if [[ "$DATABASE_URL" =~ ^(mysql://[^/]+)/?([^?]*)(\?.*)?$ ]]; then
+  db="${BASH_REMATCH[2]}"
+  case "$db" in ""|sys|test|mysql|information_schema|performance_schema|metrics_schema)
+    DATABASE_URL="${BASH_REMATCH[1]}/crm${BASH_REMATCH[3]}"
+    echo "ℹ️  Base « ${db:-aucune} » remplacée par « crm » dans la chaîne de connexion." ;;
+  esac
+fi
 # Prisma exige TLS vers TiDB Cloud.
 case "$DATABASE_URL" in *sslaccept=*) ;; *\?*) DATABASE_URL="$DATABASE_URL&sslaccept=strict" ;; *) DATABASE_URL="$DATABASE_URL?sslaccept=strict" ;; esac
 
