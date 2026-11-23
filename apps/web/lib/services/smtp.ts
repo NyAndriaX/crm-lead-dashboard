@@ -197,7 +197,26 @@ export async function testSmtpConnection(input: {
       pass: input.password,
     },
     tls: { rejectUnauthorized: false },
+    connectionTimeout: 15_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 20_000,
   });
   await transporter.verify();
   return { ok: true, message: "Connexion SMTP réussie" };
+}
+
+/** Message lisible pour un échec de connexion SMTP (test depuis la Configuration). */
+export function describeSmtpError(e: unknown): string {
+  const err = e as { code?: string; responseCode?: number; message?: string } | null;
+  const code = err?.code ?? "";
+  if (code === "EAUTH" || err?.responseCode === 535) {
+    return "identifiant ou mot de passe refusé (Gmail : utilisez un mot de passe d'application).";
+  }
+  if (code === "EDNS" || /ENOTFOUND|EAI_AGAIN/.test(err?.message ?? "")) {
+    return "serveur SMTP introuvable — vérifiez l'adresse.";
+  }
+  if (code === "ETIMEDOUT" || code === "ECONNECTION" || code === "ESOCKET" || /timeout|ECONNREFUSED/i.test(err?.message ?? "")) {
+    return "serveur injoignable sur ce port (pare-feu, ou hébergeur qui bloque l'envoi SMTP sortant).";
+  }
+  return err?.message || "erreur inconnue";
 }

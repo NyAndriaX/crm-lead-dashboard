@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { handler, json, parseBody, requirePermission } from "@/lib/api";
-import { testSmtpConnection } from "@/lib/services/smtp";
+import { ApiError, handler, json, parseBody, requirePermission } from "@/lib/api";
+import { describeSmtpError, testSmtpConnection } from "@/lib/services/smtp";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +14,10 @@ const testSchema = z.object({
 export const POST = handler(async (req) => {
   await requirePermission("settings:manage");
   const input = await parseBody(req, testSchema);
-  const result = await testSmtpConnection(input);
-  return json({ data: result });
+  try {
+    return json({ data: await testSmtpConnection(input) });
+  } catch (e) {
+    // Échec attendu (mauvais identifiants, port bloqué…) : 400 avec la cause, pas une erreur interne.
+    throw new ApiError(400, `Échec de connexion SMTP : ${describeSmtpError(e)}`, "smtp_test_failed");
+  }
 });
