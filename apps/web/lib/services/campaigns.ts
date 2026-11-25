@@ -28,7 +28,7 @@ export async function listCampaigns() {
   return rows.map((r) => ({ ...r, metrics: metrics.get(r.id) ?? emptyAgg() }));
 }
 
-const emptyAgg = (): CampaignStatsAgg => ({ sent: 0, opens: 0, clicks: 0, bounces: 0, unsubscribes: 0, replies: 0 });
+const emptyAgg = (): CampaignStatsAgg => ({ sent: 0, opens: 0, clicks: 0, bounces: 0, unsubscribes: 0, replies: 0, failed: 0 });
 
 const AGG_KEY: Record<string, keyof CampaignStatsAgg> = {
   SENT: "sent", OPEN: "opens", CLICK: "clicks", BOUNCE: "bounces", UNSUBSCRIBE: "unsubscribes", REPLIED: "replies",
@@ -42,12 +42,21 @@ async function allCampaignMetrics(): Promise<Map<string, CampaignStatsAgg>> {
     _count: { _all: true },
   });
   const out = new Map<string, CampaignStatsAgg>();
+  const sentBy = new Map<string, Set<string>>();
+  const bounceBy = new Map<string, Set<string>>();
   for (const g of groups) {
     const key = AGG_KEY[String(g.eventType)];
     if (!g.campaignId || !key) continue;
     const agg = out.get(g.campaignId) ?? emptyAgg();
     agg[key] += 1;
     out.set(g.campaignId, agg);
+    const bucket = key === "sent" ? sentBy : key === "bounces" ? bounceBy : null;
+    if (bucket && g.leadId) bucket.set(g.campaignId, (bucket.get(g.campaignId) ?? new Set()).add(g.leadId));
+  }
+  // Échecs d'envoi : rejet sans aucun envoi réussi pour ce destinataire.
+  for (const [cid, bounced] of bounceBy) {
+    const sent = sentBy.get(cid) ?? new Set<string>();
+    out.get(cid)!.failed = [...bounced].filter((l) => !sent.has(l)).length;
   }
   return out;
 }
@@ -168,6 +177,8 @@ export type CampaignStatsAgg = {
   bounces: number;
   unsubscribes: number;
   replies: number;
+  /** Destinataires dont l'envoi a échoué (rejet SMTP / API, sans envoi réussi). */
+  failed: number;
 };
 
 /** Compteurs par contact unique (un lead qui ouvre 3 fois compte une ouverture) : taux toujours ≤ 100 %. */
@@ -178,7 +189,10 @@ export async function aggregateCampaignStats(campaignId: string): Promise<Campai
     _count: { _all: true },
   });
   const n = (t: string) => g.filter((x) => String(x.eventType) === t).length;
+  const sentLeads = new Set(g.filter((x) => String(x.eventType) === "SENT").map((x) => x.leadId));
+  const failed = new Set(g.filter((x) => String(x.eventType) === "BOUNCE" && !sentLeads.has(x.leadId)).map((x) => x.leadId)).size;
   return {
+    failed,
     sent: n("SENT"),
     opens: n("OPEN"),
     clicks: n("CLICK"),
@@ -287,4 +301,63 @@ export async function campaignActivity(campaignId: string, days = 30) {
     daily: [...byDay.entries()].map(([date, rec]) => ({ date, ...rec })),
     recent: recent.map((e) => ({ ...e, eventType: String(e.eventType) })),
   };
+}
+
+/** Raisons distinctes des derniers échecs d'envoi (message du serveur SMTP ou de l'API Gmail). */
+export async function campaignFailureReasons(campaignId: string, limit = 3): Promise<string[]> {
+  const rows = await prisma.emailEvent.findMany({
+    where: { campaignId, eventType: "BOUNCE" },
+    orderBy: { occurredAt: "desc" },
+    take: 50,
+    select: { meta: true },
+  });
+  const out: string[] = [];
+  for (const r of rows) {
+    const err = r.meta && typeof r.meta === "object" ? (r.meta as { error?: unknown }).error : null;
+    if (typeof err === "string" && err.trim() && !out.includes(err.trim())) out.push(err.trim().slice(0, 300));
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/** Destinataires en échec : au moins un rejet et aucun envoi réussi pour cette campagne. */
+async function failedLeadIds(campaignId: string): Promise<string[]> {
+  const events = await prisma.emailEvent.findMany({
+    where: { campaignId, eventType: { in: ["SENT", "BOUNCE"] }, leadId: { not: null } },
+    select: { leadId: true, eventType: true },
+  });
+  const sent = new Set(events.filter((e) => e.eventType === "SENT").map((e) => e.leadId!));
+  return [...new Set(events.filter((e) => e.eventType === "BOUNCE" && !sent.has(e.leadId!)).map((e) => e.leadId!))];
+}
+
+/**
+ * Renvoie la campagne aux seuls destinataires en échec (éventuellement avec un autre compte d'envoi).
+ * Ceux qui ont déjà reçu l'email ne sont jamais renvoyés (contrôle aussi fait à l'envoi).
+ */
+export async function retryFailedCampaign(id: string, smtpConfigId?: string | null) {
+  const c = await getCampaign(id);
+  if (c.status !== "DONE") {
+    throw new ApiError(409, "Seule une campagne terminée peut être renvoyée aux destinataires en échec", "invalid_status");
+  }
+  const leadIds = await failedLeadIds(id);
+  if (leadIds.length === 0) throw new ApiError(409, "Aucun envoi en échec à renvoyer", "nothing_to_retry");
+  if (smtpConfigId) {
+    const acc = await prisma.smtpConfig.findUnique({ where: { id: smtpConfigId }, select: { isActive: true } });
+    if (!acc?.isActive) throw new ApiError(422, "Compte d'envoi introuvable ou inactif", "invalid_smtp");
+  }
+  const cfg = (c.config && typeof c.config === "object" ? c.config : {}) as Record<string, unknown>;
+  const stats = { ...defaultStats(), ...((c.stats ?? {}) as Record<string, number>) };
+  stats.failed = Math.max(0, (stats.failed ?? 0) - leadIds.length);
+  const updated = await prisma.campaign.update({
+    where: { id },
+    data: {
+      status: "SCHEDULED",
+      scheduledAt: new Date(),
+      ...(smtpConfigId ? { smtpConfigId } : {}),
+      config: { ...cfg, retryLeadIds: leadIds } as object,
+      stats: stats as object,
+    },
+  });
+  await enqueue("campaign-send", { campaignId: id, offset: 0 }, { runAt: new Date(), priority: 2 });
+  return { campaign: updated, retried: leadIds.length };
 }

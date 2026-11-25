@@ -48,6 +48,8 @@ type CampaignCfg = {
   warmup?: { enabled?: boolean; startPerDay?: number; growth?: number };
   /** A2 (F2/F3) — réécriture IA unique par destinataire. */
   aiPersonalize?: boolean;
+  /** Renvoi aux seuls destinataires en échec (POST /api/campaigns/:id/retry-failed). */
+  retryLeadIds?: string[];
 };
 
 function mergeStats(prev: unknown, patch: Record<string, number>): Record<string, number> {
@@ -182,10 +184,13 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
   }
 
   const filters = (campaign.segment.filters ?? {}) as LeadSegmentFilters;
-  const whereLead = {
-    ...buildLeadWhereFromSegmentFilters({ ...filters, includeDeleted: false }),
-    emailHash: { not: null },
-  };
+  const retryIds = Array.isArray(cfg?.retryLeadIds) && cfg.retryLeadIds.length > 0 ? cfg.retryLeadIds : null;
+  const whereLead = retryIds
+    ? { id: { in: retryIds }, deletedAt: null, emailHash: { not: null } }
+    : {
+        ...buildLeadWhereFromSegmentFilters({ ...filters, includeDeleted: false }),
+        emailHash: { not: null },
+      };
 
   const total = await prisma.lead.count({ where: whereLead });
   const leads = await prisma.lead.findMany({
@@ -222,7 +227,16 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
   let sent = 0;
   let failed = 0;
 
+  // Jamais deux fois le même destinataire pour une campagne (reprise après pause, renvoi des échecs).
+  const alreadySent = new Set(
+    (await prisma.emailEvent.findMany({
+      where: { campaignId, eventType: "SENT", leadId: { in: leads.map((l) => l.id) } },
+      select: { leadId: true },
+    })).map((e) => e.leadId),
+  );
+
   for (const lead of leads) {
+    if (alreadySent.has(lead.id)) continue;
     const scNow = await prisma.smtpConfig.findUnique({
       where: { id: smtpRow.id },
       select: { sentToday: true, dailyLimit: true },
@@ -341,6 +355,10 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
       });
       sent++;
       effectiveCap--;
+      // Un envoi réussi annule un échec temporaire précédent.
+      if (lead.emailStatus === "SOFT_BOUNCE") {
+        await prisma.lead.update({ where: { id: lead.id }, data: { emailStatus: "UNKNOWN" } }).catch(() => {});
+      }
 
       // PL ↔ emailing : fait entrer le lead dans le pipeline (best-effort,
       // ne doit jamais faire échouer l'envoi ni re-compter le mail).
@@ -386,9 +404,12 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
   if (newOffset < total && (await prisma.campaign.findUnique({ where: { id: campaignId } }))?.status === "SENDING") {
     await enqueueNext("campaign-send", { campaignId, offset: newOffset }, new Date(Date.now() + 1500));
   } else {
+    const done = await prisma.campaign.findUnique({ where: { id: campaignId }, select: { config: true } });
+    const doneCfg = (done?.config && typeof done.config === "object" ? { ...(done.config as Record<string, unknown>) } : {}) as Record<string, unknown>;
+    delete doneCfg.retryLeadIds;
     await prisma.campaign.update({
       where: { id: campaignId },
-      data: { status: "DONE" },
+      data: { status: "DONE", config: doneCfg as object },
     });
   }
 

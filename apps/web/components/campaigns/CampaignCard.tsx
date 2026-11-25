@@ -10,7 +10,11 @@ import { palette, alpha } from "@/lib/theme";
 import { AIBadge } from "@/components/ui/Brand";
 import { Chip, ScoreRing } from "@/components/ui/Kit";
 
-export type CampaignStats = { sent: number; opens: number; clicks: number; bounces: number; unsubscribes: number; replies: number };
+export type CampaignStats = {
+  sent: number; opens: number; clicks: number; bounces: number; unsubscribes: number; replies: number;
+  /** Destinataires dont l'envoi a échoué (aucun envoi réussi). */
+  failed?: number;
+};
 
 export const CAMPAIGN_STATUS: Record<string, { label: string; color: string }> = {
   DRAFT: { label: "Brouillon", color: "#94a0bd" },
@@ -20,6 +24,22 @@ export const CAMPAIGN_STATUS: Record<string, { label: string; color: string }> =
   DONE: { label: "Terminée", color: palette.green },
   CANCELLED: { label: "Annulée", color: palette.red },
 };
+
+/**
+ * Statut affiché : pour une campagne terminée, on tient compte du résultat réel
+ * (« Terminée » ne veut pas dire « réussie » : tous les envois ont pu échouer).
+ */
+export function campaignOutcome(status: string, stats: Partial<CampaignStats> | null | undefined): { label: string; color: string; failed: number } {
+  const failed = stats?.failed ?? 0;
+  const sent = stats?.sent ?? 0;
+  if (status === "DONE" && failed > 0) {
+    return sent === 0
+      ? { label: "Échec de l'envoi", color: palette.red, failed }
+      : { label: `Terminée avec ${failed} échec${failed > 1 ? "s" : ""}`, color: palette.amber, failed };
+  }
+  const st = CAMPAIGN_STATUS[status] ?? { label: status, color: "#94a0bd" };
+  return { ...st, failed };
+}
 
 export function rate(part: number, total: number): number {
   return total > 0 ? Math.round((part / total) * 1000) / 10 : 0;
@@ -70,7 +90,7 @@ export function CampaignCard({
   onPause?: () => void;
   onDelete: () => void;
 }) {
-  const st = CAMPAIGN_STATUS[status] ?? { label: status, color: "#94a0bd" };
+  const st = campaignOutcome(status, stats);
   const sending = status === "SENDING";
   const sent = stats?.sent ?? 0;
   const progress = target && target > 0 ? Math.min(100, Math.round((sent / target) * 100)) : sent > 0 ? 100 : 0;

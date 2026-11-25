@@ -21,7 +21,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { AIBadge } from "@/components/ui/Brand";
 import { Chip, EmptyState, Funnel, Panel } from "@/components/ui/Kit";
-import { CAMPAIGN_STATUS, CampaignCard, rate, type CampaignStats } from "./CampaignCard";
+import { CAMPAIGN_STATUS, CampaignCard, campaignOutcome, rate, type CampaignStats } from "./CampaignCard";
 import { describeFilters } from "./SegmentFilterBuilder";
 import type { CampaignRow, SegmentRow } from "./types";
 
@@ -43,8 +43,8 @@ function Metric({ value, label, color }: { value: number; label: string; color: 
 
 function CampaignListRow({ row, target, actions }: { row: Row; target: number; actions: ReactNode }) {
   const router = useRouter();
-  const st = CAMPAIGN_STATUS[row.status] ?? { label: row.status, color: "#94a0bd" };
   const m = row.metrics;
+  const st = campaignOutcome(row.status, m);
   const total = Math.max(target, m.sent);
   const progress = total ? Math.min(100, Math.round((m.sent / total) * 100)) : 0;
   const sending = row.status === "SENDING";

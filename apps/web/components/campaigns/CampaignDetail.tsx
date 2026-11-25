@@ -4,11 +4,11 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button, Col, Dropdown, Modal, Row, Skeleton, Tooltip, message } from "antd";
+import { Alert, Button, Col, Dropdown, Modal, Row, Select, Skeleton, Tooltip, message } from "antd";
 import {
   AimOutlined, ArrowLeftOutlined, CalendarOutlined, CloudServerOutlined, CopyOutlined, DeleteOutlined, EditOutlined, EllipsisOutlined, ExperimentOutlined,
   EyeOutlined, FileTextOutlined, FunnelPlotOutlined, HistoryOutlined, MailOutlined, MessageOutlined, PauseCircleOutlined, RocketOutlined,
-  SendOutlined, StopOutlined, TeamOutlined, ThunderboltOutlined, WarningOutlined,
+  ReloadOutlined, SendOutlined, StopOutlined, TeamOutlined, ThunderboltOutlined, WarningOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
@@ -18,7 +18,7 @@ import { palette, alpha } from "@/lib/theme";
 import { AIBadge } from "@/components/ui/Brand";
 import { StatCard } from "@/components/ui/StatCard";
 import { Chip, EmptyState, Funnel, Panel } from "@/components/ui/Kit";
-import { CAMPAIGN_STATUS, rate, type CampaignStats } from "./CampaignCard";
+import { campaignOutcome, rate, type CampaignStats } from "./CampaignCard";
 import { EmailPreview } from "./EmailPreview";
 import { AbComparison, type CampaignAb } from "./AbComparison";
 import { useSegmentPreview } from "./AudiencePreview";
@@ -97,7 +97,11 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
   const router = useRouter();
   const [modal, modalHolder] = Modal.useModal();
   const [campaign, setCampaign] = useState<(CampaignRow & { template: CampaignRow["template"] & { bodyHtml?: string } }) | null>(null);
-  const [stats, setStats] = useState<(CampaignStats & { ab?: CampaignAb | null }) | null>(null);
+  const [stats, setStats] = useState<(CampaignStats & { ab?: CampaignAb | null; failureReasons?: string[] }) | null>(null);
+  const [retryOpen, setRetryOpen] = useState(false);
+  const [retryAccount, setRetryAccount] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [accounts, setAccounts] = useState<{ id: string; label: string; host: string; fromEmail: string | null }[]>([]);
   const [activity, setActivity] = useState<Activity | null>(null);
   const [previewLead, setPreviewLead] = useState<string | null>(null);
   const [missing, setMissing] = useState(false);
@@ -106,7 +110,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     try {
       const [c, s, a] = await Promise.all([
         api.get<{ data: CampaignRow }>(`/campaigns/${campaignId}`),
-        api.get<{ data: CampaignStats & { ab?: CampaignAb | null } }>(`/campaigns/${campaignId}/stats`),
+        api.get<{ data: CampaignStats & { ab?: CampaignAb | null; failureReasons?: string[] } }>(`/campaigns/${campaignId}/stats`),
         api.get<{ data: Activity }>(`/campaigns/${campaignId}/activity`),
       ]);
       setCampaign(c.data.data as typeof campaign);
@@ -121,9 +125,9 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
     void load();
   }, [load]);
 
-  // Rafraîchissement pendant l'envoi pour voir la progression bouger.
+  // Rafraîchissement pendant l'envoi (et juste avant : planifiée) pour voir la progression bouger.
   useEffect(() => {
-    if (campaign?.status !== "SENDING") return;
+    if (campaign?.status !== "SENDING" && campaign?.status !== "SCHEDULED") return;
     const t = setInterval(() => void load(), 15_000);
     return () => clearInterval(t);
   }, [campaign?.status, load]);
@@ -137,6 +141,34 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
       void load();
     } catch (e: unknown) {
       message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Action impossible");
+    }
+  };
+
+  const openRetry = async () => {
+    setRetryAccount(null);
+    setRetryOpen(true);
+    try {
+      const { data } = await api.get<{ data: { id: string; label: string; host: string; fromEmail: string | null }[] }>("/smtp-configs?active=true");
+      setAccounts(data.data);
+      // Compte de la campagne s'il est toujours actif, sinon le premier compte actif.
+      const current = campaign?.smtpConfig?.id;
+      setRetryAccount(data.data.some((a) => a.id === current) ? current! : (data.data[0]?.id ?? null));
+    } catch {
+      setAccounts([]);
+    }
+  };
+
+  const retryFailed = async () => {
+    setRetrying(true);
+    try {
+      const { data } = await api.post<{ data: { retried: number } }>(`/campaigns/${campaignId}/retry-failed`, { smtpConfigId: retryAccount });
+      message.success(`Renvoi lancé vers ${data.data.retried} destinataire(s) en échec`);
+      setRetryOpen(false);
+      void load();
+    } catch (e: unknown) {
+      message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Renvoi impossible");
+    } finally {
+      setRetrying(false);
     }
   };
 
@@ -163,7 +195,8 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
   }
   if (!campaign || !stats || !activity) return <Panel><Skeleton active paragraph={{ rows: 10 }} /></Panel>;
 
-  const st = CAMPAIGN_STATUS[campaign.status] ?? { label: campaign.status, color: "#94a0bd" };
+  const st = campaignOutcome(campaign.status, stats);
+  const hasFailures = campaign.status === "DONE" && st.failed > 0;
   const cfg = (campaign.config ?? {}) as CampaignConfig;
   const editable = ["DRAFT", "SCHEDULED", "PAUSED"].includes(campaign.status);
   const target = Math.max(preview?.reachable ?? 0, stats.sent);
@@ -207,6 +240,61 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
           </Dropdown>
         </div>
       </div>
+
+      {hasFailures && (
+        <Alert
+          type={stats.sent === 0 ? "error" : "warning"}
+          showIcon
+          message={stats.sent === 0
+            ? "Aucun email n'est parti : tous les envois ont échoué."
+            : `${st.failed} envoi${st.failed > 1 ? "s ont" : " a"} échoué sur ${st.failed + stats.sent}.`}
+          description={
+            <div>
+              {(stats.failureReasons ?? []).length > 0 && (
+                <div style={{ marginBottom: 10 }}>
+                  Raison{(stats.failureReasons ?? []).length > 1 ? "s" : ""} donnée{(stats.failureReasons ?? []).length > 1 ? "s" : ""} par le serveur d&apos;envoi :
+                  <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                    {(stats.failureReasons ?? []).map((r) => <li key={r} style={{ wordBreak: "break-word" }}>{r}</li>)}
+                  </ul>
+                </div>
+              )}
+              <div style={{ marginBottom: 10 }}>
+                Corrigez le compte d&apos;envoi (Configuration › Emailing) ou choisissez-en un autre, puis renvoyez :
+                seuls les destinataires en échec recevront l&apos;email, jamais ceux qui l&apos;ont déjà reçu.
+              </div>
+              <Button type="primary" icon={<ReloadOutlined />} onClick={() => void openRetry()}>
+                Renvoyer aux destinataires en échec
+              </Button>
+            </div>
+          }
+        />
+      )}
+
+      <Modal
+        title="Renvoyer aux destinataires en échec"
+        open={retryOpen}
+        onCancel={() => setRetryOpen(false)}
+        onOk={() => void retryFailed()}
+        okText={`Renvoyer (${st.failed})`}
+        cancelText="Annuler"
+        confirmLoading={retrying}
+        okButtonProps={{ disabled: !retryAccount }}
+      >
+        <div style={{ marginBottom: 8 }}>Compte d&apos;envoi à utiliser :</div>
+        <Select
+          style={{ width: "100%" }}
+          value={retryAccount ?? undefined}
+          onChange={(v: string) => setRetryAccount(v)}
+          placeholder="Choisir un compte d'envoi actif"
+          options={accounts.map((a) => ({
+            value: a.id,
+            label: `${a.label}${a.fromEmail ? ` — ${a.fromEmail}` : ""}${a.host === "gmail-api" ? " (Gmail API)" : ""}`,
+          }))}
+        />
+        <div style={{ marginTop: 10, fontSize: 12, color: "var(--nb-text-3)" }}>
+          {st.failed} destinataire{st.failed > 1 ? "s" : ""} en échec. Ceux qui ont déjà reçu l&apos;email sont exclus automatiquement.
+        </div>
+      </Modal>
 
       <div className="nb-glass" style={{ borderRadius: 20, padding: 22, position: "relative", overflow: "hidden", borderColor: sending ? `${alpha(palette.cyan, "66")}` : undefined }}>
         {sending && <div className="nb-scanline" style={{ opacity: 0.4 }} />}
