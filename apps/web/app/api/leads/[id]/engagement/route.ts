@@ -6,6 +6,11 @@ export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ id: string }> };
 
+function bounceReason(meta: unknown): string | null {
+  const err = meta && typeof meta === "object" ? (meta as { error?: unknown }).error : null;
+  return typeof err === "string" && err.trim() ? err.trim().slice(0, 500) : null;
+}
+
 // GET /api/leads/:id/engagement — événements email (campagnes + séquences) et parcours de relance du lead.
 export const GET = handler<Ctx>(async (_req, { params }) => {
   await requirePermission("leads:read");
@@ -16,7 +21,7 @@ export const GET = handler<Ctx>(async (_req, { params }) => {
       where: { leadId: id },
       orderBy: { occurredAt: "desc" },
       take: 100,
-      select: { id: true, eventType: true, occurredAt: true, url: true, sequenceId: true, campaign: { select: { id: true, name: true } } },
+      select: { id: true, eventType: true, occurredAt: true, url: true, meta: true, sequenceId: true, campaign: { select: { id: true, name: true } } },
     }),
     prisma.sequenceLead.findMany({
       where: { leadId: id },
@@ -39,6 +44,8 @@ export const GET = handler<Ctx>(async (_req, { params }) => {
         type: String(e.eventType),
         occurredAt: e.occurredAt,
         url: e.url,
+        // Échec d'envoi : message du serveur SMTP (identifiants, expéditeur non validé, quota…).
+        reason: e.eventType === "BOUNCE" ? bounceReason(e.meta) : null,
         campaign: e.campaign,
         sequence: e.sequenceId ? { id: e.sequenceId, name: seqNames.get(e.sequenceId) ?? "Séquence" } : null,
       })),

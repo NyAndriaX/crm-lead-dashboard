@@ -129,8 +129,9 @@ export function Funnel({ steps, height = 46 }: { steps: FunnelStep[]; height?: n
     <div style={{ display: "grid", gap: 10 }}>
       {steps.map((s, i) => {
         const pct = Math.max(2, (s.value / top) * 100);
-        const prev = i > 0 ? steps[i - 1]!.value : null;
-        const rate = prev ? Math.round((s.value / prev) * 1000) / 10 : null;
+        // Taux par rapport à l'étape précédente ; « — » quand il n'y a rien à rapporter (0 envoyé…).
+        const base = i > 0 ? steps[i - 1]!.value : s.value;
+        const rate = base > 0 ? (i === 0 ? 100 : Math.round((s.value / base) * 1000) / 10) : null;
         return (
           <div key={s.label} style={{ display: "grid", gridTemplateColumns: "150px 1fr 70px", gap: 14, alignItems: "center" }}>
             <div style={{ minWidth: 0 }}>
@@ -152,7 +153,7 @@ export function Funnel({ steps, height = 46 }: { steps: FunnelStep[]; height?: n
               </div>
             </div>
             <div className="nb-mono" style={{ textAlign: "right", fontSize: 12, color: rate == null ? "var(--nb-text-3)" : scoreColor(rate) }}>
-              {rate == null ? "100 %" : `${rate} %`}
+              {rate == null ? "—" : `${rate} %`}
             </div>
           </div>
         );

@@ -28,7 +28,7 @@ export type ThreadMessage = {
   bodyText: string | null; bodyHtml: string | null; isAutoReply: boolean; receivedAt: string;
 };
 export type EngagementEvent = {
-  id: string; type: string; occurredAt: string; url: string | null;
+  id: string; type: string; occurredAt: string; url: string | null; reason?: string | null;
   campaign: { id: string; name: string } | null; sequence: { id: string; name: string } | null;
 };
 
@@ -117,7 +117,8 @@ export function LeadActivity({
       const via = e.campaign ? <Link href={`/campaigns/${e.campaign.id}`}>{e.campaign.name}</Link> : e.sequence ? <Link href={`/sequences/${e.sequence.id}`}>{e.sequence.name}</Link> : null;
       out.push({
         id: `e-${e.id}`, at: e.occurredAt, kind: "email", icon: ev.icon, color: ev.color, title: ev.label,
-        detail: <>{via}{e.url ? <> · <span style={{ wordBreak: "break-all" }}>{e.url}</span></> : null}</>,
+        detail: <>{via}{e.url ? <> · <span style={{ wordBreak: "break-all" }}>{e.url}</span></> : null}
+          {e.reason ? <div style={{ marginTop: 4, color: "var(--nb-text-2)", wordBreak: "break-word" }}>Raison : {e.reason}</div> : null}</>,
       });
     }
     for (const m of thread) {
