@@ -222,7 +222,7 @@ export function CampaignsHub() {
               { key: "edit", icon: <EditOutlined />, label: "Modifier", disabled: !editable, onClick: () => router.push(`/campaigns/${r.id}/edit`) },
               { key: "duplicate", icon: <CopyOutlined />, label: "Dupliquer", onClick: () => router.push(`/campaigns/new?from=${r.id}`) },
               { type: "divider" },
-              { key: "delete", icon: <DeleteOutlined />, label: "Supprimer", danger: true, disabled: !["DRAFT", "CANCELLED"].includes(r.status), onClick: () => confirmDelete(r) },
+              { key: "delete", icon: <DeleteOutlined />, label: "Supprimer", danger: true, disabled: !["DRAFT", "CANCELLED", "DONE"].includes(r.status), onClick: () => confirmDelete(r) },
             ],
           }}
         >
@@ -358,7 +358,7 @@ export function CampaignsHub() {
                     target={reachableBySegment.get(r.segment?.id ?? "") || null}
                     stats={r.metrics}
                     canEdit={["DRAFT", "SCHEDULED", "PAUSED"].includes(r.status)}
-                    canDelete={["DRAFT", "CANCELLED"].includes(r.status)}
+                    canDelete={["DRAFT", "CANCELLED", "DONE"].includes(r.status)}
                     onOpen={() => router.push(`/campaigns/${r.id}`)}
                     onStats={() => router.push(`/campaigns/${r.id}`)}
                     onEdit={() => router.push(`/campaigns/${r.id}/edit`)}

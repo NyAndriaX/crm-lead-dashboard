@@ -115,8 +115,8 @@ export async function updateCampaign(id: string, input: UpdateCampaignInput) {
 
 export async function deleteCampaign(id: string) {
   const cur = await getCampaign(id);
-  if (!["DRAFT", "CANCELLED"].includes(cur.status)) {
-    throw new ApiError(409, "Seules les campagnes brouillon ou annulées peuvent être supprimées", "invalid_status");
+  if (!["DRAFT", "CANCELLED", "DONE"].includes(cur.status)) {
+    throw new ApiError(409, "Seules les campagnes brouillon, annulées ou terminées peuvent être supprimées", "invalid_status");
   }
   await prisma.campaign.delete({ where: { id } });
 }

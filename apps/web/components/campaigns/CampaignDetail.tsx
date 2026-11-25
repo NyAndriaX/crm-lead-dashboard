@@ -199,7 +199,7 @@ export function CampaignDetail({ campaignId }: { campaignId: string }) {
               items: [
                 { key: "duplicate", icon: <CopyOutlined />, label: "Dupliquer", onClick: () => router.push(`/campaigns/new?from=${campaignId}`) },
                 { type: "divider" },
-                { key: "delete", icon: <DeleteOutlined />, label: "Supprimer", danger: true, disabled: !["DRAFT", "CANCELLED"].includes(campaign.status), onClick: remove },
+                { key: "delete", icon: <DeleteOutlined />, label: "Supprimer", danger: true, disabled: !["DRAFT", "CANCELLED", "DONE"].includes(campaign.status), onClick: remove },
               ],
             }}
           >
