@@ -18,6 +18,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { AIBadge } from "@/components/ui/Brand";
 import { Chip, EmptyState } from "@/components/ui/Kit";
 import SafeHtml from "@/components/SafeHtml";
+import { AiDraftCard } from "@/components/inbox/AiDraftCard";
 import { STATUS_LABELS } from "@/lib/leadStatus";
 import type { LeadStatus } from "@crm/db";
 
@@ -34,6 +35,7 @@ type InboxItem = {
   preview: string | null;
   category: string | null;
   isAutoReply: boolean;
+  isDraft?: boolean;
   isRead: boolean;
   receivedAt: string;
 };
@@ -296,6 +298,9 @@ function Inbox() {
       form={form}
       sending={sending}
       onReply={() => void submitReply()}
+      onThreadChange={() => {
+        if (opened.leadId) void api.get<{ data: ThreadItem[] }>(`/leads/${opened.leadId}/thread`).then((t) => setThread(t.data.data)).catch(() => {});
+      }}
       onRecategorize={() => void recategorize(opened)}
       onToggleRead={() => void toggleRead(opened)}
       onBack={isMobile ? () => setOpened(null) : undefined}
@@ -394,6 +399,7 @@ function ReadingPane({
   form,
   sending,
   onReply,
+  onThreadChange,
   onRecategorize,
   onToggleRead,
   onBack,
@@ -405,6 +411,7 @@ function ReadingPane({
   form: ReturnType<typeof Form.useForm>[0];
   sending: boolean;
   onReply: () => void;
+  onThreadChange: () => void;
   onRecategorize: () => void;
   onToggleRead: () => void;
   onBack?: () => void;
@@ -466,6 +473,15 @@ function ReadingPane({
         ) : (
           thread.map((m) => {
             const out = m.direction === "outbound";
+            if (m.isDraft) {
+              return (
+                <div key={m.id} style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <div style={{ maxWidth: "82%", width: "100%" }}>
+                    <AiDraftCard draft={m} onDone={onThreadChange} />
+                  </div>
+                </div>
+              );
+            }
             return (
               <div key={m.id} style={{ display: "flex", justifyContent: out ? "flex-end" : "flex-start" }}>
                 <div

@@ -45,6 +45,8 @@ export type InboxItem = {
   preview: string | null;
   category: string | null;
   isAutoReply: boolean;
+  /** Brouillon de réponse IA à valider (pas encore envoyé). */
+  isDraft: boolean;
   isRead: boolean;
   receivedAt: Date;
 };
@@ -86,6 +88,7 @@ function mapItem(row: {
   bodyHtml: string | null;
   category: string | null;
   isAutoReply: boolean;
+  isDraft?: boolean;
   isRead: boolean;
   receivedAt: Date;
 }): InboxItem {
@@ -102,6 +105,7 @@ function mapItem(row: {
     preview: makePreview({ bodyText: row.bodyText, bodyHtml: row.bodyHtml }),
     category: row.category,
     isAutoReply: row.isAutoReply,
+    isDraft: row.isDraft ?? false,
     isRead: row.isRead,
     receivedAt: row.receivedAt,
   };
@@ -135,6 +139,8 @@ export async function listInbox(filter: InboxFilter): Promise<{
     // "all" → aucun filtre supplémentaire.
   }
 
+  // Les brouillons IA ne sont pas des messages envoyés : visibles seulement dans la conversation.
+  where.isDraft = false;
   if (filter.unreadOnly) where.isRead = false;
   if (filter.search) {
     const search = filter.search.trim();

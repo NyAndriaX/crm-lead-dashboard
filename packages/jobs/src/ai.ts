@@ -72,7 +72,8 @@ export async function aiAutoReply(args: {
   lastName: string | null;
   company: string | null;
   inboundSubject: string | null;
-  meetingUrl: string;
+  meetingUrl: string | null;
+  signature?: string | null;
   fallback: EmailOut;
 }): Promise<EmailOut & { source: "ai" | "fallback" }> {
   const out = await runSkill<EmailOut>({
@@ -84,6 +85,7 @@ export async function aiAutoReply(args: {
       company: args.company,
       inboundSubject: args.inboundSubject,
       meetingUrl: args.meetingUrl,
+      signature: args.signature ?? null,
     },
   });
   if (!out) return { ...args.fallback, source: "fallback" };

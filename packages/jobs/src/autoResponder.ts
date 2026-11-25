@@ -6,11 +6,12 @@
  *  - "interesse" / "rappel" → email proposant un créneau de RDV
  *  - "hors_sujet" / "auto_reply" → rien
  *
- * Mode via env AUTO_RESPONDER_MODE :
+ * Réglages : Configuration › Intelligence artificielle › Réponse automatique (table aiConfig) ;
+ * repli sur les variables AUTO_RESPONDER_MODE / AUTO_RESPONDER_MEETING_URL si rien n'est réglé.
  *  - "off"   (défaut) : ne fait rien
- *  - "draft" : génère le message + InboxMessage outbound marqué brouillon
- *              + notification pour validation humaine (PAS d'envoi SMTP)
- *  - "auto"  : envoie réellement via SMTP
+ *  - "draft" : génère le message (InboxMessage outbound isDraft) + notification ; l'utilisateur
+ *              l'envoie, le modifie ou le supprime depuis la conversation (Réponses / fiche lead)
+ *  - "auto"  : envoie réellement avec le compte d'envoi choisi
  *
  * L'intervention manuelle reste possible à tout moment (F5).
  */
@@ -49,38 +50,62 @@ function encryptValue(plaintext: string): Buffer {
 }
 
 type Mode = "off" | "draft" | "auto";
-function mode(): Mode {
-  const m = (process.env.AUTO_RESPONDER_MODE ?? "off").toLowerCase();
+
+type AutoReplySettings = { mode: Mode; meetingUrl: string | null; smtpConfigId: string | null };
+
+function asMode(v: string | null | undefined): Mode {
+  const m = (v ?? "off").toLowerCase();
   return m === "auto" ? "auto" : m === "draft" ? "draft" : "off";
 }
 
-const MEETING_LINK = process.env.AUTO_RESPONDER_MEETING_URL ?? "https://calendly.com/votre-equipe/30min";
+/** Réglages de l'interface (aiConfig), sinon variables d'environnement historiques. */
+export async function autoReplySettings(): Promise<AutoReplySettings> {
+  const row = await prisma.aiConfig.findUnique({
+    where: { id: "default" },
+    select: { autoReplyMode: true, autoReplyMeetingUrl: true, autoReplySmtpConfigId: true },
+  });
+  const envMode = asMode(process.env.AUTO_RESPONDER_MODE);
+  return {
+    mode: row && row.autoReplyMode !== "off" ? asMode(row.autoReplyMode) : envMode,
+    meetingUrl: row?.autoReplyMeetingUrl?.trim() || process.env.AUTO_RESPONDER_MEETING_URL?.trim() || null,
+    smtpConfigId: row?.autoReplySmtpConfigId ?? null,
+  };
+}
 
 function fallbackReply(args: {
   category: ReplyCategory;
   firstName: string | null;
   company: string | null;
+  meetingUrl: string | null;
+  signature: string;
 }): { subject: string; html: string } | null {
-  const who = args.firstName ? args.firstName : "Bonjour";
+  const who = args.firstName ? args.firstName : "";
+  const hello = who ? `Bonjour ${who},` : "Bonjour,";
   if (args.category === "pas_interesse") {
     return {
       subject: "Re: votre retour",
-      html: `<p>Bonjour ${who},</p><p>Merci pour votre retour, c'est noté — je n'insiste pas. ` +
-        `Je reste disponible si vos besoins évoluent à l'avenir.</p><p>Très bonne continuation,<br/>L'équipe commerciale</p>`,
+      html: `<p>${hello}</p><p>Merci pour votre retour, c'est noté — je n'insiste pas. ` +
+        `Je reste disponible si vos besoins évoluent à l'avenir.</p><p>Très bonne continuation,<br/>${args.signature}</p>`,
     };
   }
   if (args.category === "interesse" || args.category === "rappel") {
+    const ask = args.meetingUrl
+      ? `proposez-vous un créneau de 30 minutes via ce lien : <a href="${args.meetingUrl}">${args.meetingUrl}</a>.`
+      : "quelles seraient vos disponibilités cette semaine pour un échange de 30 minutes ?";
     return {
       subject: "Re: échangeons 30 min ?",
-      html: `<p>Bonjour ${who},</p><p>Ravi de votre intérêt ! Pour avancer concrètement, ` +
-        `proposez-vous un créneau de 30 minutes via ce lien : <a href="${MEETING_LINK}">${MEETING_LINK}</a>.</p>` +
-        `<p>À très vite,<br/>L'équipe commerciale</p>`,
+      html: `<p>${hello}</p><p>Merci pour votre retour ! Pour avancer concrètement, ${ask}</p>` +
+        `<p>À très vite,<br/>${args.signature}</p>`,
     };
   }
   return null; // hors_sujet / auto_reply → pas de réponse
 }
 
-async function pickActiveSmtp() {
+async function pickSmtp(preferredId: string | null) {
+  if (preferredId) {
+    const row = await prisma.smtpConfig.findUnique({ where: { id: preferredId } });
+    if (row?.isActive) return row;
+  }
   return prisma.smtpConfig.findFirst({ where: { isActive: true }, orderBy: { sentToday: "asc" } });
 }
 
@@ -94,7 +119,8 @@ export async function maybeAutoRespond(args: {
   inboundSubject: string | null;
   inboundMessageId: string | null;
 }): Promise<{ acted: boolean; mode: Mode; reason?: string }> {
-  const m = mode();
+  const settings = await autoReplySettings().catch(() => ({ mode: asMode(process.env.AUTO_RESPONDER_MODE), meetingUrl: null, smtpConfigId: null }));
+  const m = settings.mode;
   if (m === "off") return { acted: false, mode: m, reason: "disabled" };
   if (args.category === "hors_sujet" || args.category === "auto_reply") {
     return { acted: false, mode: m, reason: "category_skipped" };
@@ -106,7 +132,9 @@ export async function maybeAutoRespond(args: {
     const email = decryptOrNull(lead.emailEnc);
     if (!email) return { acted: false, mode: m, reason: "no_email" };
 
-    const fb = fallbackReply({ category: args.category, firstName: lead.firstName, company: lead.company });
+    const smtp = await pickSmtp(settings.smtpConfigId);
+    const signature = smtp?.fromName?.trim() || "L'équipe commerciale";
+    const fb = fallbackReply({ category: args.category, firstName: lead.firstName, company: lead.company, meetingUrl: settings.meetingUrl, signature });
     if (!fb) return { acted: false, mode: m, reason: "no_template" };
 
     // Rédaction IA — skill crm-auto-reply (fallback = template déterministe ci-dessus).
@@ -116,12 +144,12 @@ export async function maybeAutoRespond(args: {
       lastName: lead.lastName,
       company: lead.company,
       inboundSubject: args.inboundSubject,
-      meetingUrl: MEETING_LINK,
+      meetingUrl: settings.meetingUrl,
+      signature,
       fallback: fb,
     });
     const { subject, html } = ai;
 
-    const smtp = await pickActiveSmtp();
     const fromAddr = smtp ? smtp.fromEmail ?? decryptOrNull(smtp.loginEnc) ?? "no-reply@crm" : "no-reply@crm";
     const fromName = smtp?.fromName ?? "Équipe commerciale";
     const senderDomain = (String(fromAddr).split("@")[1] ?? "crm").replace(/[^a-zA-Z0-9.\-]/g, "");
@@ -160,9 +188,10 @@ export async function maybeAutoRespond(args: {
         direction: "outbound",
         fromEnc: encryptValue(`"${fromName}" <${fromAddr}>`),
         toEnc: encryptValue(email),
-        subject: m === "draft" ? `[BROUILLON IA] ${subject}` : subject,
+        subject,
         bodyHtml: html,
         category: args.category,
+        isDraft: m === "draft",
         receivedAt: new Date(),
       },
     });

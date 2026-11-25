@@ -406,6 +406,7 @@ model InboxMessage {
   bodyHtml    String?  @db.LongText
   category    String? // "interesse" | "pas_interesse" | "hors_sujet" | "rappel" | "auto_reply"
   isAutoReply Boolean  @default(false)
+  isDraft     Boolean  @default(false) // brouillon de réponse IA à valider (outbound, pas encore envoyé)
   isRead      Boolean  @default(false)
   receivedAt  DateTime @default(now())
 
@@ -574,6 +575,10 @@ model AiConfig {
   fastModel String?  @db.VarChar(120) // modèle rapide pour les tâches en volume (optionnel)
   baseUrl   String?  @db.VarChar(255) // point d'accès (Ollama, service compatible OpenAI)
   apiKeyEnc Bytes?   @db.Blob // clé d'API ou jeton CLAUDE_CODE_OAUTH_TOKEN, chiffré AES-256-GCM
+  // Réponse automatique par l'IA aux emails entrants (autoResponder) : off | draft (validation) | auto
+  autoReplyMode         String  @default("off") @db.VarChar(10)
+  autoReplyMeetingUrl   String? @db.VarChar(500) // lien de prise de rendez-vous proposé aux prospects intéressés
+  autoReplySmtpConfigId String? @db.VarChar(191) // compte d'envoi des réponses (sinon : premier compte actif)
   updatedBy String?
   updatedAt DateTime @updatedAt
 

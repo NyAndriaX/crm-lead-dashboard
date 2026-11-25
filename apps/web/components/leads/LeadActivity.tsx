@@ -8,14 +8,13 @@ import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Segmented } from "antd";
 import {
-  AimOutlined, ApiOutlined, CheckCircleOutlined, DeleteOutlined, EditOutlined, EyeOutlined, ImportOutlined, MailOutlined,
-  MessageOutlined, RetweetOutlined, RobotOutlined, SendOutlined, StopOutlined, SwapOutlined, TagsOutlined, ThunderboltOutlined,
-  UndoOutlined, UserOutlined, WarningOutlined,
+  AimOutlined, ApiOutlined, CheckCircleOutlined, DeleteOutlined, EditOutlined, EyeOutlined, ImportOutlined, MailOutlined, MessageOutlined, RetweetOutlined, RobotOutlined, SendOutlined, StopOutlined, SwapOutlined, TagsOutlined, ThunderboltOutlined, UndoOutlined, UserOutlined, WarningOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import "dayjs/locale/fr";
 import SafeHtml from "@/components/SafeHtml";
+import { AiDraftCard } from "@/components/inbox/AiDraftCard";
 import { palette } from "@/lib/theme";
 import { STATUS_LABELS } from "@/lib/leadStatus";
 
@@ -26,13 +25,14 @@ export type HistoryEntry = { id: string; type: string; userId: string | null; pa
 export type ThreadMessage = {
   id: string; direction: "inbound" | "outbound"; from: string; to: string; subject: string | null;
   bodyText: string | null; bodyHtml: string | null; isAutoReply: boolean; receivedAt: string;
+  isDraft?: boolean;
 };
 export type EngagementEvent = {
   id: string; type: string; occurredAt: string; url: string | null; reason?: string | null;
   campaign: { id: string; name: string } | null; sequence: { id: string; name: string } | null;
 };
 
-type Item = { id: string; at: string; kind: "crm" | "email" | "message"; icon: ReactNode; color: string; title: ReactNode; detail?: ReactNode; body?: ReactNode };
+type Item = { id: string; at: string; kind: "crm" | "email" | "message"; icon: ReactNode; color: string; title: ReactNode; detail?: ReactNode; body?: ReactNode; bare?: boolean };
 
 const statusLabel = (s: unknown) => STATUS_LABELS[String(s) as keyof typeof STATUS_LABELS] ?? String(s ?? "—");
 
@@ -88,7 +88,12 @@ function describeHistory(h: HistoryEntry, userName: (id: string) => string): Omi
     case "auto_reply_received":
       return { icon: <RobotOutlined />, color: "#94a0bd", title: "Réponse automatique reçue" };
     case "auto_reply_draft":
+    case "auto_reply_drafted":
       return { icon: <RobotOutlined />, color: palette.violet, title: "Brouillon de réponse rédigé par l'IA" };
+    case "auto_reply_sent":
+      return { icon: <RobotOutlined />, color: palette.green, title: p.validated ? "Réponse de l'IA validée et envoyée" : "Réponse automatique de l'IA envoyée", detail: p.edited ? "modifiée avant envoi" : undefined };
+    case "auto_reply_discarded":
+      return { icon: <RobotOutlined />, color: "#94a0bd", title: "Brouillon de réponse de l'IA supprimé" };
     case "campaign_email_sent":
       return { icon: <SendOutlined />, color: palette.violet, title: "Email de campagne envoyé" };
     case "email_bounced":
@@ -106,7 +111,8 @@ function describeHistory(h: HistoryEntry, userName: (id: string) => string): Omi
 
 export function LeadActivity({
   history, thread, events, userName,
-}: { history: HistoryEntry[]; thread: ThreadMessage[]; events: EngagementEvent[]; userName: (id: string) => string }) {
+  onThreadChange,
+}: { history: HistoryEntry[]; thread: ThreadMessage[]; events: EngagementEvent[]; userName: (id: string) => string; onThreadChange?: () => void }) {
   const [filter, setFilter] = useState<"all" | "email" | "message" | "crm">("all");
 
   const items = useMemo<Item[]>(() => {
@@ -122,6 +128,15 @@ export function LeadActivity({
       });
     }
     for (const m of thread) {
+      if (m.isDraft) {
+        out.push({
+          id: `m-${m.id}`, at: m.receivedAt, kind: "message", icon: <RobotOutlined />, color: palette.amber,
+          title: <>Brouillon de réponse de l&apos;IA — <b>{m.subject ?? "(sans objet)"}</b></>,
+          body: <AiDraftCard draft={m} onDone={() => onThreadChange?.()} />,
+          bare: true, // carte interactive : ni cadre ni hauteur limitée (boutons toujours visibles)
+        });
+        continue;
+      }
       const inbound = m.direction === "inbound";
       out.push({
         id: `m-${m.id}`, at: m.receivedAt, kind: "message",
@@ -131,7 +146,7 @@ export function LeadActivity({
       });
     }
     return out.sort((a, b) => dayjs(b.at).valueOf() - dayjs(a.at).valueOf());
-  }, [history, thread, events, userName]);
+  }, [history, thread, events, userName, onThreadChange]);
 
   const visible = filter === "all" ? items : items.filter((i) => i.kind === filter);
   const count = (k: Item["kind"]) => items.filter((i) => i.kind === k).length;
@@ -164,7 +179,8 @@ export function LeadActivity({
                   <span title={dayjs(it.at).format("DD/MM/YYYY HH:mm")} style={{ fontSize: 11.5, color: "var(--nb-text-3)", whiteSpace: "nowrap" }}>{dayjs(it.at).fromNow()}</span>
                 </div>
                 {it.detail && <div style={{ fontSize: 12, color: "var(--nb-text-3)", marginTop: 2 }}>{it.detail}</div>}
-                {it.body && (
+                {it.body && it.bare && <div style={{ marginTop: 8 }}>{it.body}</div>}
+                {it.body && !it.bare && (
                   <div style={{ marginTop: 8, padding: "12px 14px", borderRadius: 12, background: "var(--nb-control)", border: "1px solid var(--nb-border)", fontSize: 13, maxHeight: 240, overflow: "auto", color: "var(--nb-text)" }}>
                     {it.body}
                   </div>

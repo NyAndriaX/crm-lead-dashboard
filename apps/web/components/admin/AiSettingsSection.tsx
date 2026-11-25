@@ -15,6 +15,7 @@ import { AI_PROVIDERS, getProvider, type AiProviderId } from "@crm/ai/providers"
 import { api } from "@/lib/client";
 import { palette, alpha } from "@/lib/theme";
 import { Chip, Panel } from "@/components/ui/Kit";
+import { AutoReplySettings } from "./AutoReplySettings";
 
 type AiConfigView = {
   enabled: boolean;
@@ -268,6 +269,8 @@ export function AiSettingsSection() {
           </div>
         </div>
       </Panel>
+
+      <AutoReplySettings />
 
       <Panel icon={<RollbackOutlined />} title="Tâches IA du CRM" subtitle="Chaque tâche a un repli déterministe si l'IA est indisponible" accent={palette.cyan}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>

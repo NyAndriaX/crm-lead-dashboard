@@ -321,7 +321,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
             )}
 
             <Panel icon={<HistoryOutlined />} title="Activité" subtitle={`${sent} email(s) envoyé(s) · ${opens} ouverture(s) · ${clicks} clic(s) · ${thread.length} message(s)`}>
-              <LeadActivity history={history} thread={thread} events={engagement.events} userName={userName} />
+              <LeadActivity history={history} thread={thread} events={engagement.events} userName={userName} onThreadChange={() => void load()} />
             </Panel>
           </div>
         </Col>
