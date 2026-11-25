@@ -11,6 +11,7 @@ import { prisma } from "@crm/db";
 import { parseInterval, releaseOrphanedJobs, scheduleRecurring, startQueueWorker, type QueueWorker } from "@crm/queue";
 import { handlers } from "./handlers";
 import { recoverStaleScrapingJobs } from "./scraping/recover";
+import { keepAwakeUrls } from "./keepAwake";
 
 // Verrou (durée max d'exécution avant reprise par un autre process) par type de job.
 const LOCK_MS: Record<string, number> = {
@@ -22,6 +23,7 @@ const LOCK_MS: Record<string, number> = {
   "scraping-scheduler": 5 * 60 * 1000,
   "retention-purge": 30 * 60 * 1000,
   "report-schedule-tick": 10 * 60 * 1000,
+  "keep-awake": 5 * 60 * 1000,
 };
 
 const CONCURRENCY: Record<string, number> = {
@@ -37,6 +39,7 @@ const CONCURRENCY: Record<string, number> = {
   "scraping-scheduler": 1,
   "retention-purge": 1,
   "report-schedule-tick": 1,
+  "keep-awake": 1,
 };
 
 async function resolveTimezone(): Promise<string> {
@@ -68,6 +71,8 @@ export async function startJobs(): Promise<QueueWorker> {
     "retention-purge": "1 day",
     // AN-05 : envoi planifié des rapports par email.
     "report-schedule-tick": process.env.REPORT_SCHEDULE_TICK_INTERVAL ?? "15 minutes",
+    // Hébergement gratuit avec mise en veille (Render) : seulement si KEEP_AWAKE_URLS est défini.
+    ...(keepAwakeUrls().length > 0 ? { "keep-awake": process.env.KEEP_AWAKE_INTERVAL ?? "10 minutes" } : {}),
   };
   for (const [name, every] of Object.entries(recurring)) {
     await scheduleRecurring(name, parseInterval(every));

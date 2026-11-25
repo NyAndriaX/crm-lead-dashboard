@@ -116,13 +116,18 @@ env_json() { # $1 = APP_BASE_URL, $2 = adresse du scraper (vide : pas de prospec
   jq -n --arg db "$DATABASE_URL" --arg url "$1" --arg scr "$2" --arg sk "$SCRAPER_API_KEY" \
     --arg pii "$PII_ENCRYPTION_KEY" --arg jwt "$AUTH_JWT_SECRET" --arg hash "$EMAIL_HASH_SECRET" \
     --arg tok "$INTERNAL_API_TOKEN" --arg mode "$SEED_MODE" \
+    --arg kw "${KEEP_AWAKE_WINDOW:-1-5 07:00-21:00}" --arg ktz "${KEEP_AWAKE_TZ:-Indian/Antananarivo}" \
     --arg ae "$SEED_ADMIN_EMAIL" --arg ap "$SEED_ADMIN_PASSWORD" --arg sp "$SEED_PASSWORD" '[
     {key:"NODE_ENV",value:"production"}, {key:"NODE_OPTIONS",value:"--max-old-space-size=384"},
     {key:"RUN_JOBS",value:"true"}, {key:"WORKER_CONCURRENCY",value:"1"}, {key:"QUEUE_SKIP_LOCKED",value:"false"},
     {key:"WORKER_TIMEZONE",value:"Europe/Paris"},
     {key:"DATABASE_URL",value:$db}, {key:"APP_BASE_URL",value:$url},
     {key:"PII_ENCRYPTION_KEY",value:$pii}, {key:"AUTH_JWT_SECRET",value:$jwt},
-    {key:"EMAIL_HASH_SECRET",value:$hash}, {key:"INTERNAL_API_TOKEN",value:$tok}
+    {key:"EMAIL_HASH_SECRET",value:$hash}, {key:"INTERNAL_API_TOKEN",value:$tok},
+    # Maintien en éveil par l’application elle-même (job keep-awake, packages/jobs/src/keepAwake.ts) :
+    # elle appelle sa propre adresse et celle du scraper toutes les 10 min pendant la plage horaire.
+    {key:"KEEP_AWAKE_URLS",value:([$url + "/api/health"] + (if $scr == "" then [] else [$scr + "/health"] end) | join(" "))},
+    {key:"KEEP_AWAKE_WINDOW",value:$kw}, {key:"KEEP_AWAKE_TZ",value:$ktz}
   ]
   # Production : le compte administrateur est créé depuis ce poste (RESET_DB=true), son mot de passe
   # n’est pas confié à Render. Démo : comptes créés au premier démarrage.

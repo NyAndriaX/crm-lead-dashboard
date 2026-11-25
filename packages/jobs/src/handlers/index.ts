@@ -28,6 +28,7 @@ import { runImapSync } from "../imapSync";
 import { runSequenceTick } from "../sequenceTick";
 import { runScraping, runScrapingScheduler } from "../scrapingRun";
 import { runReportScheduleTick } from "../reports/schedule";
+import { runKeepAwake } from "../keepAwake";
 
 export type JobHandler = WorkerJobHandler;
 
@@ -279,6 +280,9 @@ export const handlers: Record<string, JobHandler> = {
   "campaign-send": runCampaignSend,
 
   "imap-sync": runImapSync,
+
+  // Maintien en éveil sur hébergement gratuit (voir keepAwake.ts).
+  "keep-awake": async () => runKeepAwake(),
 
   "sequence-tick": runSequenceTick,
 

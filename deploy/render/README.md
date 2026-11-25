@@ -42,10 +42,12 @@ Package settings → Change visibility → Public).
 L'IA se règle ensuite dans Configuration › Intelligence artificielle (jeton Claude ou clé d'API d'un autre fournisseur).
 
 ## Réveil automatique
-`.github/workflows/render-keep-awake.yml` appelle les deux adresses de santé toutes les 10 min, du lundi au
-vendredi de 7 h à 21 h (heure de Madagascar) : environ 650 h/mois, sous le quota gratuit de 750 h du compte.
-Pour une démonstration en dehors de ces heures : GitHub → Actions → render-keep-awake → *Run workflow*
-(durée en heures, 5 au maximum).
+L'application se garde elle-même éveillée : le job `keep-awake` (packages/jobs/src/keepAwake.ts) appelle sa
+propre adresse et celle du scraper toutes les 10 min, du lundi au vendredi de 7 h à 21 h (heure de Madagascar ;
+`KEEP_AWAKE_WINDOW`, `KEEP_AWAKE_TZ`, posés par `deploy.sh`), soit environ 650 h/mois sous le quota de 750 h.
+Il ne faut qu'un réveil le matin : un appel planifié à 7 h (ex. cron-job.org ; un 503 pendant le réveil est
+normal) ou la première visite. Pour une démonstration hors plage : GitHub → Actions → render-keep-awake →
+*Run workflow* (durée en heures, 5 au maximum).
 
 ## Base propre (comme en production)
 Avec `SEED_MODE=prod` dans `deploy/render/.secrets`, aucune donnée de démonstration n'est créée. Pour repartir
