@@ -5,7 +5,7 @@ import { use, useCallback, useEffect, useMemo, useState, type ReactNode } from "
 import Link from "next/link";
 import { Button, Col, Dropdown, Modal, Row, Select, Skeleton, Tooltip, message } from "antd";
 import {
-  ArrowLeftOutlined, BankOutlined, CopyOutlined, DeleteOutlined, EllipsisOutlined, EnvironmentOutlined, GlobalOutlined, HistoryOutlined,
+  ArrowLeftOutlined, BankOutlined, CopyOutlined, DeleteOutlined, EditOutlined, EllipsisOutlined, EnvironmentOutlined, GlobalOutlined, HistoryOutlined,
   ImportOutlined, InboxOutlined, MailOutlined, PhoneOutlined, ReloadOutlined, RetweetOutlined, TagsOutlined, ThunderboltOutlined, UserOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
@@ -16,6 +16,7 @@ import { STATUS_LABELS, allowedTransitions } from "@/lib/leadStatus";
 import { AIBadge } from "@/components/ui/Brand";
 import { Chip, EmptyState, Panel, ScoreRing } from "@/components/ui/Kit";
 import { LeadEnrichmentCard } from "@/components/leads/LeadEnrichmentCard";
+import { LeadEditDrawer } from "@/components/leads/LeadEditDrawer";
 import { LeadActivity, type EngagementEvent, type HistoryEntry, type ThreadMessage } from "@/components/leads/LeadActivity";
 import { SEQ_LEAD_STATUS, STOP_REASON } from "@/components/sequences/types";
 
@@ -135,6 +136,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   const [users, setUsers] = useState<UserLite[]>([]);
   const [tagsRef, setTagsRef] = useState<TagRef[]>([]);
   const [notFound, setNotFound] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -223,6 +225,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
   return (
     <div style={{ display: "grid", gap: 20, gridTemplateColumns: "minmax(0, 1fr)" }}>
       {modalHolder}
+      <LeadEditDrawer lead={lead} open={editOpen} onClose={() => setEditOpen(false)} onSaved={() => void load()} />
 
       <div className="nb-glass" style={{ borderRadius: 22, padding: 22, position: "relative", overflow: "hidden" }}>
         <div aria-hidden style={{ position: "absolute", top: -120, right: -80, width: 320, height: 320, borderRadius: "50%", background: `radial-gradient(circle, ${alpha(statusColors[lead.status] ?? palette.violet, "26")}, transparent 70%)` }} />
@@ -249,6 +252,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
             </Tooltip>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {lead.email && <a href={`mailto:${lead.email}`}><Button type="primary" icon={<MailOutlined />}>Écrire</Button></a>}
+              <Button icon={<EditOutlined />} onClick={() => setEditOpen(true)} disabled={!!lead.deletedAt}>Modifier</Button>
               <Link href={`/inbox?leadId=${lead.id}`}><Button icon={<InboxOutlined />}>Conversation</Button></Link>
               <Dropdown
                 trigger={["click"]}
