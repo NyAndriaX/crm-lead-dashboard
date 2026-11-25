@@ -21,7 +21,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { AIBadge } from "@/components/ui/Brand";
 import { Chip, EmptyState, Funnel, Panel } from "@/components/ui/Kit";
-import { CAMPAIGN_STATUS, CampaignCard, campaignOutcome, rate, type CampaignStats } from "./CampaignCard";
+import { CampaignCard, campaignOutcome, rate, type CampaignStats } from "./CampaignCard";
 import { describeFilters } from "./SegmentFilterBuilder";
 import type { CampaignRow, SegmentRow } from "./types";
 
@@ -30,7 +30,17 @@ type Tab = "campaigns" | "segments" | "performance";
 
 const VIEW_KEY = "crm-campaigns-view";
 const PAGE_SIZE = 10;
-const STATUS_ORDER = ["SENDING", "SCHEDULED", "PAUSED", "DRAFT", "DONE", "CANCELLED"];
+const STATUS_ORDER = ["SENDING", "SCHEDULED", "PAUSED", "DRAFT", "DONE", "FAILED", "CANCELLED"];
+
+/** Filtres toujours affichés (même à 0). « En échec » = terminée avec au moins un envoi raté. */
+const FILTER_LABELS: Record<string, string> = {
+  SENDING: "En cours d'envoi", SCHEDULED: "Planifiée", PAUSED: "En pause", DRAFT: "Brouillon",
+  DONE: "Terminée", FAILED: "En échec", CANCELLED: "Annulée",
+};
+
+function filterKey(c: { status: string; metrics: CampaignStats }): string {
+  return c.status === "DONE" && (c.metrics.failed ?? 0) > 0 ? "FAILED" : c.status;
+}
 
 function Metric({ value, label, color }: { value: number; label: string; color: string }) {
   return (
@@ -155,7 +165,7 @@ export function CampaignsHub() {
 
   const counts = useMemo(() => {
     const out: Record<string, number> = {};
-    for (const c of campaigns) out[c.status] = (out[c.status] ?? 0) + 1;
+    for (const c of campaigns) out[filterKey(c)] = (out[filterKey(c)] ?? 0) + 1;
     return out;
   }, [campaigns]);
 
@@ -163,7 +173,7 @@ export function CampaignsHub() {
     const q = query.trim().toLowerCase();
     const list = campaigns.filter(
       (c) =>
-        (status === "all" || c.status === status) &&
+        (status === "all" || filterKey(c) === status) &&
         (!segmentFilter || c.segment?.id === segmentFilter) &&
         (!q || [c.name, c.template?.name, c.segment?.name, c.subject].join(" ").toLowerCase().includes(q)),
     );
@@ -171,7 +181,7 @@ export function CampaignsHub() {
     return [...list].sort((a, b) =>
       sort === "name" ? a.name.localeCompare(b.name)
       : sort === "performance" ? replyRate(b) - replyRate(a) || b.metrics.sent - a.metrics.sent
-      : sort === "status" ? STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status)
+      : sort === "status" ? STATUS_ORDER.indexOf(filterKey(a)) - STATUS_ORDER.indexOf(filterKey(b))
       : dayjs(b.updatedAt).valueOf() - dayjs(a.updatedAt).valueOf(),
     );
   }, [campaigns, status, segmentFilter, query, sort]);
@@ -291,14 +301,16 @@ export function CampaignsHub() {
       {tab === "campaigns" && (
         <div key="campaigns" className="nb-fade-up" style={{ display: "grid", gap: 14, gridTemplateColumns: "minmax(0, 1fr)" }}>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <Segmented
-              value={status}
-              onChange={(v) => setStatus(String(v))}
-              options={[
-                { value: "all", label: `Toutes · ${campaigns.length}` },
-                ...STATUS_ORDER.filter((s) => counts[s]).map((s) => ({ value: s, label: `${CAMPAIGN_STATUS[s]?.label ?? s} · ${counts[s]}` })),
-              ]}
-            />
+            <div style={{ maxWidth: "100%", overflowX: "auto" }}>
+              <Segmented
+                value={status}
+                onChange={(v) => setStatus(String(v))}
+                options={[
+                  { value: "all", label: `Toutes · ${campaigns.length}` },
+                  ...STATUS_ORDER.map((s) => ({ value: s, label: `${FILTER_LABELS[s] ?? s} · ${counts[s] ?? 0}` })),
+                ]}
+              />
+            </div>
             <div style={{ display: "flex", gap: 8, marginLeft: "auto", flexWrap: "wrap" }}>
               <Input prefix={<SearchOutlined style={{ color: "var(--nb-text-3)" }} />} placeholder="Rechercher" allowClear value={query} onChange={(e) => setQuery(e.target.value)} style={{ width: 200 }} />
               <Select
