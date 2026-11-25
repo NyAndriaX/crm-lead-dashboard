@@ -1,15 +1,9 @@
-# Garde la démo Render éveillée (offre gratuite : veille après 15 min sans visite).
-# - Planifié : du lundi au vendredi, 7 h – 21 h heure de Madagascar (4 h – 18 h UTC), toutes les 10 min.
-#   Deux services × ~14 h × ~23 jours ≈ 650 h/mois, sous le quota de 750 h du compte Render.
-#   (24 h/24 pour les deux services ≈ 1 440 h : quota épuisé vers le 15, services suspendus.)
-# - À la demande (« Run workflow ») : garde les deux services éveillés pendant N heures, ex. une soutenance.
-# GitHub n'exécute les déclencheurs « schedule » que depuis la branche par défaut (main), avec parfois
-# quelques minutes de retard : l'intervalle de 10 min laisse de la marge avant les 15 min de veille.
+# Garde la démo Render éveillée À LA DEMANDE (« Run workflow ») pendant N heures, ex. avant une soutenance.
+# Le maintien quotidien est fait par l'application elle-même (job keep-awake, packages/jobs/src/keepAwake.ts) ;
+# la planification GitHub (« schedule ») a été retirée : trop irrégulière (exécutions retardées de plusieurs heures).
 name: render-keep-awake
 
 on:
-  schedule:
-    - cron: "*/10 4-17 * * 1-5"
   workflow_dispatch:
     inputs:
       hours:
@@ -30,7 +24,7 @@ jobs:
     steps:
       - name: Réveil des services
         env:
-          HOURS: ${{ github.event_name == 'workflow_dispatch' && inputs.hours || '0' }}
+          HOURS: ${{ inputs.hours }}
         run: |
           ping_all() {
             for u in $URLS; do
