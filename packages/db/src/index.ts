@@ -96,3 +96,7 @@ export {
   type AbVariantStats,
   type AbVerdict,
 } from "./abTest";
+export {
+  GMAIL_API_HOST, GMAIL_SEND_SCOPE, GmailApiError, createAccountTransport, googleOAuthClient, isGmailApiAccount,
+  type SendingAccount,
+} from "./mailTransport";

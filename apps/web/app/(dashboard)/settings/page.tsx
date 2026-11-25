@@ -27,7 +27,7 @@ import {
   TeamOutlined, CalendarOutlined, SettingOutlined, LockOutlined, DeleteOutlined,
   MailOutlined, CloudOutlined, CodeOutlined, EyeOutlined, CopyOutlined, BookOutlined,
   DashboardOutlined, SafetyCertificateOutlined, ProjectOutlined, InboxOutlined, ThunderboltOutlined,
-  ApiOutlined, AuditOutlined, CloudServerOutlined,
+  ApiOutlined, AuditOutlined, CloudServerOutlined, GoogleOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import { api } from "@/lib/client";
@@ -70,6 +70,11 @@ interface SmtpConfigRow {
   dailyLimit: number;
   isActive: boolean;
   createdAt: string;
+}
+
+/** Compte « Gmail (API) » : envoi par l'API Google, sans hôte SMTP (valeur de GMAIL_API_HOST, @crm/db). */
+function isGmailApiRow(row: { host: string } | null | undefined): boolean {
+  return (row?.host ?? "").trim().toLowerCase() === "gmail-api";
 }
 
 interface SmtpFormValues {
@@ -992,11 +997,37 @@ function EmailingTab() {
   const [modalOpen, setModalOpen] = useState(false);
   const [templateBlockModalOpen, setTemplateBlockModalOpen] = useState(false);
   const [editingConfig, setEditingConfig] = useState<SmtpConfigRow | null>(null);
+  const [gmailOAuth, setGmailOAuth] = useState<{ configured: boolean; redirectUri: string } | null>(null);
+  const [rowTesting, setRowTesting] = useState<string | null>(null);
+  const editingGmail = isGmailApiRow(editingConfig);
   const [editingTemplateBlock, setEditingTemplateBlock] = useState<TemplateBlockRow | null>(null);
   const [form] = Form.useForm<SmtpFormValues>();
   const [templateBlockForm] = Form.useForm<TemplateBlockFormValues>();
   const blockHtmlContentWatch = Form.useWatch("htmlContent", templateBlockForm);
   const isMobile = useIsMobile();
+
+  // Envoi par l'API Gmail : client OAuth configuré ? + retour de l'écran d'autorisation Google (?gmail=…).
+  useEffect(() => {
+    api.get<{ data: { configured: boolean; redirectUri: string } }>("/integrations/gmail/status")
+      .then((r) => setGmailOAuth(r.data.data)).catch(() => setGmailOAuth(null));
+    const q = new URLSearchParams(window.location.search);
+    const g = q.get("gmail");
+    if (g === "connected") message.success(`Compte Gmail connecté : ${q.get("account") ?? ""}`);
+    else if (g === "error") message.error(`Connexion Gmail impossible : ${q.get("reason") ?? "erreur inconnue"}`);
+    if (g) window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
+  }, []);
+
+  async function testSavedConfig(row: SmtpConfigRow) {
+    setRowTesting(row.id);
+    try {
+      const { data } = await api.post<{ data: { message: string } }>(`/smtp-configs/${row.id}/test`);
+      message.success(data.data.message);
+    } catch (e) {
+      message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Échec de connexion");
+    } finally {
+      setRowTesting(null);
+    }
+  }
 
   const fetchConfigs = useCallback(async () => {
     setLoading(true);
@@ -1106,6 +1137,13 @@ function EmailingTab() {
   async function testConnection() {
     setSmtpTestResult(null);
     try {
+      if (editingConfig && isGmailApiRow(editingConfig)) {
+        setTesting(true);
+        const { data } = await api.post<{ data: { message: string } }>(`/smtp-configs/${editingConfig.id}/test`);
+        setSmtpTestResult({ type: 'success', message: data.data.message });
+        message.success(data.data.message);
+        return;
+      }
       const values = await form.validateFields(['host', 'port', 'login', 'password']);
       setTesting(true);
       await api.post('/smtp-configs/test', {
@@ -1245,9 +1283,12 @@ function EmailingTab() {
 
   const columns: ColumnsType<SmtpConfigRow> = [
     { title: 'Nom', dataIndex: 'label', key: 'label', ellipsis: true },
-    { title: 'Serveur', dataIndex: 'host', key: 'host', ellipsis: true },
-    { title: 'Port', dataIndex: 'port', key: 'port', width: 90 },
-    { title: 'Expéditeur', key: 'from', render: (_, row) => row.fromEmail ? `${row.fromName ?? ''} <${row.fromEmail}>` : '—' },
+    {
+      title: 'Serveur', dataIndex: 'host', key: 'host', ellipsis: true,
+      render: (host: string) => isGmailApiRow({ host }) ? <Tag icon={<GoogleOutlined />} color="purple">Gmail (API)</Tag> : host,
+    },
+    { title: 'Port', dataIndex: 'port', key: 'port', width: 90, render: (port: number, row) => (isGmailApiRow(row) ? '—' : port) },
+    { title: 'Expéditeur', key: 'from', width: 260, ellipsis: true, render: (_, row) => row.fromEmail ? `${row.fromName ?? ''} <${row.fromEmail}>` : '—' },
     { title: 'Quota / jour', dataIndex: 'dailyLimit', key: 'dailyLimit', width: 140 },
     {
       title: 'Actif', dataIndex: 'isActive', key: 'isActive', width: 100,
@@ -1256,10 +1297,16 @@ function EmailingTab() {
         : <Tag color="default">Non</Tag>,
     },
     {
-      title: '', key: 'actions', width: 140,
+      title: '', key: 'actions', width: 260,
       render: (_, row) => (
         <Space>
+          <Button size="small" loading={rowTesting === row.id} onClick={() => void testSavedConfig(row)}>Tester</Button>
           <Button size="small" onClick={() => openEdit(row)}>Modifier</Button>
+          {isGmailApiRow(row) && (
+            <Tooltip title="Renouveler l'autorisation Google (si l'envoi échoue : autorisation expirée ou révoquée)">
+              <Button size="small" icon={<GoogleOutlined />} href="/api/integrations/gmail/connect">Reconnecter</Button>
+            </Tooltip>
+          )}
           <Popconfirm
             title={`Supprimer ${row.label} ?`}
             onConfirm={() => void deleteConfig(row)}
@@ -1408,18 +1455,30 @@ function EmailingTab() {
         title={
           <Space>
             <CloudOutlined style={{ color: "#8b5cf6" }} />
-            <span>Configuration SMTP</span>
+            <span>Comptes d’envoi</span>
           </Space>
         }
         extra={
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-            Ajouter un compte SMTP
-          </Button>
+          <Space wrap>
+            <Tooltip
+              title={gmailOAuth && !gmailOAuth.configured
+                ? `Client OAuth Google non configuré (GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET). URI de redirection à déclarer : ${gmailOAuth.redirectUri}`
+                : "Envoyer depuis votre Gmail par l'API Google (HTTPS) — utile quand l'hébergeur bloque les ports SMTP."}
+            >
+              <Button icon={<GoogleOutlined />} href="/api/integrations/gmail/connect" disabled={!gmailOAuth?.configured}>
+                Connecter un compte Gmail
+              </Button>
+            </Tooltip>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+              Ajouter un compte SMTP
+            </Button>
+          </Space>
         }
         style={{ borderRadius: 12, boxShadow: "0 1px 2px rgba(15,23,42,0.06)" }}
       >
         <Text type="secondary" style={{ display: "block", marginBottom: 16 }}>
-          Les identifiants sont stockés de façon sécurisée et servent à l’envoi des campagnes.
+          Les identifiants sont stockés de façon sécurisée et servent à l’envoi des campagnes. Un compte « Gmail (API) »
+          envoie depuis votre adresse Gmail par l’API Google, sans serveur SMTP.
         </Text>
         <Table
           rowKey="id"
@@ -1427,7 +1486,7 @@ function EmailingTab() {
           dataSource={configs}
           loading={loading}
           pagination={{ pageSize: 10, showTotal: (total) => `${total} compte(s)` }}
-          scroll={{ x: 900 }}
+          scroll={{ x: 1250 }}
         />
       </Card>
 
@@ -1579,7 +1638,7 @@ function EmailingTab() {
       </Card>
 
       <Modal
-        title={<Space><MailOutlined /><span>{editingConfig ? 'Modifier' : 'Nouvelle'} configuration SMTP</span></Space>}
+        title={<Space><MailOutlined /><span>{editingGmail ? 'Modifier le compte Gmail (API)' : `${editingConfig ? 'Modifier' : 'Nouvelle'} configuration SMTP`}</span></Space>}
         open={modalOpen}
         onOk={() => void saveConfig()}
         onCancel={() => { setModalOpen(false); form.resetFields(); }}
@@ -1594,24 +1653,37 @@ function EmailingTab() {
                 <Input placeholder="Ex: SMTP principal" />
               </Form.Item>
             </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item name="host" label="Hôte SMTP" rules={[{ required: true, message: 'Hôte requis' }]}> 
-                <Input placeholder="smtp.example.com" />
-              </Form.Item>
-            </Col>
+            {!editingGmail && (
+              <Col xs={24} sm={12}>
+                <Form.Item name="host" label="Hôte SMTP" rules={[{ required: true, message: 'Hôte requis' }]}>
+                  <Input placeholder="smtp.example.com" />
+                </Form.Item>
+              </Col>
+            )}
           </Row>
           <Row gutter={16}>
-            <Col xs={24} sm={12}>
-              <Form.Item name="port" label="Port" rules={[{ required: true, message: 'Port requis' }]}> 
-                <InputNumber min={1} max={65535} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
+            {!editingGmail && (
+              <Col xs={24} sm={12}>
+                <Form.Item name="port" label="Port" rules={[{ required: true, message: 'Port requis' }]}>
+                  <InputNumber min={1} max={65535} style={{ width: '100%' }} />
+                </Form.Item>
+              </Col>
+            )}
             <Col xs={24} sm={12}>
               <Form.Item name="dailyLimit" label="Quota journalier" rules={[{ required: true, type: 'number', message: 'Quota requis' }]}> 
                 <InputNumber min={1} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
           </Row>
+          {editingGmail ? (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message="Compte Gmail connecté par l'API Google"
+              description="Pas d'hôte ni de mot de passe : l'autorisation Google en tient lieu. Utilisez « Reconnecter » dans la liste pour la renouveler."
+            />
+          ) : (
           <Row gutter={16}>
             <Col xs={24} sm={12}>
               <Form.Item name="login" label="Login SMTP" rules={[{ required: !editingConfig, message: 'Login requis' }]}> 
@@ -1624,6 +1696,7 @@ function EmailingTab() {
               </Form.Item>
             </Col>
           </Row>
+          )}
           <Row gutter={16}>
             <Col xs={24} sm={12}>
               <Form.Item name="fromName" label="Nom expéditeur" rules={[{ max: 100 }]}>

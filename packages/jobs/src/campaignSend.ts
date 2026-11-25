@@ -4,13 +4,7 @@
  * pixel ouverture, liens trackés, List-Unsubscribe, bounce sur échec SMTP, stats campagne.
  */
 import * as crypto from "node:crypto";
-import nodemailer from "nodemailer";
-import {
-  prisma,
-  buildLeadWhereFromSegmentFilters,
-  signEmailTrackToken,
-  type LeadSegmentFilters,
-} from "@crm/db";
+import { prisma, buildLeadWhereFromSegmentFilters, signEmailTrackToken, type LeadSegmentFilters, createAccountTransport } from "@crm/db";
 import { enqueue, type WorkerJobContext } from "@crm/queue";
 import { aiPersonalizeEmail } from "./ai";
 import { applyMergeVariables, type MergeLead } from "./mergeVars";
@@ -207,14 +201,7 @@ export async function runCampaignSend(ctx: WorkerJobContext): Promise<unknown> {
   const pass = decryptOrNull(smtpRow.passwordEnc);
   if (!login || !pass) return { error: "Identifiants SMTP illisibles" };
 
-  const secure = smtpRow.port === 465;
-  const transporter = nodemailer.createTransport({
-    host: smtpRow.host,
-    port: smtpRow.port,
-    secure,
-    auth: { user: login, pass },
-    tls: { rejectUnauthorized: false },
-  });
+  const transporter = createAccountTransport({ host: smtpRow.host, port: smtpRow.port, login, pass });
 
   const fromAddr = smtpRow.fromEmail ?? login;
   const fromName = smtpRow.fromName ?? "CRM";

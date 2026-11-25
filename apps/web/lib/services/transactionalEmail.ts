@@ -8,7 +8,7 @@
  * pas de Message-ID custom — c'est un email "système" 1-to-1.
  */
 import nodemailer from "nodemailer";
-import { prisma } from "@crm/db";
+import { prisma, createAccountTransport } from "@crm/db";
 import { decryptOrNull } from "@/lib/crypto";
 
 export class TransactionalEmailError extends Error {
@@ -40,13 +40,7 @@ export async function sendTransactionalEmail(args: {
     }
     const fromAddr = smtp.fromEmail ?? login;
     const fromName = smtp.fromName ?? "CRM";
-    const transporter = nodemailer.createTransport({
-      host: smtp.host,
-      port: smtp.port,
-      secure: smtp.port === 465,
-      auth: { user: login, pass },
-      tls: { rejectUnauthorized: false },
-    });
+    const transporter = createAccountTransport({ host: smtp.host, port: smtp.port, login, pass });
     try {
       const info = await transporter.sendMail({
         from: `"${fromName}" <${fromAddr}>`,

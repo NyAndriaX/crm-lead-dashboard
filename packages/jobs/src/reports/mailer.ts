@@ -8,7 +8,7 @@
  */
 import * as crypto from "node:crypto";
 import nodemailer, { type Transporter } from "nodemailer";
-import { prisma } from "@crm/db";
+import { prisma, createAccountTransport } from "@crm/db";
 
 const ALGO = "aes-256-gcm";
 const IV_LEN = 12;
@@ -36,9 +36,7 @@ async function fromSmtpConfig(where: { id: string } | { isActive: true }): Promi
   const login = decrypt(Buffer.from(row.loginEnc));
   const pass = decrypt(Buffer.from(row.passwordEnc));
   return {
-    transporter: nodemailer.createTransport({
-      host: row.host, port: row.port, secure: row.port === 465, auth: { user: login, pass }, tls: { rejectUnauthorized: false },
-    }),
+    transporter: createAccountTransport({ host: row.host, port: row.port, login, pass }),
     from: `"${row.fromName ?? "CRM Lead"}" <${row.fromEmail ?? login}>`,
     via: `compte « ${row.label} »`,
     smtpConfigId: row.id,

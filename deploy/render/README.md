@@ -58,3 +58,24 @@ d'une base vide avec un vrai compte administrateur (`SEED_ADMIN_EMAIL`, `SEED_AD
 Le script demande de taper `EFFACER`, vide la base TiDB depuis ce poste (`prisma migrate reset`), lance
 `init-prod.mjs` (compte administrateur, étapes du pipeline, configuration des tâches de fond) puis redéploie.
 Le mot de passe de l'administrateur n'est pas envoyé à Render.
+
+## Envoi par Gmail (API Google)
+Render gratuit bloque les ports SMTP sortants (25, 465, 587) : Gmail en SMTP est impossible. L'application peut
+envoyer depuis un Gmail par l'**API Gmail** (HTTPS), en plus des comptes SMTP classiques, qui restent disponibles.
+
+Une seule fois, dans https://console.cloud.google.com :
+1. **Nouveau projet** (ex. « CRM Lead »).
+2. **API et services → Bibliothèque** → « Gmail API » → **Activer**.
+3. **Écran de consentement OAuth** (Google Auth Platform) : type **Externe**, nom de l'application, adresse
+   d'assistance ; **Accès aux données** → ajouter le champ d'application `.../auth/gmail.send` ; **Audience** →
+   ajouter votre Gmail comme utilisateur test, puis **Publier l'application** (en « Test », Google invalide
+   l'autorisation au bout de 7 jours). L'écran « application non validée » s'affiche ensuite : *Paramètres avancés →
+   Accéder à CRM Lead*.
+4. **Identifiants → Créer des identifiants → ID client OAuth** : type **Application Web**, URI de redirection
+   autorisée : `https://crm-lead-nqdg.onrender.com/api/integrations/gmail/callback`
+   (et `http://localhost:3000/api/integrations/gmail/callback` pour le développement).
+5. Relancer `bash deploy/render/deploy.sh` : il demande l'identifiant client et le code secret (enregistrés dans
+   `.secrets`).
+
+Puis dans CRM Lead : **Configuration → Emailing → Connecter un compte Gmail**. Le compte « Gmail (API) » apparaît
+dans la liste et se choisit comme n'importe quel compte d'envoi. Limite Gmail : 500 destinataires par jour.

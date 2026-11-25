@@ -15,8 +15,7 @@
  * L'intervention manuelle reste possible à tout moment (F5).
  */
 import * as crypto from "node:crypto";
-import nodemailer from "nodemailer";
-import { prisma } from "@crm/db";
+import { prisma, createAccountTransport } from "@crm/db";
 import { aiAutoReply } from "./ai";
 import type { ReplyCategory } from "./replyCategorizer";
 
@@ -138,13 +137,7 @@ export async function maybeAutoRespond(args: {
       const login = decryptOrNull(smtp.loginEnc);
       const pass = decryptOrNull(smtp.passwordEnc);
       if (login && pass) {
-        const transporter = nodemailer.createTransport({
-          host: smtp.host,
-          port: smtp.port,
-          secure: smtp.port === 465,
-          auth: { user: login, pass },
-          tls: { rejectUnauthorized: false },
-        });
+        const transporter = createAccountTransport({ host: smtp.host, port: smtp.port, login, pass });
         await transporter.sendMail({
           from: `"${fromName}" <${fromAddr}>`,
           to: email,

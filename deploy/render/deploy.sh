@@ -82,6 +82,20 @@ grep -q '^SCRAPER_API_KEY=' "$SECRETS" || echo "SCRAPER_API_KEY=$(openssl rand -
 # shellcheck disable=SC1090
 set -a; . "./$SECRETS"; set +a
 
+# Envoi par l'API Gmail (« Connecter un compte Gmail ») : client OAuth Google, demandé une seule fois.
+# Render gratuit bloque les ports SMTP sortants : c'est la voie gratuite pour envoyer depuis un Gmail.
+if [ -z "${GOOGLE_OAUTH_CLIENT_ID:-}" ] && [ "${SKIP_GOOGLE:-}" != true ]; then
+  echo "Envoi par Gmail (facultatif) — identifiant client OAuth Google (…apps.googleusercontent.com)"
+  echo "(Entrée sans rien taper pour passer ; voir deploy/render/README.md, « Envoi par Gmail ») :"
+  read -r GOOGLE_OAUTH_CLIENT_ID
+  if [ -n "$GOOGLE_OAUTH_CLIENT_ID" ]; then
+    echo "Code secret du client OAuth Google :"
+    read -rs GOOGLE_OAUTH_CLIENT_SECRET; echo
+    { echo "GOOGLE_OAUTH_CLIENT_ID=$GOOGLE_OAUTH_CLIENT_ID"; echo "GOOGLE_OAUTH_CLIENT_SECRET=$GOOGLE_OAUTH_CLIENT_SECRET"; } >> "$SECRETS"
+    echo "🔐 Client OAuth Google enregistré dans deploy/render/$SECRETS."
+  fi
+fi
+
 api() { # api MÉTHODE CHEMIN [CORPS]
   local out code
   out=$(curl -sS -w '\n%{http_code}' -X "$1" "$API$2" -H "Authorization: Bearer $RENDER_API_KEY" \
@@ -117,6 +131,7 @@ env_json() { # $1 = APP_BASE_URL, $2 = adresse du scraper (vide : pas de prospec
     --arg pii "$PII_ENCRYPTION_KEY" --arg jwt "$AUTH_JWT_SECRET" --arg hash "$EMAIL_HASH_SECRET" \
     --arg tok "$INTERNAL_API_TOKEN" --arg mode "$SEED_MODE" \
     --arg kw "${KEEP_AWAKE_WINDOW:-1-5 07:00-21:00}" --arg ktz "${KEEP_AWAKE_TZ:-Indian/Antananarivo}" \
+    --arg gid "${GOOGLE_OAUTH_CLIENT_ID:-}" --arg gsec "${GOOGLE_OAUTH_CLIENT_SECRET:-}" \
     --arg ae "$SEED_ADMIN_EMAIL" --arg ap "$SEED_ADMIN_PASSWORD" --arg sp "$SEED_PASSWORD" '[
     {key:"NODE_ENV",value:"production"}, {key:"NODE_OPTIONS",value:"--max-old-space-size=384"},
     {key:"RUN_JOBS",value:"true"}, {key:"WORKER_CONCURRENCY",value:"1"}, {key:"QUEUE_SKIP_LOCKED",value:"false"},
@@ -129,6 +144,7 @@ env_json() { # $1 = APP_BASE_URL, $2 = adresse du scraper (vide : pas de prospec
     {key:"KEEP_AWAKE_URLS",value:([$url + "/api/health"] + (if $scr == "" then [] else [$scr + "/health"] end) | join(" "))},
     {key:"KEEP_AWAKE_WINDOW",value:$kw}, {key:"KEEP_AWAKE_TZ",value:$ktz}
   ]
+  + (if $gid == "" then [] else [{key:"GOOGLE_OAUTH_CLIENT_ID",value:$gid}, {key:"GOOGLE_OAUTH_CLIENT_SECRET",value:$gsec}] end)
   # Production : le compte administrateur est créé depuis ce poste (RESET_DB=true), son mot de passe
   # n’est pas confié à Render. Démo : comptes créés au premier démarrage.
   + (if $mode == "prod" then [{key:"SEED_MODE",value:"prod"}] else [

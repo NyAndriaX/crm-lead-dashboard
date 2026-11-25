@@ -2,9 +2,8 @@
  * Service SMTP : configuration chiffrée et validation.
  */
 import dns from "dns/promises";
-import nodemailer from "nodemailer";
-import { prisma } from "@crm/db";
-import { encryptOrNull } from "@/lib/crypto";
+import { createAccountTransport, isGmailApiAccount, prisma } from "@crm/db";
+import { decryptOrNull, encryptOrNull } from "@/lib/crypto";
 
 export interface SmtpConfigInput {
   label: string;
@@ -187,27 +186,28 @@ export async function testSmtpConnection(input: {
   login: string;
   password: string;
 }) {
-  const secure = input.port === 465;
-  const transporter = nodemailer.createTransport({
-    host: input.host,
-    port: input.port,
-    secure,
-    auth: {
-      user: input.login,
-      pass: input.password,
-    },
-    tls: { rejectUnauthorized: false },
-    connectionTimeout: 15_000,
-    greetingTimeout: 15_000,
-    socketTimeout: 20_000,
-  });
+  const transporter = createAccountTransport(
+    { host: input.host, port: input.port, login: input.login, pass: input.password },
+    { connectionTimeout: 15_000, greetingTimeout: 15_000, socketTimeout: 20_000 },
+  );
   await transporter.verify();
-  return { ok: true, message: "Connexion SMTP réussie" };
+  return { ok: true, message: isGmailApiAccount(input.host) ? "Connexion Gmail (API) réussie" : "Connexion SMTP réussie" };
+}
+
+/** Test d'un compte déjà enregistré (identifiants déchiffrés côté serveur — ex. compte Gmail connecté). */
+export async function testSavedSmtpConfig(id: string) {
+  const row = await prisma.smtpConfig.findUnique({ where: { id } });
+  if (!row) throw new Error("Compte d'envoi introuvable");
+  const login = decryptOrNull(row.loginEnc);
+  const pass = decryptOrNull(row.passwordEnc);
+  if (!login || !pass) throw new Error("identifiants illisibles (clé de chiffrement modifiée ?)");
+  return testSmtpConnection({ host: row.host, port: row.port, login, password: pass });
 }
 
 /** Message lisible pour un échec de connexion SMTP (test depuis la Configuration). */
 export function describeSmtpError(e: unknown): string {
-  const err = e as { code?: string; responseCode?: number; message?: string } | null;
+  const err = e as { code?: string; responseCode?: number; message?: string; name?: string } | null;
+  if (err?.name === "GmailApiError") return err.message ?? "erreur Gmail";
   const code = err?.code ?? "";
   if (code === "EAUTH" || err?.responseCode === 535) {
     return "identifiant ou mot de passe refusé (Gmail : utilisez un mot de passe d'application).";

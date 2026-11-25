@@ -15,8 +15,7 @@
  *      (ou status="completed" si plus de step).
  */
 import * as crypto from "node:crypto";
-import nodemailer from "nodemailer";
-import { prisma } from "@crm/db";
+import { prisma, createAccountTransport } from "@crm/db";
 import type { WorkerJobContext } from "@crm/queue";
 import { aiPersonalizeEmail } from "./ai";
 import { applyMergeVariables, type MergeLead } from "./mergeVars";
@@ -152,13 +151,7 @@ async function sendStep(args: {
   const fromAddr = smtpRow.fromEmail ?? login;
   const fromName = smtpRow.fromName ?? "CRM";
 
-  const transporter = nodemailer.createTransport({
-    host: smtpRow.host,
-    port: smtpRow.port,
-    secure: smtpRow.port === 465,
-    auth: { user: login, pass },
-    tls: { rejectUnauthorized: false },
-  });
+  const transporter = createAccountTransport({ host: smtpRow.host, port: smtpRow.port, login, pass });
 
   const mergeLead = { firstName: lead.firstName, lastName: lead.lastName, company: lead.company, email };
   bodyHtml = personalize(bodyHtml, mergeLead);

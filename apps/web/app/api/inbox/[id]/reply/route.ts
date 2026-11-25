@@ -1,6 +1,5 @@
 import { z } from "zod";
-import nodemailer from "nodemailer";
-import { prisma } from "@crm/db";
+import { prisma, createAccountTransport } from "@crm/db";
 import { ApiError, handler, json, parseBody, requirePermission } from "@/lib/api";
 import { decryptOrNull, encrypt } from "@/lib/crypto";
 
@@ -50,13 +49,7 @@ export const POST = handler<Ctx>(async (req, { params }) => {
   const fromAddr = smtpRow.fromEmail ?? login;
   const fromName = smtpRow.fromName ?? "CRM";
 
-  const transporter = nodemailer.createTransport({
-    host: smtpRow.host,
-    port: smtpRow.port,
-    secure: smtpRow.port === 465,
-    auth: { user: login, pass },
-    tls: { rejectUnauthorized: false },
-  });
+  const transporter = createAccountTransport({ host: smtpRow.host, port: smtpRow.port, login, pass });
 
   // Threading : reprend la chaîne References + ajoute le messageId du message auquel on répond.
   const senderDomain = (fromAddr.split("@")[1] ?? "crm").replace(/[^a-zA-Z0-9.\-]/g, "");
