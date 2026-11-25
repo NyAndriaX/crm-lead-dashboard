@@ -13,10 +13,10 @@ import {
   Badge, Button, Dropdown, Empty, List, Space, Tag, Tooltip, Typography,
 } from "antd";
 import {
-  BellOutlined, CheckOutlined, CloseCircleOutlined, MailOutlined, ProjectOutlined,
-  RadarChartOutlined, TeamOutlined, UserSwitchOutlined,
+  BellOutlined, CheckOutlined, CloseCircleOutlined, MailOutlined, ProjectOutlined, RadarChartOutlined, TeamOutlined, UserSwitchOutlined, RobotOutlined,
 } from "@ant-design/icons";
 import { api } from "@/lib/client";
+import { alpha, palette } from "@/lib/theme";
 
 const { Text } = Typography;
 
@@ -31,12 +31,13 @@ type Notif = {
 };
 
 const ICON_BY_TYPE: Record<string, React.ReactNode> = {
-  reply_received: <MailOutlined style={{ color: "#a78bfa" }} />,
-  lead_assigned: <UserSwitchOutlined style={{ color: "#8b5cf6" }} />,
-  sequence_started: <ProjectOutlined style={{ color: "#722ed1" }} />,
-  team_invite: <TeamOutlined style={{ color: "#fbbf24" }} />,
-  scraping_done: <RadarChartOutlined style={{ color: "#34d399" }} />,
-  scraping_error: <CloseCircleOutlined style={{ color: "#ff4d4f" }} />,
+  reply_received: <MailOutlined style={{ color: palette.cyan }} />,
+  lead_assigned: <UserSwitchOutlined style={{ color: palette.violet }} />,
+  sequence_started: <ProjectOutlined style={{ color: palette.violet }} />,
+  team_invite: <TeamOutlined style={{ color: palette.amber }} />,
+  scraping_done: <RadarChartOutlined style={{ color: palette.green }} />,
+  scraping_error: <CloseCircleOutlined style={{ color: palette.red }} />,
+  auto_reply_draft: <RobotOutlined style={{ color: palette.amber }} />,
 };
 
 function timeAgo(iso: string): string {
@@ -113,8 +114,9 @@ export function NotificationsBell({ borderColor, textColor }: { borderColor: str
     <div
       style={{
         width: 380, maxHeight: 480, overflow: "auto",
-        background: "rgba(14, 19, 36, 0.96)", borderRadius: 16, border: "1px solid var(--nb-border)",
-        boxShadow: "0 24px 60px -12px rgba(0,0,0,0.7)", backdropFilter: "blur(18px)",
+        // Couleurs du thème (clair / sombre) : surface, bordure et ombre des panneaux flottants.
+        background: "var(--nb-drawer)", borderRadius: 16, border: "1px solid var(--nb-border)",
+        boxShadow: "var(--nb-popover-shadow)", backdropFilter: "blur(18px)",
       }}
     >
       <div
@@ -144,15 +146,15 @@ export function NotificationsBell({ borderColor, textColor }: { borderColor: str
               style={{
                 padding: "10px 16px",
                 cursor: n.link ? "pointer" : "default",
-                background: n.isRead ? "transparent" : "rgba(139,92,246,0.12)",
+                background: n.isRead ? "transparent" : alpha(palette.violet, "1f"),
                 borderBottom: "1px solid var(--nb-border)",
                 transition: "background 0.15s",
               }}
               onMouseEnter={(e) => {
-                if (n.link) (e.currentTarget as HTMLElement).style.background = n.isRead ? "rgba(148,163,184,0.08)" : "rgba(139,92,246,0.2)";
+                if (n.link) (e.currentTarget as HTMLElement).style.background = n.isRead ? "var(--nb-control)" : alpha(palette.violet, "33");
               }}
               onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.background = n.isRead ? "transparent" : "rgba(139,92,246,0.12)";
+                (e.currentTarget as HTMLElement).style.background = n.isRead ? "transparent" : alpha(palette.violet, "1f");
               }}
             >
               <Space align="start" size={10} style={{ width: "100%" }}>
@@ -161,10 +163,14 @@ export function NotificationsBell({ borderColor, textColor }: { borderColor: str
                     fontSize: 20, marginTop: 2, width: 28, height: 28,
                     display: "flex", alignItems: "center", justifyContent: "center",
                     borderRadius: 10,
-                    background: n.type === "scraping_done" ? "rgba(52,211,153,0.14)"
-                      : n.type === "scraping_error" ? "rgba(251,113,133,0.14)"
-                      : n.type === "reply_received" ? "rgba(167, 139, 250,0.14)"
-                      : "rgba(139,92,246,0.14)",
+                    background: alpha(
+                      n.type === "scraping_done" ? palette.green
+                        : n.type === "scraping_error" ? palette.red
+                        : n.type === "auto_reply_draft" ? palette.amber
+                        : n.type === "reply_received" ? palette.cyan
+                        : palette.violet,
+                      "24",
+                    ),
                   }}
                 >
                   {ICON_BY_TYPE[n.type] ?? <BellOutlined style={{ color: "var(--nb-text-2)" }} />}
@@ -188,7 +194,7 @@ export function NotificationsBell({ borderColor, textColor }: { borderColor: str
                       </Tag>
                     )}
                     {n.link && (
-                      <Text style={{ fontSize: 11, color: "#8b5cf6" }}>
+                      <Text style={{ fontSize: 11, color: palette.violet }}>
                         Cliquer pour ouvrir →
                       </Text>
                     )}

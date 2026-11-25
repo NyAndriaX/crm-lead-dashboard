@@ -51,6 +51,8 @@ function encryptValue(plaintext: string): Buffer {
 
 type Mode = "off" | "draft" | "auto";
 
+const CATEGORY_LABEL: Record<string, string> = { interesse: "intéressé", rappel: "à rappeler plus tard", pas_interesse: "pas intéressé" };
+
 type AutoReplySettings = { mode: Mode; meetingUrl: string | null; smtpConfigId: string | null };
 
 function asMode(v: string | null | undefined): Mode {
@@ -221,7 +223,7 @@ export async function maybeAutoRespond(args: {
             userId: a.id,
             type: "auto_reply_draft",
             title: "Brouillon de réponse IA à valider",
-            body: `Réponse "${args.category}" préparée pour un lead. À relire avant envoi.`,
+            body: `${[lead.firstName, lead.lastName].filter(Boolean).join(" ") || lead.company || "Un prospect"} a répondu (${CATEGORY_LABEL[args.category] ?? args.category}) : l'IA a préparé une réponse, à relire avant envoi.`,
             link: `/leads/${args.leadId}`,
           },
         });
