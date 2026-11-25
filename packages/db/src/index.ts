@@ -100,3 +100,6 @@ export {
   GMAIL_API_HOST, GMAIL_SEND_SCOPE, GmailApiError, createAccountTransport, googleOAuthClient, isGmailApiAccount,
   type SendingAccount,
 } from "./mailTransport";
+export {
+  STAGE_NAMES_BY_STATUS, STATUS_BY_STAGE_NAME, stageForStatus, statusForStageName, syncPipelineStageForStatus,
+} from "./pipelineSync";

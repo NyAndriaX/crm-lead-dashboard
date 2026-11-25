@@ -24,6 +24,7 @@ export const PIPELINE_STAGES = [
   { name: "Nouveau", color: "#94a3b8" },
   { name: "Contacté", color: "#c4b5fd" },
   { name: "Qualifié", color: "#a78bfa" },
+  { name: "En discussion", color: "#f59e0b" },
   { name: "Proposition", color: "#8b5cf6" },
   { name: "Négociation", color: "#fbbf24" },
   { name: "Gagné", color: "#34d399" },

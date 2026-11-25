@@ -696,7 +696,7 @@ async function seedPipelineAssignment(leadRows) {
     NOUVEAU: "Nouveau",
     CONTACTE: "Contacté",
     QUALIFIE: "Qualifié",
-    EN_DISCUSSION: "Négociation",
+    EN_DISCUSSION: "En discussion",
     CONVERTI: "Gagné",
     PERDU: "Perdu",
   };

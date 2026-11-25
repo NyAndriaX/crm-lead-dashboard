@@ -25,7 +25,7 @@
 import * as crypto from "node:crypto";
 import { ImapFlow, type FetchMessageObject } from "imapflow";
 import { simpleParser, type ParsedMail } from "mailparser";
-import { prisma } from "@crm/db";
+import { prisma, syncPipelineStageForStatus } from "@crm/db";
 import type { WorkerJobContext } from "@crm/queue";
 import { categorizeReply, type ReplyCategory } from "./replyCategorizer";
 import { maybeAutoRespond } from "./autoResponder";
@@ -246,6 +246,8 @@ async function onReplyReceived(args: {
       ...(promoteStatus ? { status: "EN_DISCUSSION" as const } : {}),
     },
   });
+  // La carte du pipeline suit le statut (sinon : « En discussion » côté statut, « Contacté » dans le Kanban).
+  if (promoteStatus) await syncPipelineStageForStatus(prisma, args.leadId, "EN_DISCUSSION");
 
   const origin = await replyOrigin(args.refIds, args.leadId);
   await prisma.emailEvent.create({

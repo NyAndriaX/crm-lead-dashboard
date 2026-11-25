@@ -11,7 +11,7 @@
  * (substring, LIKE insensible à la casse/accents via la collation MySQL) + debounce 300 ms côté client. Un index FULLTEXT MySQL reste
  * envisageable pour une recherche classée par pertinence si le volume l'exige.
  */
-import { Prisma, prisma, type Lead, asStringArray, buildLeadWhereFromSegmentFilters, LEAD_NOT_DELETED, type LeadPrivateContacts } from "@crm/db";
+import { Prisma, prisma, type Lead, asStringArray, buildLeadWhereFromSegmentFilters, LEAD_NOT_DELETED, type LeadPrivateContacts, syncPipelineStageForStatus } from "@crm/db";
 import { decryptOrNull, emailHash, encryptOrNull, normalizeEmail } from "../crypto";
 import type {
   AssignLeadInput, ChangeStatusInput, CreateLeadInput, LeadFilters, ListLeadsQuery,
@@ -243,6 +243,9 @@ export async function changeStatus(id: string, input: ChangeStatusInput, actorId
       ...(input.status === "EN_DISCUSSION" ? { lastReplyAt: new Date() } : {}),
     },
   });
+  // La carte du pipeline suit le statut.
+  await syncPipelineStageForStatus(prisma, id, input.status);
+  lead = (await prisma.lead.findUnique({ where: { id } })) ?? lead;
   const score = computeScore(lead, await scoringSignals(id));
   if (score !== lead.score) lead = await prisma.lead.update({ where: { id }, data: { score } });
   await prisma.leadHistory.create({

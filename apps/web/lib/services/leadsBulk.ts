@@ -4,7 +4,7 @@
  * Toutes les opérations sont idempotentes et tolérantes (un ID introuvable
  * est silencieusement ignoré, on retourne `succeeded` + `failed` détaillés).
  */
-import { asStringArray, prisma } from "@crm/db";
+import { asStringArray, prisma, syncPipelineStageForStatus } from "@crm/db";
 import { syncTags } from "@/lib/services/leads";
 
 const MAX_IDS = 1000;
@@ -77,6 +77,8 @@ export async function bulkSetStatus(
     where: { id: { in: list }, deletedAt: null },
     data: { status, lastActionAt: new Date() },
   });
+  // La carte du pipeline suit le statut.
+  for (const leadId of list) await syncPipelineStageForStatus(prisma, leadId, status);
   await prisma.leadHistory.createMany({
     data: list.map((leadId) => ({
       leadId,

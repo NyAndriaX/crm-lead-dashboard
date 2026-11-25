@@ -2,7 +2,7 @@
  * Service Pipeline — gestion des étapes commerciales (PL-02), déplacement des
  * leads entre étapes (PL-03), métriques pipeline (PL-05).
  */
-import { prisma } from "@crm/db";
+import { prisma, stageForStatus, statusForStageName } from "@crm/db";
 import type { LeadStatus } from "@crm/db";
 
 export type PipelineStageItem = {
@@ -14,37 +14,7 @@ export type PipelineStageItem = {
   createdAt: Date;
 };
 
-/**
- * Mapping bi-directionnel statut <-> nom d'étape standard.
- * Si l'admin renomme une étape (ex. "Négociation" → "Pourparlers"), le mapping
- * cassera ; on récupère alors le `Lead.status` initial et on ne le change pas
- * lors du drag (le commercial peut le faire à la main).
- */
-const STATUS_BY_STAGE_NAME: Record<string, LeadStatus> = {
-  "Nouveau": "NOUVEAU",
-  "Contacté": "CONTACTE",
-  "Qualifié": "QUALIFIE",
-  "Négociation": "EN_DISCUSSION",
-  "En discussion": "EN_DISCUSSION",
-  "Gagné": "CONVERTI",
-  "Perdu": "PERDU",
-};
-
-/**
- * Repli statut → étape. Un lead sans `pipelineStageId` explicite (importé,
- * seed, créé hors pipeline…) est rattaché à l'étape standard correspondant à
- * son statut, sinon il n'apparaîtrait jamais dans le Kanban / les métriques.
- * Le `pipelineStageId` explicite (drag-drop) reste toujours prioritaire.
- */
-const STAGE_NAMES_BY_STATUS: Record<LeadStatus, string[]> = {
-  NOUVEAU: ["Nouveau"],
-  CONTACTE: ["Contacté", "Contacte"],
-  QUALIFIE: ["Qualifié", "Qualifie"],
-  EN_DISCUSSION: ["En discussion", "Négociation", "Negociation"],
-  CONVERTI: ["Gagné", "Gagne", "Converti"],
-  PERDU: ["Perdu"],
-};
-
+// Correspondances statut ↔ colonne : partagées avec les tâches de fond (@crm/db, pipelineSync.ts).
 function resolveEffectiveStageId(
   lead: { status: LeadStatus; pipelineStageId: string | null },
   stages: { id: string; name: string }[],
@@ -52,13 +22,7 @@ function resolveEffectiveStageId(
   if (lead.pipelineStageId && stages.some((s) => s.id === lead.pipelineStageId)) {
     return lead.pipelineStageId;
   }
-  for (const name of STAGE_NAMES_BY_STATUS[lead.status] ?? []) {
-    const found = stages.find(
-      (s) => s.name.trim().toLowerCase() === name.toLowerCase(),
-    );
-    if (found) return found.id;
-  }
-  return null;
+  return stageForStatus(lead.status, stages)?.id ?? null;
 }
 
 async function effectiveCountByStage(
@@ -172,7 +136,7 @@ export async function moveLeadToStage(args: {
   const previousStatus = lead.status;
 
   // Inférence du nouveau status depuis le nom de l'étape (si mapping standard).
-  const nextStatus = STATUS_BY_STAGE_NAME[stage.name];
+  const nextStatus = statusForStageName(stage.name);
   const statusChanged = Boolean(nextStatus && nextStatus !== previousStatus);
 
   const position = args.position ?? 0;
@@ -182,7 +146,7 @@ export async function moveLeadToStage(args: {
       where: { id: args.leadId },
       data: {
         pipelineStageId: args.stageId,
-        ...(statusChanged ? { status: nextStatus } : {}),
+        ...(statusChanged && nextStatus ? { status: nextStatus } : {}),
         lastActionAt: new Date(),
       },
     }),
