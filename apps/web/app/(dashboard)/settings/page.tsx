@@ -682,9 +682,10 @@ function UsersTab() {
 
   const columns: ColumnsType<UserRow> = [
     {
-      title: "Utilisateur", key: "user",
+      // Largeur fixe : sans elle, la colonne était écrasée et le nom / l'email se coupaient lettre par lettre.
+      title: "Utilisateur", key: "user", width: 290, fixed: "left",
       render: (_, r) => (
-        <Space>
+        <Space style={{ minWidth: 0, maxWidth: 270 }}>
           <Avatar
             size={36}
             style={{
@@ -696,9 +697,9 @@ function UsersTab() {
           >
             {r.name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)}
           </Avatar>
-          <div>
-            <Text strong style={{ display: "block" }}>{r.name}</Text>
-            <Text type="secondary" style={{ fontSize: 12 }}>{r.email}</Text>
+          <div style={{ minWidth: 0 }}>
+            <Text strong style={{ display: "block", maxWidth: 220 }} ellipsis={{ tooltip: r.name }}>{r.name}</Text>
+            <Text type="secondary" style={{ fontSize: 12, display: "block", maxWidth: 220 }} ellipsis={{ tooltip: r.email }}>{r.email}</Text>
           </div>
         </Space>
       ),
@@ -710,11 +711,15 @@ function UsersTab() {
       ),
     },
     {
-      title: "Équipe", key: "team", width: 150, responsive: ["md"],
+      title: "Équipe", key: "team", width: 240, responsive: ["md"],
       render: (_, r) => {
         const team = r.teamId ? teams.find((t) => t.id === r.teamId) : null;
         return team
-          ? <Tag color="blue">{team.name}</Tag>
+          ? (
+            <Tooltip title={team.name}>
+              <Tag color="blue" style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", verticalAlign: "middle" }}>{team.name}</Tag>
+            </Tooltip>
+          )
           : <Text type="secondary" style={{ fontSize: 12 }}>—</Text>;
       },
     },
@@ -722,16 +727,16 @@ function UsersTab() {
       title: "Statut", dataIndex: "isActive", key: "isActive", width: 110, responsive: ["md"],
       render: (v: boolean, r) => v
         ? (r.invitedAt && !r.lastLoginAt
-            ? <Badge status="warning" text={<Text style={{ fontSize: 12, color: "#fbbf24" }}>Invité</Text>} />
-            : <Badge status="success" text={<Text style={{ fontSize: 12, color: "#34d399" }}>Actif</Text>} />)
-        : <Badge status="error" text={<Text style={{ fontSize: 12, color: "#ff4d4f" }}>Inactif</Text>} />,
+            ? <Badge status="warning" text={<Text style={{ fontSize: 12, color: "var(--nb-amber)" }}>Invité</Text>} />
+            : <Badge status="success" text={<Text style={{ fontSize: 12, color: "var(--nb-green)" }}>Actif</Text>} />)
+        : <Badge status="error" text={<Text style={{ fontSize: 12, color: "var(--nb-red)" }}>Inactif</Text>} />,
     },
     {
       title: "2FA", dataIndex: "twoFactorOn", key: "twoFactorOn", width: 80, responsive: ["lg"],
       align: "center",
       render: (v: boolean) => v
-        ? <Tooltip title="2FA activée"><SafetyOutlined style={{ color: "#34d399", fontSize: 16 }} /></Tooltip>
-        : <Tooltip title="2FA inactive"><SafetyOutlined style={{ color: "#d9d9d9", fontSize: 16 }} /></Tooltip>,
+        ? <Tooltip title="2FA activée"><SafetyOutlined style={{ color: "var(--nb-green)", fontSize: 16 }} /></Tooltip>
+        : <Tooltip title="2FA inactive"><SafetyOutlined style={{ color: "var(--nb-text-3)", fontSize: 16 }} /></Tooltip>,
     },
     {
       title: "Dernière connexion", dataIndex: "lastLoginAt", key: "lastLoginAt", width: 170, responsive: ["lg"],
@@ -854,7 +859,7 @@ function UsersTab() {
           dataSource={users}
           loading={loading}
           size="middle"
-          scroll={{ x: 960 }}
+          scroll={{ x: 1400 }}
           pagination={{ pageSize: 15, showTotal: (t) => `${t} utilisateur(s)` }}
           rowClassName={(r) => (!r.isActive ? "opacity-50" : "")}
         />
