@@ -1017,6 +1017,15 @@ function EmailingTab() {
     if (g) window.history.replaceState(null, "", `${window.location.pathname}${window.location.hash}`);
   }, []);
 
+  async function connectGmail() {
+    try {
+      const { data } = await api.get<{ data: { url: string } }>("/integrations/gmail/connect?format=json");
+      window.location.href = data.data.url;
+    } catch (e) {
+      message.error((e as { response?: { data?: { message?: string } } }).response?.data?.message ?? "Connexion Gmail impossible");
+    }
+  }
+
   async function testSavedConfig(row: SmtpConfigRow) {
     setRowTesting(row.id);
     try {
@@ -1304,7 +1313,7 @@ function EmailingTab() {
           <Button size="small" onClick={() => openEdit(row)}>Modifier</Button>
           {isGmailApiRow(row) && (
             <Tooltip title="Renouveler l'autorisation Google (si l'envoi échoue : autorisation expirée ou révoquée)">
-              <Button size="small" icon={<GoogleOutlined />} href="/api/integrations/gmail/connect">Reconnecter</Button>
+              <Button size="small" icon={<GoogleOutlined />} onClick={() => void connectGmail()}>Reconnecter</Button>
             </Tooltip>
           )}
           <Popconfirm
@@ -1465,7 +1474,7 @@ function EmailingTab() {
                 ? `Client OAuth Google non configuré (GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET). URI de redirection à déclarer : ${gmailOAuth.redirectUri}`
                 : "Envoyer depuis votre Gmail par l'API Google (HTTPS) — utile quand l'hébergeur bloque les ports SMTP."}
             >
-              <Button icon={<GoogleOutlined />} href="/api/integrations/gmail/connect" disabled={!gmailOAuth?.configured}>
+              <Button icon={<GoogleOutlined />} onClick={() => void connectGmail()} disabled={!gmailOAuth?.configured}>
                 Connecter un compte Gmail
               </Button>
             </Tooltip>

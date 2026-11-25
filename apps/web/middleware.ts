@@ -23,6 +23,8 @@ const PUBLIC_PATHS = [
   "/api/health",
   "/api/emailing/track/",
   "/api/emailing/unsub",
+  // Retour de Google (OAuth Gmail) : cookie SameSite=Strict absent, la route s'authentifie par son `state` signé.
+  "/api/integrations/gmail/callback",
 ];
 
 function isPublic(pathname: string) {

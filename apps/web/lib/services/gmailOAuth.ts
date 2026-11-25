@@ -18,12 +18,16 @@ export function signGmailState(userId: string): string {
   return jwt.sign({ sub: userId, typ: "gmail_oauth" }, env().AUTH_JWT_SECRET, { expiresIn: "10m" });
 }
 
-export function verifyGmailState(state: string, userId: string): boolean {
+/**
+ * Au retour de Google, le cookie de session (SameSite=Strict) n'est pas envoyé : l'utilisateur est identifié
+ * par le `state` signé, émis au départ pour un administrateur connecté et valable 10 minutes.
+ */
+export function readGmailState(state: string): string | null {
   try {
     const p = jwt.verify(state, env().AUTH_JWT_SECRET) as { sub?: string; typ?: string };
-    return p.typ === "gmail_oauth" && p.sub === userId;
+    return p.typ === "gmail_oauth" && p.sub ? p.sub : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
