@@ -130,7 +130,7 @@ export function LeadEnrichmentCard({
 
   return (
     <Card
-      title={<Space><ThunderboltOutlined style={{ color: "#fbbf24" }} /> Enrichissement</Space>}
+      title={<Space><ThunderboltOutlined style={{ color: "var(--nb-amber)" }} /> Enrichissement</Space>}
       size="small"
       style={{ marginTop: 16 }}
       extra={
@@ -228,7 +228,7 @@ export function LeadEnrichmentCard({
             {/* Vérification email */}
             {data.emailVerify && (
               <div>
-                <Text strong><CheckCircleTwoTone twoToneColor="#34d399" /> Vérification </Text>
+                <Text strong><CheckCircleTwoTone twoToneColor="var(--nb-green)" /> Vérification </Text>
                 <Tag color={VERDICT_COLOR[data.emailVerify.verdict] ?? "default"}>
                   {data.emailVerify.verdict}
                 </Tag>

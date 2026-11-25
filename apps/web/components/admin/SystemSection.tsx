@@ -83,7 +83,7 @@ export function SystemSection() {
       {/* P-03 — Santé / Monitoring */}
       <Card
         size="small"
-        title={<Space><HeartOutlined style={{ color: "#ff4d4f" }} /> Santé du service (P-03)</Space>}
+        title={<Space><HeartOutlined style={{ color: "var(--nb-red)" }} /> Santé du service (P-03)</Space>}
         extra={<Button size="small" icon={<ReloadOutlined />} onClick={() => fetchAll()}>Rafraîchir</Button>}
       >
         {health && (
@@ -104,7 +104,7 @@ export function SystemSection() {
                 title={<Space><DatabaseOutlined /> Base de données</Space>}
                 value={health.checks.db?.status ?? "?"}
                 suffix={health.checks.db ? `${health.checks.db.latencyMs}ms` : ""}
-                valueStyle={{ fontSize: 18, color: health.checks.db?.status === "ok" ? "#34d399" : "#ff4d4f" }}
+                valueStyle={{ fontSize: 18, color: health.checks.db?.status === "ok" ? "var(--nb-green)" : "var(--nb-red)" }}
               />
             </Col>
             <Col xs={12} md={6}>
@@ -114,7 +114,7 @@ export function SystemSection() {
                 suffix={health.checks.worker?.lastJobAgeMin != null ? `il y a ${health.checks.worker.lastJobAgeMin}min` : ""}
                 valueStyle={{
                   fontSize: 18,
-                  color: health.checks.worker?.status === "ok" ? "#34d399" : "#fbbf24",
+                  color: health.checks.worker?.status === "ok" ? "var(--nb-green)" : "var(--nb-amber)",
                 }}
               />
             </Col>

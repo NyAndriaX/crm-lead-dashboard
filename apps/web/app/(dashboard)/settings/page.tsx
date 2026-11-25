@@ -832,8 +832,8 @@ function UsersTab() {
       <Row gutter={12}>
         {[
           { label: "Total", value: users.length, color: "#8b5cf6" },
-          { label: "Actifs", value: activeCount, color: "#34d399" },
-          { label: "Inactifs", value: users.length - activeCount, color: "#ff4d4f" },
+          { label: "Actifs", value: activeCount, color: "var(--nb-green)" },
+          { label: "Inactifs", value: users.length - activeCount, color: "var(--nb-red)" },
         ].map(({ label, value, color }) => (
           <Col key={label}>
             <Card size="small" bodyStyle={{ padding: "12px 20px" }}>
@@ -1507,7 +1507,7 @@ function EmailingTab() {
       <Card
         title={
           <Space>
-            <SafetyOutlined style={{ color: "#34d399" }} />
+            <SafetyOutlined style={{ color: "var(--nb-green)" }} />
             <span>Guide et vérification DNS (SPF / DKIM / DMARC)</span>
           </Space>
         }
@@ -1878,7 +1878,7 @@ const WEIGHT_GROUPS = [
   {
     title: "Signaux email",
     icon: <UploadOutlined />,
-    color: "#a78bfa",
+    color: "var(--nb-cyan)",
     fields: [
       { key: "perOpen", label: "Points par email ouvert", max: 20 },
       { key: "maxOpens", label: "Plafond ouvertures", max: 50 },
@@ -1890,7 +1890,7 @@ const WEIGHT_GROUPS = [
   {
     title: "Bonus / malus par statut",
     icon: <TrophyOutlined />,
-    color: "#34d399",
+    color: "var(--nb-green)",
     fields: [
       { key: ["statusBonus", "CONTACTE"] as [string, string], label: "Contacté", max: 30 },
       { key: ["statusBonus", "QUALIFIE"] as [string, string], label: "Qualifié", max: 30 },
@@ -1995,7 +1995,7 @@ function ScoringTab() {
           onClick={() => void save()}
           loading={saving}
           icon={saved ? <CheckOutlined /> : <SafetyOutlined />}
-          style={saved ? { background: "#34d399", borderColor: "#34d399" } : {}}
+          style={saved ? { background: "var(--nb-green)", borderColor: "var(--nb-green)" } : {}}
           size="large"
         >
           {saved ? "Enregistré !" : "Enregistrer les poids"}
@@ -2036,7 +2036,7 @@ const SECTIONS: Record<SectionKey, SectionDef> = {
     key: "imports", icon: <UploadOutlined />, title: "Imports", desc: "Import CSV / Excel des leads et historique.", color: "#34d399",
     render: () => (
       <div className="nb-glass" style={{ borderRadius: 20, padding: 40, textAlign: "center" }}>
-        <UploadOutlined style={{ fontSize: 44, color: "#34d399" }} />
+        <UploadOutlined style={{ fontSize: 44, color: "var(--nb-green)" }} />
         <div className="nb-display" style={{ fontSize: 20, fontWeight: 600, margin: "12px 0 6px", color: "var(--nb-text-strong)" }}>Historique des imports</div>
         <div style={{ color: "var(--nb-text-3)", marginBottom: 18 }}>L&apos;import guidé (mapping, dédoublonnage, suivi) se trouve sur la page dédiée.</div>
         <Button type="primary" href="/import" size="large" icon={<UploadOutlined />}>Accéder à la page Import</Button>

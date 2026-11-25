@@ -492,10 +492,10 @@ export default function ImportPage() {
                 message="Import terminé"
                 description={
                   <Row gutter={24} style={{ marginTop: 8 }}>
-                    <Col><Statistic title="Importés" value={currentJob.importedRows} valueStyle={{ color: "#34d399" }} /></Col>
-                    <Col><Statistic title="Doublons ignorés" value={currentJob.duplicateRows} valueStyle={{ color: "#faad14" }} /></Col>
+                    <Col><Statistic title="Importés" value={currentJob.importedRows} valueStyle={{ color: "var(--nb-green)" }} /></Col>
+                    <Col><Statistic title="Doublons ignorés" value={currentJob.duplicateRows} valueStyle={{ color: "var(--nb-amber)" }} /></Col>
                     <Col><Statistic title="Nettoyées" value={currentJob.cleanedRows ?? 0} valueStyle={{ color: (currentJob.cleanedRows ?? 0) > 0 ? "#8b5cf6" : undefined }} /></Col>
-                    <Col><Statistic title="Rejetées" value={currentJob.errorRows} valueStyle={{ color: currentJob.errorRows > 0 ? "#ff4d4f" : undefined }} /></Col>
+                    <Col><Statistic title="Rejetées" value={currentJob.errorRows} valueStyle={{ color: currentJob.errorRows > 0 ? "var(--nb-red)" : undefined }} /></Col>
                     <Col><Statistic title="Total" value={currentJob.totalRows} /></Col>
                   </Row>
                 }

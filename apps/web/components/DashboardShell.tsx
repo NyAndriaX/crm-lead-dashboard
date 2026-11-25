@@ -28,7 +28,7 @@ export interface ShellUser {
 }
 
 const ROLE_COLORS: Record<string, string> = {
-  ADMIN: "#94a3b8", MANAGER: "#fbbf24", COMMERCIAL: "#a78bfa", LECTEUR: "#94a0bd",
+  ADMIN: "#94a3b8", MANAGER: "var(--nb-amber)", COMMERCIAL: "var(--nb-cyan)", LECTEUR: "#94a0bd",
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -63,7 +63,7 @@ function buildNav(role: ShellUser["role"], collapsed: boolean): MenuProps["items
       icon: <RadarChartOutlined />,
       label: (
         <Link href="/scraping" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-          Prospection IA <span style={{ fontSize: 10, color: "#a78bfa" }}>✦</span>
+          Prospection IA <span style={{ fontSize: 10, color: "var(--nb-cyan)" }}>✦</span>
         </Link>
       ),
     },

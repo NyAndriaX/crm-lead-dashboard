@@ -112,7 +112,7 @@ export function RgpdSection() {
     <Space direction="vertical" size={16} style={{ width: "100%" }}>
       <Card size="small">
         <Space align="start" size={16}>
-          <SafetyCertificateOutlined style={{ fontSize: 32, color: "#34d399" }} />
+          <SafetyCertificateOutlined style={{ fontSize: 32, color: "var(--nb-green)" }} />
           <div>
             <Title level={5} style={{ margin: 0 }}>Conformité RGPD</Title>
             <Paragraph type="secondary" style={{ margin: 0, fontSize: 13 }}>
@@ -144,7 +144,7 @@ export function RgpdSection() {
         <Col xs={24} md={12}>
           <Card>
             <Space align="start" size={16}>
-              <DeleteOutlined style={{ fontSize: 32, color: "#ff4d4f" }} />
+              <DeleteOutlined style={{ fontSize: 32, color: "var(--nb-red)" }} />
               <div>
                 <Title level={5} style={{ marginTop: 0 }}>Droit à l'oubli</Title>
                 <Paragraph type="secondary" style={{ fontSize: 13 }}>
@@ -236,7 +236,7 @@ export function RgpdSection() {
       {/* Modale erase */}
       <Modal
         open={actionOpen === "erase"}
-        title={<Space><WarningOutlined style={{ color: "#ff4d4f" }} /> Effacer un lead définitivement</Space>}
+        title={<Space><WarningOutlined style={{ color: "var(--nb-red)" }} /> Effacer un lead définitivement</Space>}
         onCancel={() => { setActionOpen(null); setEraseResult(null); }}
         footer={
           eraseResult

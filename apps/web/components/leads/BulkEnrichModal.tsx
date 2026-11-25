@@ -102,7 +102,7 @@ export function BulkEnrichModal({
 
   return (
     <Modal
-      title={<Space><ThunderboltOutlined style={{ color: "#fbbf24" }} /> Enrichir {total} lead(s)</Space>}
+      title={<Space><ThunderboltOutlined style={{ color: "var(--nb-amber)" }} /> Enrichir {total} lead(s)</Space>}
       open={open}
       onCancel={running ? undefined : onClose}
       maskClosable={!running}
@@ -151,8 +151,8 @@ export function BulkEnrichModal({
             />
             <Row gutter={16}>
               <Col span={8}><Statistic title="Traités" value={processed} suffix={`/ ${total}`} /></Col>
-              <Col span={8}><Statistic title="Réussis" value={succeeded} valueStyle={{ color: "#34d399" }} /></Col>
-              <Col span={8}><Statistic title="Échecs" value={failed} valueStyle={{ color: failed > 0 ? "#ff4d4f" : undefined }} /></Col>
+              <Col span={8}><Statistic title="Réussis" value={succeeded} valueStyle={{ color: "var(--nb-green)" }} /></Col>
+              <Col span={8}><Statistic title="Échecs" value={failed} valueStyle={{ color: failed > 0 ? "var(--nb-red)" : undefined }} /></Col>
             </Row>
           </>
         )}
