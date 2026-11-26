@@ -19,6 +19,7 @@ import { prisma, createAccountTransport } from "@crm/db";
 import type { WorkerJobContext } from "@crm/queue";
 import { aiPersonalizeEmail } from "./ai";
 import { applyMergeVariables, type MergeLead } from "./mergeVars";
+import { progressLeadAfterSequenceSend } from "./leadProgress";
 
 const ALGO = "aes-256-gcm";
 const IV_LEN = 12;
@@ -228,11 +229,19 @@ async function sendStep(args: {
         receivedAt: new Date(),
       },
     });
+    // Premier contact : NOUVEAU → CONTACTE et carte dans « Contacté », comme pour une campagne.
+    const { promoted } = await progressLeadAfterSequenceSend(prisma, lead);
     await prisma.leadHistory.create({
       data: {
         leadId: lead.id,
         type: "sequence_step_sent",
-        payload: { sequenceId, sequenceLeadId, stepIndex } as object,
+        payload: {
+          sequenceId,
+          sequenceLeadId,
+          stepIndex,
+          statusChanged: promoted,
+          ...(promoted ? { fromStatus: "NOUVEAU", toStatus: "CONTACTE" } : {}),
+        } as object,
       },
     });
     return { sent: true };
