@@ -98,6 +98,8 @@ export function startQueueWorker(opts: QueueWorkerOptions): QueueWorker {
           data: {
             status: "PENDING", runAt: new Date(Date.now() + job.repeatEveryMs), attempts: 0,
             lockedBy: null, lockedUntil: null, lastFinishedAt: finishedAt(), lastError: null,
+            // Dernier résultat conservé (ex. keep-awake, affiché par /api/health).
+            result: result === undefined ? Prisma.DbNull : (JSON.parse(JSON.stringify(result)) as Prisma.InputJsonValue),
           },
         });
       } else {

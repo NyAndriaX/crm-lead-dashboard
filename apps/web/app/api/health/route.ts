@@ -53,6 +53,24 @@ export async function GET() {
     checks.worker = { status: "unknown" };
   }
 
+  // Maintien en éveil (hébergement gratuit) : dernier passage du job keep-awake, à titre informatif
+  // (n'influe pas sur le statut). Permet de vérifier que le scraper est bien appelé.
+  try {
+    const ka = await prisma.queueJob.findUnique({
+      where: { uniqueKey: "recurring:keep-awake" },
+      select: { lastRunAt: true, lastFinishedAt: true, runAt: true, lastError: true, result: true },
+    });
+    if (ka) {
+      checks.keepAwake = {
+        lastRunAt: ka.lastRunAt, lastFinishedAt: ka.lastFinishedAt, nextRunAt: ka.runAt,
+        ...(ka.lastError ? { lastError: ka.lastError.slice(0, 300) } : {}),
+        result: ka.result,
+      };
+    }
+  } catch {
+    /* informatif seulement */
+  }
+
   const status = db === "ok" ? (worker === "stale" ? "degraded" : "ok") : "degraded";
 
   return NextResponse.json(
